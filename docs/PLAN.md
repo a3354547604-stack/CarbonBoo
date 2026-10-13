@@ -876,7 +876,7 @@ capped = (A < C)
 | 项 | 设计 |
 |---|---|
 | 方向 | 双向增量（拉 + 推合一） |
-| 增量依据 | `updated_at > lastSymcAt`（本机 `device_info.last_sync_at`） |
+| 增量依据 | `updated_at > lastSyncAt`（本机 `device_info.last_sync_at`） |
 | 冲突解决 | **LWW（Last-Write-Wins）**：`updated_at` 大者胜；相等时以 `device_id` 字典序大者胜（保证确定性） |
 | 删除传播 | **软删除**（`is_deleted = 1` + `updated_at` 更新），删除也要能传播 |
 | 幂等 | 以 `id`（UUID）为主键，重复合并不产生重复数据；**同一条碳记录不重复发分** |
