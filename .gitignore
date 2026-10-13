@@ -1,0 +1,20 @@
+# 临时脚本 / 中间产物（本项目工作区习惯：以 _tmp_ 前缀命名）
+_tmp_*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.swp
+
+# 日志与导出产物
+*.log
+_build/
+_out/

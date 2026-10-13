@@ -1,0 +1,21 @@
+# 默认按文本处理并让 Git 自动识别，检出行尾用 LF（Windows 工作区由 core.autocrlf 处理）
+* text=auto
+
+# 二进制资料不要做行尾/编码转换
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.zip  binary
+*.xlsx binary
+*.docx binary
+*.pptx binary
+
+# 文本类统一 LF
+*.py   text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
