@@ -930,42 +930,15 @@ capped = (A < C)
 
 ## 第 14 章 · 视觉与交互规范
 
-### 14.1 色彩（默认主题）
+### 14.1 色彩令牌
 
-| 令牌 | 色值 | 用途 |
-|---|---|---|
-| `color_primary` | `#2E7D5B` | 主色（叶片绿）：主按钮、选中态、强调 |
-| `color_primary_dark` | `#1F5A40` | 主色深：按下态、标题 |
-| `color_accent` | `#8BC34A` | 辅色：进度、徽章高亮 |
-| `color_bg` | `#F6F8F6` | 页面底色 |
-| `color_card` | `#FFFFFF` | 卡片底色 |
-| `color_text_primary` | `#1A1A1A` | 主文字 |
-| `color_text_secondary` | `#6B6B6B` | 次文字 |
-| `color_divider` | `#E5E8E5` | 分隔线 |
-| `color_warning` | `#E6A23C` | 警示（如"已达上限"） |
-| `color_danger` | `#D9534F` | 危险操作 |
-
-**四大类行为色**（柱状图 / 饼图 / 类目图标统一使用）
-
-| 大类 | 色值 |
-|---|---|
-| 出行 | `#4A90D9` |
-| 水电燃气 | `#E6A23C` |
-| 回收 | `#7FB069` |
-| 光盘 | `#D98C6A` |
+> **唯一来源见 [APPENDIX-C §3.1](./APPENDIX-C-ui-screens.md)**（颜色令牌 + 四大类行为色 `cat_travel` / `cat_utility` / `cat_recycle` / `cat_plate`）。
+> 本节不再复述色值——同一份色值写两处是本项目已知的历史缺陷。
 
 ### 14.2 字号与间距
 
-| 用途 | 字号 | 字重 |
-|---|---|---|
-| 页面主标题 | 20 fp | Bold |
-| 区块标题 | 16 fp | Medium |
-| 正文 | 14 fp | Regular |
-| 辅助说明 | 12 fp | Regular |
-| 指标数字 | 28 fp | Bold |
-
-- 基础间距单位 **8 vp**；卡片内边距 16 vp；卡片间距 12 vp；页面左右边距 16 vp。
-- 卡片圆角 12 vp；按钮圆角 8 vp。
+> **唯一来源见 [APPENDIX-C §3.2 / §3.3](./APPENDIX-C-ui-screens.md)**（间距、圆角、图标尺寸、字号与字重）。
+> 本节不再复述数值。
 
 ### 14.3 反馈规范
 
@@ -1019,7 +992,7 @@ capped = (A < C)
 
 ### 15.3 资源与构建
 
-- `module.json5` 权限：**`ohos.permission.DISTRIBUTED_DATASYNC`**（分布式协同，**必需**）、`ohos.permission.INTERNET`（云端同步/取价/备份，登录后使用，可选）、`ohos.permission.PUBLISH_AGENT_REMINDER`（定时提醒）。**不申请**位置、通讯录、麦克风；**相机权限仅在启用识图拍照时申请**（仅选图则不需要）。
+- `module.json5` 权限：**`ohos.permission.DISTRIBUTED_DATASYNC`**（分布式协同，**必需**）、`ohos.permission.INTERNET`（云端同步/取价/备份，登录后使用，可选）、`ohos.permission.PUBLISH_AGENT_REMINDER`（定时提醒）。**不申请**位置、通讯录、麦克风；**相机权限仅在启用识图拍照时申请**（仅选图则不需要）；**保存分享卡片到相册需 `ohos.permission.WRITE_IMAGEVIDEO`**（用 photoAccessHelper 的保存控件时按需申请）。
 - 支持设备：`phone`（必须）、`tablet`（用于协同演示）。
 - 构建配置：`compileSdkVersion: 12`、`compatibleSdkVersion: 12`、`runtimeOS: OpenHarmony`。
 - 图标与启动图：`color_primary` 底 + 白色叶片/足迹，本地素材。

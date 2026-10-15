@@ -601,7 +601,7 @@
       "locator": "L944-L973",
       "bad": "第二套颜色令牌与字号（color_primary_dark/color_card/#F6F8F6/#1A1A1A，字号 16/14/12）",
       "correct": "以 APPENDIX-C L87-L127 为准，PLAN §14 改为引用",
-      "status": "open"
+      "status": "closed"
     },
     {
       "id": "B12",
@@ -641,7 +641,7 @@
       "locator": "L758",
       "bad": "用 @ohos.file.picker 保存到相册",
       "correct": "改用 photoAccessHelper 的保存控件，并核对相册写权限",
-      "status": "open"
+      "status": "closed"
     },
     {
       "id": "B17",
@@ -649,7 +649,7 @@
       "locator": "L303 / L451",
       "bad": "「我的」页徽章 6/8 与徽章墙 3/8 冲突",
       "correct": "同一数据源，演示数据下取值一致",
-      "status": "open"
+      "status": "closed"
     },
     {
       "id": "B18",
@@ -657,7 +657,7 @@
       "locator": "L115 / C:543",
       "bad": "已读判定：停留 3 秒 vs 滚动 80%",
       "correct": "统一为一套判定（建议滚动 ≥80% 且停留 ≥3 秒）",
-      "status": "open"
+      "status": "closed"
     },
     {
       "id": "B19",

@@ -53,10 +53,6 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 
 | # | 冲突 | 位置 | 裁决 |
 |:--:|---|---|---|
-| B11 | 设计令牌两套（颜色 + 全套字号），却规定「附录 C 是唯一依据」 | `PLAN.md` §14 ↔ `APPENDIX-C:87-127` | 以 APPENDIX-C 为准，PLAN §14 改为引用 |
-| B16 | `@ohos.file.picker` 被用于「保存到相册」（picker 是选择器） | `APPENDIX-C:758` | 改用 photoAccessHelper 的保存控件，并核对相册写权限 |
-| B17 | 「我的」页徽章 6/8 与徽章墙 3/8 冲突 | `APPENDIX-C:303` / `:451` | 同一数据源，演示数据下取值一致 |
-| B18 | 已读判定：停留 3 秒 vs 滚动 80% | `APPENDIX-D:115` ↔ `APPENDIX-C:543` | 统一为一套判定（建议滚动 ≥80% 且停留 ≥3 秒） |
 | B20 | 协同页缺「家庭合并视图」与「待同步数」 | `PLAN.md:495-500` ↔ `APPENDIX-C:548-578` | 按 ADR-0001 重写协同页（登录 + 服务端同步口径） |
 | B21 | 服务端旧口径（「可选演示件 / 不承担协同 / 不作为任何客户端功能的前置依赖」）与 ADR-0001 冲突 | `PLAN.md` §12/§13/§16、`APPENDIX-B` §5.3/§5.4/§6、`APPENDIX-C` §18/§21/§22、`APPENDIX-D` §1.6/§1.10/§6、`APPENDIX-E` §5 ↔ `docs/adr/0001-account-and-sync.md` | 按 ADR 改写这五处 |
 
@@ -68,6 +64,10 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 - B4 `point_daily_stat` 主键改为 `(user_id, day_key)`
 - B5 跨设备幂等：账本表 `INSERT OR IGNORE` + 业务唯一键；「真冲突」定义收紧；时钟基准单一口径
 - B6 补记窗口 30 天，且补记沿用**发生日**封顶额度（新增验收 D1-15）
+- B11 设计令牌以附录 C 为唯一来源（PLAN §14.1/§14.2 改为引用）
+- B16 相册保存改用 `photoAccessHelper` 保存控件，权限补 `WRITE_IMAGEVIDEO`
+- B17 徽章数同源：徽章墙改为 6/8（与「我的」页、附录 D §9 一致），新增验收 D4-9
+- B18 已读判定统一为「滚动 ≥80% 且停留 ≥3 秒」
 - B7 手算样例区分应得 C 与实入 A、B8 电网因子 0.5703、B9 目标数 11、B10 骑行因子来源 SRC-DERIVED/provisional、B12 权限名 `PUBLISH_AGENT_REMINDER`、B13 提醒时间 20:00、B14 科普索引 `science-index.json`、B15 备份文件名带 `HHmm`、B19 删除失效的 `_tmp_*.txt` 引用
 
 ---
