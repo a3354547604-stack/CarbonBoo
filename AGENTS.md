@@ -153,6 +153,8 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 - 提交信息正文写清三件事：改了什么、跑了什么命令、结果如何。
 - **禁止**提交 `.env`、密钥、签名文件、`build/` 产物；**禁止** `push --force`、`reset --hard`、删除他人分支。
 - 推送凭据由负责人在本机配置（HTTPS PAT 或 SSH key），**凭据一律不进仓库、不写进远程 URL**。
+- **本机推送方式（2026-10-14 实测）**：WSL 内没有 GitHub 凭据，凭据在 Windows Git 的凭据管理器里，所以推送走 Windows git：
+  `"/mnt/c/Program Files/Git/cmd/git.exe" -C "C:/Users/Administrator/Desktop/CarbonBoo/CarbonBoo" push origin main`（只读操作如 `ls-remote` 用仓库内 `git` 即可）。
 - 发现仓库处于"文档已改、未提交"状态时，先提交或 stash，再做下一步。
 
 ---
