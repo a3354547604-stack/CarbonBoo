@@ -1,0 +1,687 @@
+{
+  "meta": {
+    "name": "carbon-calc",
+    "version": "1.0.0",
+    "factorVersion": "CF-2026.2",
+    "authority": "本文件是所有碳计算与积分数值的唯一真相源（见 AGENTS.md §1.2）。任何文档与本文件不一致时，以本文件为准，并按下述 docConflicts 修正文档。",
+    "formulas": {
+      "reductionKg": "round_half_up(活动量 × 因子值, 4)",
+      "expectedPointC": "round_half_up(reductionKg × 100, 0)",
+      "actualPointA": "max(0, min(C, 200 − D))",
+      "rounding": "half-up（四舍五入），禁止 banker's rounding"
+    },
+    "pointsPerKgCo2e": 100,
+    "dailyRecordCap": 200,
+    "minReductionForPoint": "0.005",
+    "carbonCoinRate": 100,
+    "sourceDocs": [
+      "docs/APPENDIX-A-carbon-factors.md §2 / §3 / §7",
+      "docs/APPENDIX-D-acceptance.md §3"
+    ]
+  },
+  "constants": {
+    "CAR_OWN_FACTOR": "0.1920",
+    "AVG_CAR_TRIP_KM": "8.0",
+    "AVG_ITEM_WEIGHT_KG": "0.5",
+    "TREE_ABSORB_KG_PER_YEAR": "18.3",
+    "CAR_KM_PER_KG": "5.21",
+    "PHONE_CHARGE_KG": "0.0082",
+    "KWH_PER_KG": "1.75"
+  },
+  "factors": [
+    {
+      "key": "walk",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.1920",
+      "confidence": "provisional",
+      "source": "SRC-DERIVED",
+      "recording": true
+    },
+    {
+      "key": "bicycle",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.1920",
+      "confidence": "provisional",
+      "source": "SRC-DERIVED",
+      "recording": true
+    },
+    {
+      "key": "ebike",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.1800",
+      "confidence": "provisional",
+      "source": "SRC-DERIVED",
+      "recording": true
+    },
+    {
+      "key": "bus",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.1520",
+      "confidence": "provisional",
+      "source": "SRC-DERIVED",
+      "recording": true
+    },
+    {
+      "key": "metro",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.1620",
+      "confidence": "provisional",
+      "source": "SRC-DERIVED",
+      "recording": true
+    },
+    {
+      "key": "ev",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.0870",
+      "confidence": "provisional",
+      "source": "SRC-DERIVED",
+      "recording": true
+    },
+    {
+      "key": "carpool",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.0720",
+      "confidence": "provisional",
+      "source": "SRC-DERIVED",
+      "recording": true
+    },
+    {
+      "key": "elec_grid",
+      "category": "utility",
+      "unit": "kWh",
+      "value": "0.5703",
+      "confidence": "verified",
+      "source": "SRC-MEE-2024",
+      "recording": true
+    },
+    {
+      "key": "water",
+      "category": "utility",
+      "unit": "L",
+      "value": "0.000168",
+      "confidence": "provisional",
+      "source": "SRC-CALC",
+      "recording": true
+    },
+    {
+      "key": "gas",
+      "category": "utility",
+      "unit": "m³",
+      "value": "2.1840",
+      "confidence": "verified",
+      "source": "SRC-MEE-GHG",
+      "recording": true
+    },
+    {
+      "key": "lpg",
+      "category": "utility",
+      "unit": "kg",
+      "value": "3.1010",
+      "confidence": "verified",
+      "source": "SRC-MEE-GHG",
+      "recording": true
+    },
+    {
+      "key": "heating",
+      "category": "utility",
+      "unit": "m²·月",
+      "value": "3.1000",
+      "confidence": "provisional",
+      "source": "SRC-CALC",
+      "recording": true
+    },
+    {
+      "key": "paper",
+      "category": "recycle",
+      "unit": "kg",
+      "value": "0.9000",
+      "confidence": "verified",
+      "source": "SRC-GB51366",
+      "recording": true
+    },
+    {
+      "key": "aluminum",
+      "category": "recycle",
+      "unit": "kg",
+      "value": "9.0000",
+      "confidence": "verified",
+      "source": "SRC-GB51366",
+      "recording": true
+    },
+    {
+      "key": "steel",
+      "category": "recycle",
+      "unit": "kg",
+      "value": "1.2000",
+      "confidence": "verified",
+      "source": "SRC-GB51366",
+      "recording": true
+    },
+    {
+      "key": "plastic",
+      "category": "recycle",
+      "unit": "kg",
+      "value": "1.5000",
+      "confidence": "verified",
+      "source": "SRC-GB51366",
+      "recording": true
+    },
+    {
+      "key": "glass",
+      "category": "recycle",
+      "unit": "kg",
+      "value": "1.0000",
+      "confidence": "verified",
+      "source": "SRC-GB51366",
+      "recording": true
+    },
+    {
+      "key": "electronic",
+      "category": "recycle",
+      "unit": "kg",
+      "value": "12.0000",
+      "confidence": "verified",
+      "source": "SRC-GB51366",
+      "recording": true
+    },
+    {
+      "key": "meal",
+      "category": "plate",
+      "unit": "次",
+      "value": "0.3500",
+      "confidence": "provisional",
+      "source": "SRC-CCAP-FW",
+      "recording": true
+    },
+    {
+      "key": "food_waste",
+      "category": "plate",
+      "unit": "kg",
+      "value": "2.5000",
+      "confidence": "provisional",
+      "source": "SRC-CCAP-FW",
+      "recording": true
+    },
+    {
+      "key": "CAR_OWN_FACTOR",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.1920",
+      "confidence": "provisional",
+      "source": "SRC-EEA",
+      "recording": false,
+      "note": "燃油车自身排放；『少开一天车』取其全量，不取对照行 car 的 0.0000"
+    }
+  ],
+  "conversions": [
+    {
+      "id": "car-free-days",
+      "desc": "少开一天车：活动量(km) = 天数 × AVG_CAR_TRIP_KM",
+      "input": {
+        "days": "2",
+        "kmPerDay": "8.0"
+      },
+      "expect": {
+        "amount": "16.0",
+        "unit": "km"
+      }
+    },
+    {
+      "id": "recycle-by-piece",
+      "desc": "回收按件：活动量(kg) = 件数 × AVG_ITEM_WEIGHT_KG",
+      "input": {
+        "pieces": "1",
+        "kgPerPiece": "0.5"
+      },
+      "expect": {
+        "amount": "0.5",
+        "unit": "kg"
+      }
+    }
+  ],
+  "samples": [
+    {
+      "id": 1,
+      "behavior": "步行",
+      "factorKey": "walk",
+      "amount": "5",
+      "unit": "km",
+      "expectedReductionKg": "0.9600",
+      "expectedPointC": 96
+    },
+    {
+      "id": 2,
+      "behavior": "自行车",
+      "factorKey": "bicycle",
+      "amount": "5",
+      "unit": "km",
+      "expectedReductionKg": "0.9600",
+      "expectedPointC": 96
+    },
+    {
+      "id": 3,
+      "behavior": "电动自行车",
+      "factorKey": "ebike",
+      "amount": "10",
+      "unit": "km",
+      "expectedReductionKg": "1.8000",
+      "expectedPointC": 180
+    },
+    {
+      "id": 4,
+      "behavior": "公交车",
+      "factorKey": "bus",
+      "amount": "12",
+      "unit": "km",
+      "expectedReductionKg": "1.8240",
+      "expectedPointC": 182
+    },
+    {
+      "id": 5,
+      "behavior": "地铁",
+      "factorKey": "metro",
+      "amount": "8",
+      "unit": "km",
+      "expectedReductionKg": "1.2960",
+      "expectedPointC": 130,
+      "roundingNote": "1.2960×100=129.6 四舍五入 → 130"
+    },
+    {
+      "id": 6,
+      "behavior": "新能源车",
+      "factorKey": "ev",
+      "amount": "20",
+      "unit": "km",
+      "expectedReductionKg": "1.7400",
+      "expectedPointC": 174
+    },
+    {
+      "id": 7,
+      "behavior": "拼车（人均）",
+      "factorKey": "carpool",
+      "amount": "15",
+      "unit": "km",
+      "expectedReductionKg": "1.0800",
+      "expectedPointC": 108
+    },
+    {
+      "id": 8,
+      "behavior": "少开一天车",
+      "factorKey": "CAR_OWN_FACTOR",
+      "amount": "16",
+      "unit": "km",
+      "conversion": "car-free-days",
+      "expectedReductionKg": "3.0720",
+      "expectedPointC": 307
+    },
+    {
+      "id": 9,
+      "behavior": "节约用电",
+      "factorKey": "elec_grid",
+      "amount": "10",
+      "unit": "kWh",
+      "expectedReductionKg": "5.7030",
+      "expectedPointC": 570
+    },
+    {
+      "id": 10,
+      "behavior": "节约用水",
+      "factorKey": "water",
+      "amount": "100",
+      "unit": "L",
+      "expectedReductionKg": "0.0168",
+      "expectedPointC": 2
+    },
+    {
+      "id": 11,
+      "behavior": "天然气",
+      "factorKey": "gas",
+      "amount": "3",
+      "unit": "m³",
+      "expectedReductionKg": "6.5520",
+      "expectedPointC": 655
+    },
+    {
+      "id": 12,
+      "behavior": "液化石油气",
+      "factorKey": "lpg",
+      "amount": "1",
+      "unit": "kg",
+      "expectedReductionKg": "3.1010",
+      "expectedPointC": 310
+    },
+    {
+      "id": 13,
+      "behavior": "废纸回收",
+      "factorKey": "paper",
+      "amount": "2",
+      "unit": "kg",
+      "expectedReductionKg": "1.8000",
+      "expectedPointC": 180
+    },
+    {
+      "id": 14,
+      "behavior": "废铝回收",
+      "factorKey": "aluminum",
+      "amount": "1.5",
+      "unit": "kg",
+      "expectedReductionKg": "13.5000",
+      "expectedPointC": 1350
+    },
+    {
+      "id": 15,
+      "behavior": "废塑料回收",
+      "factorKey": "plastic",
+      "amount": "3",
+      "unit": "kg",
+      "expectedReductionKg": "4.5000",
+      "expectedPointC": 450
+    },
+    {
+      "id": 16,
+      "behavior": "废电子产品（按件）",
+      "factorKey": "electronic",
+      "amount": "0.5",
+      "unit": "kg",
+      "conversion": "recycle-by-piece",
+      "expectedReductionKg": "6.0000",
+      "expectedPointC": 600
+    },
+    {
+      "id": 17,
+      "behavior": "光盘行动",
+      "factorKey": "meal",
+      "amount": "1",
+      "unit": "次",
+      "expectedReductionKg": "0.3500",
+      "expectedPointC": 35
+    },
+    {
+      "id": 18,
+      "behavior": "减少食物浪费",
+      "factorKey": "food_waste",
+      "amount": "0.5",
+      "unit": "kg",
+      "expectedReductionKg": "1.2500",
+      "expectedPointC": 125
+    }
+  ],
+  "capSamples": [
+    {
+      "id": "cap-1",
+      "desc": "D=150，再记一笔应得 96",
+      "todayEarnedD": "150",
+      "expectedC": 96,
+      "expectedActualA": 50,
+      "capped": 1,
+      "countsTowardCap": true,
+      "uiHint": "本次应得 96 分，今日剩余额度 50 分，已按 50 分入账"
+    },
+    {
+      "id": "cap-2",
+      "desc": "D=150，再记一笔应得 30",
+      "todayEarnedD": "150",
+      "expectedC": 30,
+      "expectedActualA": 30,
+      "capped": 0,
+      "countsTowardCap": true,
+      "uiHint": "无提示"
+    },
+    {
+      "id": "cap-3",
+      "desc": "D=200，再记一笔应得 96",
+      "todayEarnedD": "200",
+      "expectedC": 96,
+      "expectedActualA": 0,
+      "capped": 1,
+      "countsTowardCap": true,
+      "uiHint": "今日记录积分已达上限"
+    },
+    {
+      "id": "cap-4",
+      "desc": "D=200，完成目标 S1（+20）",
+      "todayEarnedD": "200",
+      "expectedC": 20,
+      "expectedActualA": 20,
+      "capped": 0,
+      "countsTowardCap": false,
+      "uiHint": "目标奖励不封顶、不计入 D"
+    },
+    {
+      "id": "cap-5",
+      "desc": "应得 0 分（减排量 < 0.005 kg）",
+      "todayEarnedD": "0",
+      "expectedC": 0,
+      "expectedActualA": 0,
+      "capped": 0,
+      "countsTowardCap": true,
+      "noPointRow": true,
+      "uiHint": "碳记录可存，不生成积分流水"
+    }
+  ],
+  "boundarySamples": [
+    {
+      "id": 19,
+      "desc": "活动量 0 / 负数 / 空",
+      "kind": "ui",
+      "expect": "保存按钮禁用，无法提交"
+    },
+    {
+      "id": 20,
+      "desc": "骑行 300 km（>200 上限）",
+      "kind": "ui",
+      "expect": "提示「距离较大，请确认是否填错」；可保存，is_abnormal=1"
+    },
+    {
+      "id": 21,
+      "desc": "减排量 0.0049 kg",
+      "kind": "calc",
+      "reductionKg": "0.0049",
+      "expectedPointC": 0,
+      "noPointRow": true
+    },
+    {
+      "id": 22,
+      "desc": "减排量 0.005 kg",
+      "kind": "calc",
+      "reductionKg": "0.005",
+      "expectedPointC": 1
+    },
+    {
+      "id": 23,
+      "desc": "供暖 30 m²·月",
+      "kind": "calc",
+      "factorKey": "heating",
+      "amount": "30",
+      "expectedReductionKg": "93.0000",
+      "expectedPointC": 9300,
+      "todayEarnedD": "0",
+      "expectedActualA": 200,
+      "capped": 1,
+      "note": "应得 9300，实入受日封顶 200"
+    },
+    {
+      "id": 24,
+      "desc": "编辑历史记录数量",
+      "kind": "rule",
+      "expect": "按新数量整体重算减排量与积分差额头（reverse），不增量累加"
+    }
+  ],
+  "docConflicts": [
+    {
+      "id": "B1",
+      "file": "docs/PLAN.md:640-646",
+      "locator": "docs/PLAN.md:640-646 / APPENDIX-A:151-159",
+      "bad": "封顶取数 SQL 用 source_type IN ('record','record_capped')，这两个值是 type 的枚举 → D 恒 0，封顶永不生效",
+      "correct": "改为 source_type = 'carbon_record' AND type IN ('record','record_capped') AND is_deleted = 0",
+      "status": "open"
+    },
+    {
+      "id": "B2",
+      "file": "docs/PLAN.md",
+      "locator": "docs/PLAN.md 铁律 4 / §9.2 ↔ APPENDIX-D D3-8",
+      "bad": "「流水只增不删（靠冲正）」与「封顶聚合排除已删流水」互斥",
+      "correct": "原流水永不改；当日已得 D 的聚合必须包含 reverse 负流水",
+      "status": "open"
+    },
+    {
+      "id": "B3",
+      "file": "docs/APPENDIX-B:133",
+      "locator": "docs/APPENDIX-B:133 ↔ PLAN:708 / APPENDIX-D:36",
+      "bad": "uq_pr_source(source_type, source_id, type) 只允许一条 reverse，二次编辑或删后恢复会撞唯一索引",
+      "correct": "冲正流水的 source_id 用「记录 ID + 冲正序号」",
+      "status": "open"
+    },
+    {
+      "id": "B4",
+      "file": "docs/APPENDIX-B:139-140",
+      "locator": "docs/APPENDIX-B:139-140",
+      "bad": "point_daily_stat 主键只有 day_key，缺 user_id，demo-user 与 local-guest 同日互相覆盖",
+      "correct": "主键改为 (user_id, day_key)",
+      "status": "open"
+    },
+    {
+      "id": "B5",
+      "file": "docs/APPENDIX-B:849-870,886",
+      "locator": "docs/APPENDIX-B:849-870,886 ↔ PLAN:710",
+      "bad": "跨设备幂等不成立：目标结算与同商品购买在两端离线时撞唯一约束；LWW 伪码单边 offset 校正不收敛",
+      "correct": "先定义目标/购买幂等键；两端归一到同一时间基准；真冲突与普通覆盖分开计数",
+      "status": "open"
+    },
+    {
+      "id": "B6",
+      "file": "docs/PLAN.md",
+      "locator": "docs/PLAN.md §7.1 / §9.2",
+      "bad": "补记不限日期 + 封顶按 occurred_at 判定 → 可回填刷分",
+      "correct": "增加补记窗口（≤30 天），或把该口径写进风险表",
+      "status": "open"
+    },
+    {
+      "id": "B7",
+      "file": "docs/APPENDIX-D-acceptance.md",
+      "locator": "L32 / L241-L245",
+      "bad": "D1-6 期望「+600 分」；§3.1 的『期望积分』列未区分应得 C 与实际入账 A",
+      "correct": "应得 600 / 实入 200（见 capSamples）",
+      "status": "closed"
+    },
+    {
+      "id": "B8",
+      "file": "docs/APPENDIX-C-ui-screens.md",
+      "locator": "L246 / L513",
+      "bad": "节电 10 kWh → 5.7770 kg / +578 / 应得 578（因子 0.5777）",
+      "correct": "5.7030 kg / 570（因子 0.5703）",
+      "status": "closed"
+    },
+    {
+      "id": "B9",
+      "file": "multiple",
+      "locator": "PLAN.md:372,729 / README.md:20 / APPENDIX-C:840 / APPENDIX-D:73",
+      "bad": "10 个目标",
+      "correct": "11 个目标（5 短期 + 5 中长期 + 1 长期）",
+      "status": "closed"
+    },
+    {
+      "id": "B10",
+      "file": "docs/APPENDIX-C-ui-screens.md",
+      "locator": "L381-L384",
+      "bad": "骑行因子来源 GB/T 51366 / 可信度 verified",
+      "correct": "SRC-DERIVED / provisional",
+      "status": "closed"
+    },
+    {
+      "id": "B11",
+      "file": "docs/PLAN.md",
+      "locator": "L944-L973",
+      "bad": "第二套颜色令牌与字号（color_primary_dark/color_card/#F6F8F6/#1A1A1A，字号 16/14/12）",
+      "correct": "以 APPENDIX-C L87-L127 为准，PLAN §14 改为引用",
+      "status": "open"
+    },
+    {
+      "id": "B12",
+      "file": "docs/PLAN.md",
+      "locator": "L1031",
+      "bad": "ohos.permission.REMINDER_AGENT",
+      "correct": "ohos.permission.PUBLISH_AGENT_REMINDER",
+      "status": "closed"
+    },
+    {
+      "id": "B13",
+      "file": "docs/APPENDIX-C-ui-screens.md",
+      "locator": "L660",
+      "bad": "提醒时间 19:00",
+      "correct": "20:00（PLAN §7.13.1）",
+      "status": "closed"
+    },
+    {
+      "id": "B14",
+      "file": "docs/APPENDIX-B/C",
+      "locator": "B:1005 / C:283",
+      "bad": "rawfile/science/index.json",
+      "correct": "rawfile/science/science-index.json",
+      "status": "closed"
+    },
+    {
+      "id": "B15",
+      "file": "docs/APPENDIX-C-ui-screens.md",
+      "locator": "L679",
+      "bad": "carbonboo-backup-YYYYMMDD.json",
+      "correct": "carbonboo-backup-YYYYMMDD-HHmm.json",
+      "status": "closed"
+    },
+    {
+      "id": "B16",
+      "file": "docs/APPENDIX-C-ui-screens.md",
+      "locator": "L758",
+      "bad": "用 @ohos.file.picker 保存到相册",
+      "correct": "改用 photoAccessHelper 的保存控件，并核对相册写权限",
+      "status": "open"
+    },
+    {
+      "id": "B17",
+      "file": "docs/APPENDIX-C-ui-screens.md",
+      "locator": "L303 / L451",
+      "bad": "「我的」页徽章 6/8 与徽章墙 3/8 冲突",
+      "correct": "同一数据源，演示数据下取值一致",
+      "status": "open"
+    },
+    {
+      "id": "B18",
+      "file": "docs/APPENDIX-D-acceptance.md",
+      "locator": "L115 / C:543",
+      "bad": "已读判定：停留 3 秒 vs 滚动 80%",
+      "correct": "统一为一套判定（建议滚动 ≥80% 且停留 ≥3 秒）",
+      "status": "open"
+    },
+    {
+      "id": "B19",
+      "file": "docs/APPENDIX-F-compliance.md",
+      "locator": "L4 / docs/README.md:92",
+      "bad": "引用 _tmp_notice.txt / _tmp_train.txt，仓库中不存在",
+      "correct": "补齐取证文本或删除引用",
+      "status": "closed"
+    },
+    {
+      "id": "B20",
+      "file": "docs/PLAN.md + APPENDIX-C",
+      "locator": "PLAN:495-500 / C:548-578",
+      "bad": "家庭碳积分合并视图在附录 C 无定义；协同面板缺「待同步数」",
+      "correct": "按 DECISION-0001 重写协同页（登录 + 服务端同步口径）",
+      "status": "open"
+    },
+    {
+      "id": "B21",
+      "file": "docs/PLAN.md (+APPENDIX-B/C/D/E)",
+      "locator": "PLAN:608 / :851 / :906-915",
+      "bad": "服务端旧口径：可选演示件、不承担协同、不作为任何客户端功能的前置依赖",
+      "correct": "按 docs/adr/0001-account-and-sync.md 改写 §12/§13/§16、B §5.3/§5.4/§6、C §18/§21/§22、D §1.6/§1.10/§6、E §5",
+      "status": "open"
+    }
+  ]
+}

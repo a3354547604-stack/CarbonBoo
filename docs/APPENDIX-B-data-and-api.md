@@ -1002,9 +1002,9 @@ async function mergeTable<T extends BaseRow>(
 
 > 汇率固定 **100 积分 = 1 碳币**；**全部权益均为模拟演示**，不做真实对接、不可提现、不可退，界面强制标注「模拟演示」。
 
-### 8.6 科普索引 `rawfile/science/index.json`（12 篇）
+### 8.6 科普索引 `rawfile/science/science-index.json`（12 篇）
 
-正文为 Markdown，落 `rawfile/science/sci-01.md` … `sci-12.md`，分类 `policy`（政策 4 篇）/ `tips`（技巧 5 篇）/ `knowledge`（知识 3 篇）。
+正文为 Markdown，落 `rawfile/science/sci-01.md` … `sci-12.md`，分类 `policy`（政策 4 篇）/ `tips`（技巧 4 篇）/ `knowledge`（知识 4 篇）。
 
 ---
 
