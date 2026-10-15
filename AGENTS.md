@@ -156,7 +156,7 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 - **禁止**提交 `.env`、密钥、签名文件、`build/` 产物；**禁止** `push --force`、`reset --hard`、删除他人分支。
 - 推送凭据由负责人在本机配置（HTTPS PAT 或 SSH key），**凭据一律不进仓库、不写进远程 URL**。
 - **本机推送方式（2026-10-14 实测）**：WSL 内没有 GitHub 凭据，凭据在 Windows Git 的凭据管理器里，所以推送走 Windows git：
-  `"/mnt/c/Program Files/Git/cmd/git.exe" -C "C:/Users/Administrator/Desktop/CarbonBoo/CarbonBoo" push origin main`（只读操作如 `ls-remote` 用仓库内 `git` 即可）。
+  `"/mnt/c/Program Files/Git/cmd/git.exe" -C "C:/Users/Administrator/Desktop/CarbonBoo" push origin main`（只读操作如 `ls-remote` 用仓库内 `git` 即可）。
 - 发现仓库处于"文档已改、未提交"状态时，先提交或 stash，再做下一步。
 
 ---
@@ -185,6 +185,7 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 | 日期 | 变更 | 依据 |
 |---|---|---|
 | 2026-10-14 | 新建本文件：规约 + 冲突裁决 + 停手规则 + B1–B16 待修清单 + 切片顺序 + 测试要求 + 账号/同步规则 + 多 agent 约定 | `docs/adr/0001-account-and-sync.md` |
+| 2026-10-15 | **仓库根上移一层**：去掉 `CarbonBoo/CarbonBoo` 嵌套与那个从没 checkout 过的空壳 `.git`；`.commandcode/` 加入忽略；更新推送路径 | 目录整理 |
 | 2026-10-14 | 按 `writing-for-agents` + `domain-modeling` 重构：ADR 迁至 `docs/adr/`、名词表收敛到 `GLOSSARY.md`；清零 B7–B10、B12–B15、B19 | 技能规范 + 交叉审查 |
 
 > 修改本文件必须：① 在 `docs/DECISION-*.md` 里留下决策记录；② 更新本表；③ 若改动影响数值，同步 `tests/cases/carbon-calc.json`。

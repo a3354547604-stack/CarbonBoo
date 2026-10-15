@@ -81,15 +81,20 @@
 ## 目录约定（写代码时按此创建）
 
 ```
-hmprogram/
-├─ docs/                 # 本目录：计划书与规格
-├─ app/                  # HarmonyOS 应用工程（DevEco Studio 打开这一层）
+CarbonBoo/                # 仓库根（本目录的上一层）
+├─ AGENTS.md              # 编码代理规约（冲突裁决 / 停手规则 / 待修清单）
+├─ GLOSSARY.md            # 名词唯一口径
+├─ README.md              # 项目入口与文档导航
+├─ docs/                  # 本目录：计划书与规格（PLAN + 附录 A–F + adr/）
+├─ tests/                 # L0 检查器 + 数值基准（详情见 tests/README.md）
+├─ app/                   # HarmonyOS 应用工程（DevEco Studio 打开这一层）
 │  └─ entry/src/main/resources/rawfile/
-│     ├─ factors/carbon-factors.json    # 因子库（附录 A §7 全文）
-│     ├─ science/sci-01.md ~ sci-12.md  # 12 篇科普（附录 C §8）
-│     └─ shop/shop-items.json           # 碳小铺内置默认价（离线回退）
-├─ server/               # 可选：FastAPI + MySQL（演示"后台改价 / 云端备份"）
-└─ _src/                 # 碳因子原始资料（PDF + 抽取文本），只读参考
+│     ├─ factors/carbon-factors.json       # 因子库（附录 A §7 全文）
+│     ├─ science/sci-01.md ~ sci-12.md     # 12 篇科普（附录 C §8）
+│     ├─ science/science-index.json        # 科普索引
+│     └─ shop/shop-items.json              # 碳小铺内置默认价（离线回退）
+├─ server/                # 必做：FastAPI + MySQL（账号 + 同步 + 取价；后台管理端可选）
+└─ _src/                  # 碳因子原始资料（PDF + 抽取文本），只读参考
 ```
 
 > `_src/` 是**资料**，不是交付物；`app/`、`server/` 将在编码阶段创建。

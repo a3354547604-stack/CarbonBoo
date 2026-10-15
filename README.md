@@ -82,9 +82,12 @@
 ## 目录结构
 
 ```
-CarbonBoo/                # 项目根（本目录）
+CarbonBoo/                # 项目根（本目录，仓库根与工作目录同一层）
+├─ AGENTS.md             # 编码代理规约（冲突裁决 / 停手规则 / 待修清单）
+├─ GLOSSARY.md           # 名词唯一口径
 ├─ README.md             # 本文件：项目入口与文档导航
-├─ docs/                 # 计划书与规格文档（PLAN + 附录 A–F）
+├─ docs/                 # 计划书与规格文档（PLAN + 附录 A–F + adr/）
+├─ tests/                # L0 检查器 + 数值基准
 ├─ _src/                 # 碳因子原始资料（PDF + 抽取文本），只读参考
 │  └─ txt/
 └─ .gitattributes        # 文本按 LF、二进制资料不做转换
@@ -98,7 +101,7 @@ app/                     # HarmonyOS 应用工程（DevEco Studio 打开这一�
 │     ├─ factors/carbon-factors.json     # 因子库（附录 A §7 全文）
 │     ├─ science/sci-01.md ~ sci-12.md   # 12 篇科普（附录 C §8）
 │     └─ shop/shop-items.json            # 碳小铺内置默认价（离线回退）
-server/                  # 可选：FastAPI + MySQL（演示「后台改价 / 云端备份」）
+server/                  # 必做：FastAPI + MySQL（账号 + 同步 + 取价；后台管理端可选）
 ```
 
 > `_src/` 是**资料**，不是交付物；`app/`、`server/` 尚未创建。

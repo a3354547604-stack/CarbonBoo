@@ -7,6 +7,9 @@ __pycache__/
 .venv/
 venv/
 
+# 本机工具配置（CommandCode；含个人 taste 配置，不入库）
+.commandcode/
+
 # 编辑器 / 系统
 .vscode/
 .idea/
