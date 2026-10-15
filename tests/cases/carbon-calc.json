@@ -521,7 +521,7 @@
       "locator": "docs/PLAN.md:640-646 / APPENDIX-A:151-159",
       "bad": "封顶取数 SQL 用 source_type IN ('record','record_capped')，这两个值是 type 的枚举 → D 恒 0，封顶永不生效",
       "correct": "改为 source_type = 'carbon_record' AND type IN ('record','record_capped') AND is_deleted = 0",
-      "status": "open"
+      "status": "closed"
     },
     {
       "id": "B2",
@@ -529,7 +529,7 @@
       "locator": "docs/PLAN.md 铁律 4 / §9.2 ↔ APPENDIX-D D3-8",
       "bad": "「流水只增不删（靠冲正）」与「封顶聚合排除已删流水」互斥",
       "correct": "原流水永不改；当日已得 D 的聚合必须包含 reverse 负流水",
-      "status": "open"
+      "status": "closed"
     },
     {
       "id": "B3",
@@ -537,7 +537,7 @@
       "locator": "docs/APPENDIX-B:133 ↔ PLAN:708 / APPENDIX-D:36",
       "bad": "uq_pr_source(source_type, source_id, type) 只允许一条 reverse，二次编辑或删后恢复会撞唯一索引",
       "correct": "冲正流水的 source_id 用「记录 ID + 冲正序号」",
-      "status": "open"
+      "status": "closed"
     },
     {
       "id": "B4",
@@ -545,7 +545,7 @@
       "locator": "docs/APPENDIX-B:139-140",
       "bad": "point_daily_stat 主键只有 day_key，缺 user_id，demo-user 与 local-guest 同日互相覆盖",
       "correct": "主键改为 (user_id, day_key)",
-      "status": "open"
+      "status": "closed"
     },
     {
       "id": "B5",
@@ -553,7 +553,7 @@
       "locator": "docs/APPENDIX-B:849-870,886 ↔ PLAN:710",
       "bad": "跨设备幂等不成立：目标结算与同商品购买在两端离线时撞唯一约束；LWW 伪码单边 offset 校正不收敛",
       "correct": "先定义目标/购买幂等键；两端归一到同一时间基准；真冲突与普通覆盖分开计数",
-      "status": "open"
+      "status": "closed"
     },
     {
       "id": "B6",
@@ -561,7 +561,7 @@
       "locator": "docs/PLAN.md §7.1 / §9.2",
       "bad": "补记不限日期 + 封顶按 occurred_at 判定 → 可回填刷分",
       "correct": "增加补记窗口（≤30 天），或把该口径写进风险表",
-      "status": "open"
+      "status": "closed"
     },
     {
       "id": "B7",

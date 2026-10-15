@@ -391,7 +391,7 @@ RecordEditPage → 点「拍照/选图」
 
 **输入模型**（录入向导两步）
 - 步骤 1：选大类（出行 / 水电燃气 / 回收 / 光盘）→ 选子类卡片。
-- 步骤 2：填数量（带单位后缀与合理范围校验）+ 选时间（默认现在，可改往日）+ 可选备注。
+- 步骤 2：填数量（带单位后缀与合理范围校验）+ 选时间（默认现在，可改往日，**最多回溯 30 天**）+ 可选备注。
 - **快捷入口**：录入页顶部有「📷 识图录入」入口（见 7.11）与「图标网格快速录入」降级入口。
 
 **计算规则（唯一口径）**
@@ -628,16 +628,18 @@ export interface AiCandidate { category: string; subType: string; confidence: nu
 今日已得 D = SELECT COALESCE(SUM(points), 0) FROM point_record
              WHERE user_id = ?
                AND occurred_at BETWEEN 今日00:00 AND 今日23:59:59
-               AND source_type IN ('record', 'record_capped')
+               AND source_type = 'carbon_record'     -- 记录类：含 record / record_capped / reverse
                AND is_deleted = 0
 应得 C = round(减排量 × 100)          // 四舍五入，最小 1 分（减排量 ≥ 0.005 kg 时）
 实入 A = max(0, min(C, 200 − D))
 capped = (A < C)
 ```
 
-> **两个 WHERE 条件都是必需的**：
-> - 必须带 `source_type IN ('record','record_capped')`：否则 `goal`（目标奖励，不封顶）会被算进 D 导致记录分提前封顶；`purchase` / `carbon_include`（负数支出）会把 D 拉低，变相突破封顶。
-> - 必须带 `is_deleted = 0`：排除冲正流水（编辑记录产生的差额头）。
+> **口径说明（v4.1 修正，务必照此实现）**：
+> - 过滤列是 **`source_type`**，不是 `type`。`record` / `record_capped` 是 `type` 的枚举值；写成 `source_type IN ('record','record_capped')` 会命中 0 行，让 200 分封顶**永不生效**。
+> - 记录类流水的 `source_type` 恒为 `'carbon_record'`，它一次覆盖 `type = record | record_capped | reverse` 三种：**冲正（编辑差额、删除）必须计入 D**，否则删掉记录也不释放当日额度，与铁律 4「流水只增不删、靠冲正」矛盾。
+> - `source_type = 'goal'`（目标奖励）不封顶、不计入 D；`shop_item` / `carbon_include`（负数支出）也不计入 D，否则会把 D 拉低、变相突破封顶。
+> - 跨设备重复发放的去重由业务唯一键 `uq_pr_source` 保证（见 §12.3），不靠 WHERE 条件。
 
 | 场景 | 行为 |
 |---|---|
@@ -693,12 +695,13 @@ capped = (A < C)
 ### 9.5 幂等与事务约束（防作弊）
 
 1. **积分发放与减排量计算在同一事务内完成**，不允许"先记录后补分"。
-2. **同一条 `carbon_record` 只产生一条得分流水**（`UNIQUE(source_type, source_id, type)` 约束）；编辑记录时产生 `reverse` 冲正流水而非改原流水。
+2. **同一条 `carbon_record` 的每个版本只产生一条得分流水**：记录类流水的 `source_id = <记录ID>#<revision>`（`revision` 在 `carbon_record` 中每次编辑 +1）。于是 `UNIQUE(source_type, source_id, type)` 允许「每版本一条入账 + 一条 `reverse` 冲正」，二次编辑或删除后恢复都不会撞唯一索引；编辑一律产生 `reverse`，绝不改原流水。
 3. **同一个目标在同一周期只产生一条 `goal` 流水**（`source_id = goalId + periodKey` 唯一）。
 4. **分布式协同的封顶口径（v4.0 决策「甲2」）**：**以"本机已知的流水"判定封顶**；同步完成后若发现当天总量超过 200，**不追回**已发分，仅在协同面板**冲突计数 +1**。
    > 否决了"同步后回溯生成 `reverse` 负流水"的方案：会导致"积分无缘无故变少"，体验差且逻辑复杂。
-5. **同一件商品只有一个购买流水**（`UNIQUE(user_id, item_id)`），重复购买必须被拒绝。
+5. **同一件商品只有一个购买流水**（`UNIQUE(user_id, item_id)`），重复购买必须被拒绝；两台设备各自离线购买同一商品时，合并按该唯一键去重，**只扣一次分**（见 §12.3）。
 6. 跨设备协同时分值的权威来源是**产生该记录的那台设备**，对端只接受不重算。
+7. **补记窗口 30 天**：`occurred_at` 不得早于「今日 00:00 − 29 天」；补记照常参与**发生日**的封顶判定，回填不额外发分——这是防止用回填刷分的硬约束（见附录 A §4）。
 
 ### 9.6 数值平衡（设计依据）
 
@@ -865,13 +868,13 @@ capped = (A < C)
 |---|---|
 | 方向 | 双向增量（拉 + 推合一） |
 | 增量依据 | `updated_at > lastSyncAt`（本机 `device_info.last_sync_at`） |
-| 冲突解决 | **LWW（Last-Write-Wins）**：`updated_at` 大者胜；相等时以 `device_id` 字典序大者胜（保证确定性） |
+| 冲突解决 | **LWW**：校正后的 `updated_at` 大者胜；相等时 `device_id` 字典序大者胜，两端结论一致。**只有两端自上次同步后都改过的行才算「真冲突」**，普通覆盖不计入冲突数 |
 | 删除传播 | **软删除**（`is_deleted = 1` + `updated_at` 更新），删除也要能传播 |
-| 幂等 | 以 `id`（UUID）为主键，重复合并不产生重复数据；**同一条碳记录不重复发分** |
+| 幂等 | 双重：`id`（UUID）主键保证同一行不重复；业务唯一键（`uq_pr_source` / `uq_up`）保证**同目标同周期、同商品、同记录同版本**只入账一次——账本表写入统一用 `INSERT OR IGNORE`，被忽略的行计入冲突数并在面板显示「跨设备重复已去重」 |
 | 封顶口径 | **本机已知流水判定；同步后发现超额不追回**，冲突计数 +1（见 §9.5 第 4 条） |
 | 参与同步的表 | **9 张**：`carbon_record`、`point_record`、`user_goal`、`user_badge`、`user_purchase`、`user_appearance`、`science_progress`、`carbon_include`、`user_profile` |
 | **不参与同步** | **10 张**：`device_info`、`sync_log`、`share_record`、`app_config`（本机专属）；`goal_def`、`badge_def`、`shop_item`、`science_article`、`carbon_factor_meta`（静态字典）；`point_daily_stat`（派生缓存） |
-| 时钟偏移 | 合并前用对端时间戳与本机时间做偏移校正（取 ±5 分钟容差），避免因设备时间不准导致 LWW 反向 |
+| 时钟偏移 | 握手测得 `offsetMs = 本机时钟 − 对端时钟`（两端互为相反数），比较前把对端时间戳**换算到本机基准**；±5 分钟容差，超容差记 `error_msg` 但仍继续 |
 | 触发时机 | 手动点"立即同步"；设备在线且距上次 >5 分钟；配对成功后一次 |
 | 失败处理 | 写 `sync_log` 状态 `failed`；**不更新 `last_sync_at`** |
 

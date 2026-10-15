@@ -53,20 +53,22 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 
 | # | 冲突 | 位置 | 裁决 |
 |:--:|---|---|---|
-| B1 | 封顶取数 SQL 用 `source_type IN ('record','record_capped')`，这两个值是 `type` 的枚举 → D 恒为 0，封顶永不生效 | `docs/PLAN.md:640-646`、`APPENDIX-A:151-159` ↔ `APPENDIX-B:119-121`、`:509-510` | 改为 `source_type = 'carbon_record' AND type IN ('record','record_capped') AND is_deleted = 0` |
-| B2 | 「流水只增不删（靠冲正）」与「封顶聚合排除已删流水」互斥 | `APPENDIX-D` D3-8 ↔ `PLAN.md` 铁律 4 / §9.2 | 原流水永不改；当日已得 D 的聚合必须**包含** `reverse` 负流水 |
-| B3 | `uq_pr_source(source_type, source_id, type)` 只允许一条 `reverse`，同一记录二次编辑/删后恢复会撞唯一索引 | `APPENDIX-B:133` ↔ `PLAN.md:708`、`APPENDIX-D:36` | 冲正流水的 `source_id` 改为「记录 ID + 冲正序号」 |
-| B4 | `point_daily_stat` 主键缺 `user_id`，`demo-user` 与 `local-guest` 同日互相覆盖 | `APPENDIX-B:139-140` | 主键改 `(user_id, day_key)` |
-| B5 | 跨设备幂等不成立：目标结算与同商品购买在两端离线时会撞唯一约束；LWW 伪码单边校正不收敛 | `APPENDIX-B:849-870`、`:886` ↔ `PLAN.md:710` | 目标/购买的幂等键先定义；两端口径归一到同一时间基准；真冲突与普通覆盖分开计数 |
-| B6 | 补记不限日期 + 封顶按 `occurred_at` 判定 → 可回填刷分 | `PLAN.md` §7.1 / §9.2 | 增加补记窗口（≤30 天），或把该口径写进风险表 |
-| B11 | 设计令牌两套（颜色 + 全套字号），却规定「附录 C 是唯一依据」 | `PLAN.md:944-973` ↔ `APPENDIX-C:87-127` | 以 APPENDIX-C 为准，PLAN §14 改为引用 |
+| B11 | 设计令牌两套（颜色 + 全套字号），却规定「附录 C 是唯一依据」 | `PLAN.md` §14 ↔ `APPENDIX-C:87-127` | 以 APPENDIX-C 为准，PLAN §14 改为引用 |
 | B16 | `@ohos.file.picker` 被用于「保存到相册」（picker 是选择器） | `APPENDIX-C:758` | 改用 photoAccessHelper 的保存控件，并核对相册写权限 |
 | B17 | 「我的」页徽章 6/8 与徽章墙 3/8 冲突 | `APPENDIX-C:303` / `:451` | 同一数据源，演示数据下取值一致 |
 | B18 | 已读判定：停留 3 秒 vs 滚动 80% | `APPENDIX-D:115` ↔ `APPENDIX-C:543` | 统一为一套判定（建议滚动 ≥80% 且停留 ≥3 秒） |
 | B20 | 协同页缺「家庭合并视图」与「待同步数」 | `PLAN.md:495-500` ↔ `APPENDIX-C:548-578` | 按 ADR-0001 重写协同页（登录 + 服务端同步口径） |
-| B21 | 服务端旧口径（「可选演示件 / 不承担协同 / 不作为任何客户端功能的前置依赖」）与 ADR-0001 冲突 | `PLAN.md:851`、`:906-915`、`:608` ↔ `docs/adr/0001-account-and-sync.md` | 按 ADR 改写 §12/§13/§16、附录 B §5.3/§5.4/§6、附录 C §18/§21/§22、附录 D §1.6/§1.10/§6、附录 E §5 |
+| B21 | 服务端旧口径（「可选演示件 / 不承担协同 / 不作为任何客户端功能的前置依赖」）与 ADR-0001 冲突 | `PLAN.md` §12/§13/§16、`APPENDIX-B` §5.3/§5.4/§6、`APPENDIX-C` §18/§21/§22、`APPENDIX-D` §1.6/§1.10/§6、`APPENDIX-E` §5 ↔ `docs/adr/0001-account-and-sync.md` | 按 ADR 改写这五处 |
 
-**已清零（2026-10-14）**：B7 手算样例区分应得 C 与实入 A、B8 电网因子 0.5703、B9 目标数 11、B10 骑行因子来源 SRC-DERIVED/provisional、B12 权限名 `PUBLISH_AGENT_REMINDER`、B13 提醒时间 20:00、B14 科普索引 `science-index.json`、B15 备份文件名带 `HHmm`、B19 删除失效的 `_tmp_*.txt` 引用。
+**已清零（2026-10-14）**
+
+- B1 封顶取数 SQL 列名（`source_type = 'carbon_record'`，`type` 才是枚举列）
+- B2 冲正计入当日已得 D：删记录即释放额度，与铁律 4 一致
+- B3 记录类流水幂等键改为 `<记录ID>#<revision>`（`carbon_record` 新增 `revision`），二次编辑不再撞唯一索引
+- B4 `point_daily_stat` 主键改为 `(user_id, day_key)`
+- B5 跨设备幂等：账本表 `INSERT OR IGNORE` + 业务唯一键；「真冲突」定义收紧；时钟基准单一口径
+- B6 补记窗口 30 天，且补记沿用**发生日**封顶额度（新增验收 D1-15）
+- B7 手算样例区分应得 C 与实入 A、B8 电网因子 0.5703、B9 目标数 11、B10 骑行因子来源 SRC-DERIVED/provisional、B12 权限名 `PUBLISH_AGENT_REMINDER`、B13 提醒时间 20:00、B14 科普索引 `science-index.json`、B15 备份文件名带 `HHmm`、B19 删除失效的 `_tmp_*.txt` 引用
 
 ---
 

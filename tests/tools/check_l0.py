@@ -93,6 +93,24 @@ DOC_SCAN = [
         "pattern": r"_tmp_notice\.txt|_tmp_train\.txt",
         "fix": "补齐取证文本或删除该引用（当前无法在仓库内复核官方原文）",
     },
+    {
+        "id": "B1",
+        "glob": "*.md",
+        "pattern": r"AND source_type IN \('record'",
+        "fix": "封顶聚合必须过滤 source_type = 'carbon_record'（record/record_capped 是 type 的枚举值，用错列会让封顶永不生效）",
+    },
+    {
+        "id": "B2",
+        "glob": "*.md",
+        "pattern": r"封顶聚合排除已删流水",
+        "fix": "冲正（reverse）必须计入当日已得 D，否则删记录不释放额度",
+    },
+    {
+        "id": "B4",
+        "glob": "*.md",
+        "pattern": r"^\s*day_key\s+TEXT PRIMARY KEY",
+        "fix": "point_daily_stat 主键必须是 (user_id, day_key)，否则演示数据与真实用户同日互相覆盖",
+    },
 ]
 
 

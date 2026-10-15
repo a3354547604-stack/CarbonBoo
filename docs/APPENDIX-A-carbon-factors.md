@@ -152,7 +152,7 @@
 今日已得 D = SUM(point_record.points)
              WHERE user_id = ?
                AND occurred_at ∈ [今日 00:00, 今日 23:59:59]
-               AND source_type IN ('record', 'record_capped')
+               AND source_type = 'carbon_record'   -- 记录类：含 record / record_capped / reverse
                AND is_deleted = 0
 实入 A = max(0, min(C, 200 − D))
 capped = (A < C)
@@ -222,9 +222,11 @@ capped = (A < C)
 | 天然气 | 100 m³ | 同上 |
 | 回收质量 | 500 kg | 同上 |
 | 光盘 | 20 次 | 同上 |
+| 补记时间窗 | 30 天 | 日期选择器禁用更早日期，**不允许保存**（防回填刷分） |
 
 - `is_abnormal = 1` 的记录**照常参与减排量与积分计算**，仅在记录详情页显示"数值异常"角标。
 - 下限：所有数值必须 **> 0**，否则保存按钮置灰。
+- **补记窗口**：`occurred_at` 只能落在「今天 ~ 30 天前（含）」区间；补记沿用**发生日**的 200 分封顶额度（代码：`PointService` 按 `occurred_at` 聚合，见 §3.3），因此回填不能额外刷分。
 
 ---
 

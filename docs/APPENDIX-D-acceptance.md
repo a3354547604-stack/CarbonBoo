@@ -38,6 +38,7 @@
 | D1-12 | 超限提示但不阻断 | 录 骑行 300 km | 弹提示「距离较大，请确认是否填错」→ 点"确认无误"可保存，记录带 ⚠ 且 `is_abnormal = 1` |
 | D1-13 | 输入非法拦截 | 数量填 0 / 负数 / 空 | 保存按钮置灰，无法提交 |
 | D1-14 | **无修正系数** | 检查录入页与记录详情 | 不存在"计算档位"控件；详情页无"修正系数"字段 |
+| D1-15 | **补记窗口 30 天** | 尝试选择 31 天前的日期 | 日期选择器禁用更早日期，无法保存；补记后当日额度按**发生日**计算 |
 
 ### 1.2 主要功能② 数据可视化看板（F2）
 
@@ -68,7 +69,7 @@
 | D3-5 | **缓存可重建且一致** | 调用 `PointService.rebuildDailyStat(userId)` | 重建后 `point_daily_stat` 与 `point_record` 聚合值**逐日一致** |
 | D3-6 | **目标奖励不封顶** | 当日记录已达 200 后完成 S1 目标 | 目标 +20 **照常发放**（不计入封顶） |
 | D3-7 | 幂等防重 | 反复进出首页 / 重复触发同一目标 | 同一 `(goalId, periodKey)` 只发一次 |
-| D3-8 | 冲正处理 | 删除一条已计分的记录 | 生成 `reverse` 负流水，净额正确；封顶聚合排除已删流水 |
+| D3-8 | 冲正处理 | 删除一条已计分的记录 | 生成 `reverse` 负流水，净额正确；**冲正计入当日已得 D**，删除后当日额度立即释放（口径见 §3.2） |
 
 **11 个目标（S1–S5 / M1–M5 / L1）**
 
@@ -265,8 +266,8 @@
 SELECT COALESCE(SUM(points), 0) FROM point_record
  WHERE user_id = ?
    AND occurred_at BETWEEN 今日00:00:00 AND 今日23:59:59
-   AND source_type IN ('record', 'record_capped')   -- 排除 goal（不封顶）与 purchase（负数）
-   AND is_deleted = 0                               -- 排除冲正流水
+   AND source_type = 'carbon_record'                -- 记录类：含 record / record_capped / reverse
+   AND is_deleted = 0
 ```
 
 ### 3.3 边界样例

@@ -358,7 +358,8 @@ MINE ─┬─ APPEARANCE / POINT_LOG / GOAL / BADGE / SHOP
 4. 数值超上限（出行 200 km / 节电 200 kWh / 节水 2000 L / 燃气 100 / 回收 500 kg / 光盘 20）→ 允许保存但标 `is_abnormal = 1`，并弹提示「数值超出常见范围，已记录并标记为异常」。
 5. 活动量输入限制：数字键盘、最多 2 位小数、必须 > 0；否则「保存」置灰。
 6. 保存成功 → 按 `SaveRecordResult.newGoals` / `newBadges` **排队**弹出 `UnlockCelebrationDialog`；返回上一页。
-7. 编辑模式（带 `recordId`）：标题改「编辑记录」，预填原值；发生时间不可改到未来；保存时按差额生成 `reverse` 流水（见 PLAN §9.5）。
+7. 编辑模式（带 `recordId`）：标题改「编辑记录」，预填原值；发生时间不可改到未来；保存时按差额生成 `reverse` 流水，`source_id = <记录ID>#<revision>`（见 PLAN §9.5）。
+8. 发生时间可选范围：**今天 ~ 30 天前（含）**；不可选未来，也不可选更早（超窗日期在日期选择器里直接禁用）。
 
 ---
 

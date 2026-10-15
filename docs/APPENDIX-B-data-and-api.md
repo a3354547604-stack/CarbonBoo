@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS carbon_record (
   confidence      TEXT    NOT NULL,          -- verified | provisional
   point_awarded   INTEGER NOT NULL DEFAULT 0,-- 实入积分
   point_capped    INTEGER NOT NULL DEFAULT 0,-- 1 = 本笔被削减
+  revision        INTEGER NOT NULL DEFAULT 0,-- 编辑次数；记录类流水幂等键 = <id>#<revision>
   is_abnormal     INTEGER NOT NULL DEFAULT 0,-- 1 = 数值超出合理范围
   note            TEXT,
   created_at      INTEGER NOT NULL,
@@ -129,7 +130,8 @@ CREATE TABLE IF NOT EXISTS point_record (
   device_id    TEXT,
   sync_state   TEXT    NOT NULL DEFAULT 'local'
 );
--- 幂等约束：同一条记录 / 同一目标周期 / 同一商品，绝不重复发分
+-- 幂等约束（v4.1）：记录类流水按 <carbon_record_id>#<revision> 唯一（每版本最多一条入账 + 一条 reverse）；
+-- 目标按 goalId:periodKey、商品按 item_id 唯一，跨设备重复发放只入账一次
 CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_source ON point_record(source_type, source_id, type);
 CREATE INDEX IF NOT EXISTS idx_pr_user_time ON point_record(user_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pr_cap       ON point_record(user_id, occurred_at, source_type, is_deleted);
@@ -137,16 +139,17 @@ CREATE INDEX IF NOT EXISTS idx_pr_updated   ON point_record(updated_at);
 
 -- ========== 4. 每日积分缓存（派生，可重建；不参与判定、不参与同步） ==========
 CREATE TABLE IF NOT EXISTS point_daily_stat (
-  day_key        TEXT PRIMARY KEY,            -- YYYY-MM-DD
   user_id        TEXT    NOT NULL,
-  record_points  INTEGER NOT NULL DEFAULT 0,  -- 仅 record + record_capped
+  day_key        TEXT    NOT NULL,            -- YYYY-MM-DD
+  record_points  INTEGER NOT NULL DEFAULT 0,  -- 记录类净额（record + record_capped + reverse）
   goal_points    INTEGER NOT NULL DEFAULT 0,
   spent_points   INTEGER NOT NULL DEFAULT 0,  -- 正数存储，表示支出绝对值
   record_count   INTEGER NOT NULL DEFAULT 0,
   rebuilt_at     INTEGER,
-  updated_at     INTEGER NOT NULL
+  updated_at     INTEGER NOT NULL,
+  PRIMARY KEY (user_id, day_key)              -- 主键必须含 user_id：demo-user 与 local-guest 同日并存
 );
-CREATE INDEX IF NOT EXISTS idx_pds_user ON point_daily_stat(user_id, day_key DESC);
+CREATE INDEX IF NOT EXISTS idx_pds_day ON point_daily_stat(day_key DESC);
 
 -- ========== 5. 目标定义（静态字典） ==========
 CREATE TABLE IF NOT EXISTS goal_def (
@@ -471,6 +474,7 @@ export interface CarbonRecord extends BaseRow {
   factorSource: string;
   confidence: Confidence;
   pointAwarded: number;      // 实入
+  revision: number;          // 编辑次数；记录类流水幂等键 = <id>#<revision>
   pointCapped: number;
   isAbnormal: number;
   note?: string;
@@ -846,45 +850,60 @@ done          —— 写 sync_log(success)；更新 device_info.last_sync_at
 ### 6.3 LWW 合并伪码
 
 ```ts
+// lastSyncAt：上次成功同步的时间（device_info.last_sync_at），用于区分「真冲突」与「普通覆盖」
+// mode：'lww'（可改可删）| 'appendOnly'（账本表，按 id 已存在即跳过）
 async function mergeTable<T extends BaseRow>(
-  table: string, local: T[], remote: T[], offsetMs: number
-): Promise<{ merged: T[]; conflicts: number }> {
-  const merged: T[] = [];
-  let conflicts = 0;
+  table: string, local: T[], remote: T[],
+  offsetMs: number, lastSyncAt: number, mode: 'lww' | 'appendOnly'
+): Promise<{ toApply: T[]; conflicts: number; ignored: number }> {
+  const toApply: T[] = [];
+  let conflicts = 0, ignored = 0;
   const map = new Map<string, T>();
   for (const row of local) map.set(row.id, row);
 
   for (const r of remote) {
     const l = map.get(r.id);
-    if (!l) { merged.push(r); continue; }        // 本机没有 → 直接接纳
-    const rUpdated = r.updatedAt + offsetMs;     // 时钟偏移校正
-    if (rUpdated > l.updatedAt) {                // 对端更新 → 覆盖
-      merged.push(r); conflicts++;
+    if (!l) { toApply.push(r); continue; }         // 本机没有 → 直接接纳
+    if (mode === 'appendOnly') { ignored++; continue; } // 账本已按 id 存在 → 跳过
+
+    const rUpdated = r.updatedAt + offsetMs;       // 对端时间 → 本机时间基准
+    if (rUpdated > l.updatedAt) {
+      toApply.push(r);
+      // 真冲突 = 两端自上次同步后都改过这一行
+      if (l.updatedAt > lastSyncAt && r.updatedAt > lastSyncAt) conflicts++;
     } else if (rUpdated === l.updatedAt) {
-      // 时间戳相等 → 以 deviceId 字典序大者胜，保证确定性
-      if ((r.deviceId ?? '') > (l.deviceId ?? '')) { merged.push(r); conflicts++; }
+      // 平局：deviceId 字典序大者胜，两端结论一致
+      if ((r.deviceId ?? '') > (l.deviceId ?? '')) {
+        toApply.push(r);
+        if (l.updatedAt > lastSyncAt) conflicts++;
+      }
     }
     // 否则保留本机版本
   }
-  return { merged, conflicts };
+  return { toApply, conflicts, ignored };
 }
+
+// 账本表（point_record / carbon_include / user_purchase）写回时统一用 INSERT OR IGNORE：
+//   新 id → 正常插入；业务唯一键冲突（同目标同周期 / 同商品 / 同记录同版本）→ 该行被忽略，
+//   计入 ignored 与面板的「跨设备重复已去重」，两端账本因此收敛到同一份。
 ```
 
 ### 6.4 六条硬约束
 
 1. **本机优先**：合并期间任何失败都必须保持本机数据可用（用事务或"先备份后合并"）。
 2. **删除也要传播**：比较 `is_deleted`；软删除行的 `updated_at` 更新后同样按 LWW 取胜。
-3. **`id` 幂等**：UUID 主键，重复合并不产生重复行；**同一条 `carbon_record` 不重复发分**（`uq_pr_source` 兜底）。
-4. **封顶口径（决策「甲2」）**：以**本机已知流水**判定封顶；合并后若某天记录分总量超 200，**不追回**已发分，只在 `sync_log.conflict_count` 里 +1。
+3. **`id` 与业务键双重幂等**：`id`（UUID）主键保证同一行不重复；业务唯一键（`uq_pr_source` / `uq_up`）保证跨设备重复发放**只入账一次**——账本表写入用 `INSERT OR IGNORE`，被忽略的行计入 `ignored` 与冲突数。
+4. **封顶与重复发放（决策「甲2」）**：记录分以**本机已知流水**判定封顶，合并后若某天总量超 200，**不追回**已发分，只计冲突 +1；而**目标奖励与商品购买属「同一事实」**，跨设备重复发放 / 重复扣费**只入账一次**（业务唯一键 + `INSERT OR IGNORE`），两端收敛到同一账本。
 5. **静态字典不参与合并**：`goal_def` / `badge_def` / `shop_item` / `science_article` / `carbon_factor_meta` 随 App 版本走。
-6. **时钟偏移校正**：合并前握手估算 `offsetMs`，容差 **±5 分钟**；超容差时记 `sync_log.error_msg` 但仍按本机时间继续。
+6. **时钟偏移校正**：握手时测得 `offsetMs = 本机时钟 − 对端时钟`（两端互为相反数），比较前统一把对端时间戳换算到本机基准；容差 ±5 分钟，超容差记 `sync_log.error_msg` 但仍继续。
 
 ### 6.5 表分组与合并策略
 
 | 组 | 表 | 策略 |
 |---|---|---|
-| 只增 | `point_record`、`carbon_include` | 按 `id` 去重后并集；不做覆盖 |
-| 可改可删 | `carbon_record`、`user_goal`、`user_badge`、`user_purchase`、`user_appearance`、`science_progress` | 完整 LWW |
+| 只增（账本） | `point_record`、`carbon_include` | 按 `id` 去重后并集；写入统一 `INSERT OR IGNORE`，由业务唯一键兜底——跨设备重复发放只入账一次 |
+| 可改可删 | `carbon_record`、`user_goal`、`user_badge`、`user_appearance`、`science_progress` | 完整 LWW |
+| 有唯一键的 LWW | `user_purchase` | 完整 LWW，但 `UNIQUE(user_id, item_id)` 保证同一商品只留一条购买（另一端那条被忽略，等于退回多扣的分） |
 | 单例行 | `user_profile` | 按 `updated_at` 取新 |
 
 ---
@@ -895,7 +914,7 @@ async function mergeTable<T extends BaseRow>(
 
 | Dao | 关键方法 |
 |---|---|
-| `CarbonRecordDao` | `insert` / `update` / `softDelete` / `getById` / `listByRange` / `listByCategory` / `search` / `page` / `sumReduction` / `countTravel` / `sumRecycleKg` / `distinctDays` |
+| `CarbonRecordDao` | `insert` / `update`（同时 `bumpRevision`）/ `softDelete` / `getById` / `listByRange` / `listByCategory` / `search` / `page` / `sumReduction` / `countTravel` / `sumRecycleKg` / `distinctDays` |
 | `PointRecordDao` | `insert` / `listByRange` / `sumAll` / `sumTodayRecord` / `existsBySource` / `page` |
 | `PointDailyStatDao` | `upsertIncrement` / `getByDay` / `listByRange` / `clearUser` / `bulkInsert`（重建用） |
 | `GoalDao` | `listDefs` / `getDef` / `upsertUserGoal` / `getProgress` / `listProgress` / `markSettled` |
