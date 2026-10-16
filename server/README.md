@@ -298,6 +298,20 @@ cd server && .venv/bin/python -m app.services.auth_provider      # purge_expired
 | `LOGIN_RATE_LIMIT_PER_MINUTE` | `10` | 登录限流（0 = 关闭）；开发/测试可用 0 |
 | `USERNAME_MIN_LENGTH` / `USERNAME_MAX_LENGTH` / `PASSWORD_MIN_LENGTH` / `PASSWORD_MAX_LENGTH` | `4` / `20` / `6` / `32` | 逐字取 §5.2 错误码表 |
 
+**Web 后台管理端（可选件）的自有配置**：`server/admin_web/config.py` 的 `AdminWebSettings`，
+环境变量前缀 `ADMIN_`、读**同一个** `server/.env`（600）。其中
+`ADMIN_BOOTSTRAP_USERNAME` / `ADMIN_BOOTSTRAP_PASSWORD`（仅当 `admin_user` 表为空时用于创建首个管理员，
+表非空后该路径彻底失效）、`ADMIN_UPLOAD_DIR`（图标上传目录，留空 = `admin_web/static/uploads/icons/`）
+已列进 `.env.example`；其余 `ADMIN_MAX_ICON_BYTES` / `ADMIN_ICON_URL_PREFIX` / `ADMIN_PAGE_SIZE_*` /
+`ADMIN_COOKIE_*` / `ADMIN_PREFIX` 有代码内默认值，不必写。**管理端 JWT 密钥与 audience 仍只来自
+`Settings`**（`ADMIN_JWT_SECRET` / `JWT_ADMIN_AUDIENCE`，见上表），两处不复述、避免「两处都能配密钥」。
+
+依赖清单：`requirements.txt`（本机实测锁定版本）。其中 **`jinja2==3.1.6`** 是可选件 `/admin` 的
+服务端渲染（`fastapi.templating.Jinja2Templates`，PLAN §13.3）所需；**刻意不含 `python-multipart`**
+（管理端用标准库解析 urlencoded 表单体 + 原始字节上传图标）。
+核对脚本：`.env.example` 的每个键都能在 `Settings` 或 `AdminWebSettings` 里找到同名环境变量字段，
+且 `requirements.txt` 的每个 pin 与本机 `.venv` 实际版本逐条相等（两者都脚本核对过，见提交信息）。
+
 安全规则：
 
 - **代码内没有任何默认密钥**；`JWT_SECRET` / `ADMIN_JWT_SECRET` 缺失、短于 32 字符、或**两者相同** → 启动即 `ValueError`。

@@ -10,6 +10,13 @@
 fastapi==0.143.2
 uvicorn[standard]==0.54.0
 
+# --- 模板渲染：Web 后台管理端（可选件，ADR-0001；server/admin_web/）---
+# 管理端按 PLAN §13.3 用 Jinja2 服务端渲染，`fastapi.templating.Jinja2Templates` 依赖它。
+# 管理端本身是可选件，但代码随包发布 —— 不写进这里，"换机重建环境"后 /admin 会直接 ImportError。
+jinja2==3.1.6
+# 刻意**不要** python-multipart：admin_web 用标准库解析 urlencoded 表单体 + 原始字节/base64 上传图标，
+# 避开 Starlette 1.8 `request.form()` 对 python-multipart 的硬依赖（多一个依赖就多一处环境分叉）。
+
 # --- 数据库（同步 ORM，见 AGENTS §7.2）---
 SQLAlchemy==2.1.4
 PyMySQL==1.2.3
