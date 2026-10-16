@@ -946,6 +946,22 @@
       "bad": "同步契约与已实现并验证的口径分叉七处：① §6.3 伪码的 `appendOnly` 只按 `id` 去重，业务唯一键兜底只写在散文注释里 → 伪码自身不自洽（照抄即跨设备重复发放）；② §5.3 端点表只有 pull/push/status，**云端备份三端点缺行**；③ push 请求体没有客户端时钟字段，而 §6.4-6 要求测得 `offsetMs = 本机时钟 − 对端时钟`，服务端无从测得；④ §6.4-3 把 `ignored` 与 `conflicts` 混写在一条里（容易被实现成「去重也计冲突」）；⑤ §6.5 `user_purchase` 行没写「忽略远端购买行不产生任何流水」；⑥ §6.5 `user_profile` 行没写按 `user_id` 收敛到一行、`id` 取胜者的；⑦ §5.2/§5.3 都没写明哪些端点需要 `Authorization: Bearer <userToken>`（账号已注销者 401）",
       "correct": "【已闭环·2026-11-06 文档对齐实现】① §6.3 伪码新增 `businessKeyOf` / `keys` 集合，`appendOnly` 分支同时判 `id` 与业务唯一键（命中即 `ignored++`，不计 `conflicts`），并写明写回 `INSERT OR IGNORE` 是第二道兜底；② §5.3 补三行端点 `POST /api/v1/sync/backup`（上传快照）/ `GET /api/v1/sync/backup`（下载快照）/ `POST /api/v1/sync/backup/restore`（覆盖式恢复，返回 `preRestore`），并写明「备份是独立三端点、不是复用 push/pull 的 since=0」（t5 的 test_backup 钉住三条）；③ push 请求体补可选 `clientNow`（毫秒），响应补 `ignored`/`rejected`/`offsetMs`/`clockWarning`，并写明 `skipped = ignored + rejected`、`offsetMs = 服务端时钟 − 客户端时钟`、`clientNow` 缺失即按「无偏移」处理；④ §6.4-3 明确 `ignored` **不计入** `conflicts`；⑤ §6.5 明确忽略远端购买行**不产生任何流水**（无 `reverse`、无 `adjust` 枚举值）；⑥ §6.5 明确 `user_profile` 合并按 `user_id` 收敛到一行、`id` 取「保存下来的那一行」的 id；⑦ §5.2 加「鉴权」列、§5.3 表头写明本组全部端点（含备份三端点）均需客户端令牌、账号已注销者 401；另 D5-12 的判据指向附录 B §5.3 的三端点",
       "status": "closed"
+    },
+    {
+      "id": "B42",
+      "file": "AGENTS.md",
+      "locator": "AGENTS.md §6「服务端、账号与同步（ADR-0001）」第 2 条",
+      "bad": "「**未登录 = 纯单机**：不上传任何数据；除\u300c登录/同步/取价\u300d外全功能可用。」只列**三项**网络例外，与本文件 §2 铁律 1（四项：登录/注册、多设备同步、商品取价、云端备份）、§5 L2 飞行模式验收（四项）、附录 D §1.6（四项）不一致 —— B21 口径统一的漏网点，会误导实现者把「云端备份」也做成未登录可用",
+      "correct": "【已闭环·2026-11-06】§6 第 2 条改为「除\u300c登录/注册、多设备同步、商品取价、云端备份\u300d**四类网络例外**（与 §2 铁律 1、§5 L2、附录 D §1.6 同一口径）外全功能可用」",
+      "status": "closed"
+    },
+    {
+      "id": "B43",
+      "file": "docs/APPENDIX-C-ui-screens.md",
+      "locator": "APPENDIX-C:84（§3 设计令牌落盘路径）、:908（§25 界面自检第 2 条）",
+      "bad": "文档写的落盘路径 `app/entry/src/main/ets/common/AppTheme.ets` 在仓库里不存在（`app/entry/src/main/ets/` 下没有 `common/` 目录）；§25 自检第 2 条提到的例外文件 `LiteralConstants.ets` 也不存在——真实情况是设计令牌唯一来源在 `util/AppTheme.ets`，且 `LiteralConstants` 是**同一个文件里的类**（同文件 `export class AppTheme` / `export class LiteralConstants`）",
+      "correct": "【已闭环·2026-11-06 队长实测 + find 复核】§3 落盘路径改为 `app/entry/src/main/ets/util/AppTheme.ets`（并加一行 v4.2 勘误，点名旧路径不存在、无 `common/` 目录）；§25 自检第 2 条改为「例外集中在 `util/AppTheme.ets` 里的 `LiteralConstants` 类，没有 `LiteralConstants.ets` 这个文件」。复核命令：`find app/entry/src/main/ets -name 'AppTheme.ets'` → `app/entry/src/main/ets/util/AppTheme.ets`；`ls app/entry/src/main/ets/` → components/dao/data/entryability/infra/model/pages/service/util/viewmodel（无 common）",
+      "status": "closed"
     }
   ]
 }

@@ -4,7 +4,7 @@
 > 修改方式见 §10；与任何文档冲突时，按 §1.2 的优先级裁决。
 >
 > - 项目：**碳小布 CarbonBoo** ｜ OpenHarmony 个人碳账本 ｜ 赛题二（纯北向）
-> - 当前阶段：**只做计划与开发文档，暂不编码**；规划 **v4.1 定稿（2026-11-06 文档契约冻结）** + **ADR-0001（账号与同步）已决策**；`app/`、`server/` **尚未创建**
+> - 当前阶段：**S1–S6 已实现并落库**（`app/` ArkTS + API 12：19 张表 + 18 个页面全部落地；`server/` FastAPI + MySQL 8：21 张表 + 账号 / 多设备同步 / 取价 / 云端备份 + L3 pytest），**S7 创新项与 `/admin` 后台收尾中**；规划 **v4.2 定稿（2026-11-06 文档契约勘误）** + **ADR-0001（账号与同步）已决策**
 > - 工作语言：中文（代码注释、提交信息、报告一律中文）
 
 ---
@@ -52,12 +52,14 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 **仍未清零（阻塞对应模块的编码）**
 
 > ✅ **当前为空。** `python3 tests/tools/check_l0.py --strict` 已通过：0 处 DOC_SCAN 命中 + 0 条 open docConflicts（2026-11-06）。
-> 下面的 B20–B41 全部已清零；新增缺陷必须**同时**写进本表与 `tests/cases/carbon-calc.json → docConflicts`（`status: "open"`）。
+> 下面的 B20–B45 全部已清零；新增缺陷必须**同时**写进本表与 `tests/cases/carbon-calc.json → docConflicts`（`status: "open"`）。
 
 **已清零（2026-11-06 · v4.2 文档契约勘误）**
 
 - B40 `uq_pr_source` **补 `user_id`**：`uq_pr_source(user_id, source_type, source_id, flow_kind)`（附录 B §2 建表 SQL + 幂等约束注释、PLAN §9.5 第 2/3 条、§10 变更索引）；否则两个账号同一天达成同名目标互相顶掉、后入账者丢积分。服务端 `sql/schema.sql` + `migrations/001_*` 与客户端 `ClientSchema.ets` 早已按含 `user_id` 的口径实现
 - B41 同步契约七处对齐实现：§6.3 伪码 `appendOnly` 补业务唯一键判重（不再只按 `id`）、§5.3 补云端备份三端点（`POST/GET /sync/backup`、`POST /sync/backup/restore`）、push 请求体补 `clientNow` 与响应补 `ignored`/`rejected`/`offsetMs`、§6.4-3 明确 `ignored` 不计入 `conflicts`、§6.5 明确忽略远端购买行不产生流水且 `user_profile` 按 `user_id` 收敛一行、§5.2/§5.3 写明鉴权（Bearer，注销后 401）
+- B42 §6「未登录 = 纯单机」的例外集补齐为**四类**（登录/注册、多设备同步、商品取价、云端备份），与 §2 铁律 1 / §5 L2 / 附录 D §1.6 统一（B21 口径统一的漏网点）
+- B43 附录 C 落盘路径勘误：设计令牌唯一来源是 `app/entry/src/main/ets/util/AppTheme.ets`（**没有** `common/` 目录）；§25 自检第 2 条的例外不是 `LiteralConstants.ets` 文件，而是同一文件里的 `LiteralConstants` 类
 
 **已清零（2026-11-06 · v4.1 文档契约冻结）**
 
@@ -144,7 +146,7 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 ## 6. 服务端、账号与同步（ADR-0001）
 
 - **服务端是必做件**（不再是"可选演示件"）；其中的 **Web 后台管理端**才是可选。
-- **未登录 = 纯单机**：不上传任何数据；除"登录/同步/取价"外全功能可用。
+- **未登录 = 纯单机**：不上传任何数据；除「登录/注册、多设备同步、商品取价、云端备份」**四类网络例外**（与 §2 铁律 1、§5 L2、附录 D §1.6 同一口径）外全功能可用。
 - **登录后**才有：多设备同步、云端备份、家庭合并统计。
 - **账号体系自建**（用户名 + 密码 + JWT + bcrypt）。**不做华为账号（Account Kit）**；但登录实现必须藏在 `AuthProvider` 抽象后（`local` / `server`，预留 `huaweiId`），上层不得直接依赖具体 provider。
 - **服务端地址禁止硬编码**：经配置注入（设置页可改 / 构建期常量），并带超时（3s）与失败降级（取价失败 → 整份丢弃 → 内置默认价）。

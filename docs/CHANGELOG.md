@@ -28,6 +28,12 @@
 - **§6.5 `user_profile`**：补"合并时按 `user_id` 收敛到一行，`id` 取胜者的"（同 `id` 两行仍按 `updated_at` 取新）。
 - **§5.2 / §5.3 鉴权**：§5.2 增「鉴权」列；§5.3 表头写明**本组全部端点**（`pull`/`push`/`status` + 备份三端点）均需 `Authorization: Bearer <userToken>`，身份取自令牌、请求体 `userId` 只用于对账（不一致整批 403），账号已注销者 401。
 
+### 2. 附录 C 落盘路径与 AGENTS 口径勘误（B42 / B43）
+
+- **附录 C §3 设计令牌落盘路径**：`app/entry/src/main/ets/common/AppTheme.ets` → **`app/entry/src/main/ets/util/AppTheme.ets`**（仓库里**没有** `common/` 目录；`find app/entry/src/main/ets -name 'AppTheme.ets'` 实测只有 `util/` 这一处）；§25 界面自检第 2 条的例外由「`LiteralConstants.ets` 文件」改为「`util/AppTheme.ets` 里的 `LiteralConstants` 类」——同文件里 `export class AppTheme` + `export class LiteralConstants`。
+- **AGENTS.md §6**：「未登录 = 纯单机」的例外集由三项补齐为**四类**（登录/注册、多设备同步、商品取价、云端备份），与 §2 铁律 1、§5 L2 飞行模式验收、附录 D §1.6 同一口径。
+- **AGENTS.md 头部状态行**：删掉「只做计划与开发文档，暂不编码」「`app/`、`server/` 尚未创建」——改为实际进度「S1–S6 已实现并落库（`app/` 19 张表 + 18 个页面；`server/` 21 张表 + 账号/同步/取价/备份 + L3 pytest），S7 与 `/admin` 收尾中」，规划版本号 v4.1 → **v4.2**。
+
 
 
 **触发**：两轮独立交叉审计（31 条 + 8 条不一致）+ 负责人对 ADR-0001 四项未决项的拍板。

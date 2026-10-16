@@ -81,7 +81,11 @@ MINE ─┬─ APPEARANCE / POINT_LOG / GOAL / BADGE / SHOP
 
 ## 3. 设计令牌
 
-> 落盘路径：`app/entry/src/main/ets/common/AppTheme.ets`。**页面禁止写死色值与尺寸**（§15.2 第 5 条）。
+> 落盘路径：**`app/entry/src/main/ets/util/AppTheme.ets`**（设计令牌的**唯一**字面量来源，类是 `AppTheme`；
+> 同一文件里还有 `LiteralConstants` 类，收容"其它允许存在的字面量"）。**页面禁止写死色值与尺寸**（§15.2 第 5 条）。
+> 本节 §3.1–§3.4 是设计令牌的**唯一来源**（PLAN §14.1/§14.2 只引用）。
+> ⚠️ v4.2 勘误：本节此前写的 `app/entry/src/main/ets/common/AppTheme.ets` **在仓库里不存在**
+> （`app/entry/src/main/ets/` 下没有 `common/` 目录；实际落盘在 `util/`）。
 
 ### 3.1 颜色
 
@@ -901,7 +905,7 @@ MINE ─┬─ APPEARANCE / POINT_LOG / GOAL / BADGE / SHOP
 | # | 检查项 |
 |:--:|---|
 | 1 | 5 个 Tab 与 13 个二级页全部可达，无常驻死路 |
-| 2 | 所有色值、尺寸取自 `AppTheme`，页面内**无字面量**（例外集中在 `LiteralConstants.ets` 并注明理由） |
+| 2 | 所有色值、尺寸取自 `AppTheme`，页面内**无字面量**（例外集中在 `util/AppTheme.ets` 里的 `LiteralConstants` 类并注明理由；**没有** `LiteralConstants.ets` 这个文件） |
 | 3 | 首页在无记录时显示空态，不出现 `NaN` / `undefined` |
 | 4 | 看板四粒度（日/周/月/年）切换均有数据，折线点数 ≤ 31 |
 | 5 | 录入页预览的「应得 / 已得 / 实入」三值与账本一致（对应用例 A5） |
