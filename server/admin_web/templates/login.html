@@ -1,0 +1,56 @@
+{# 登录页（附录 B §5.4 的 GET /admin/login = 后台登录页）。
+   表单在 JS 可用时走 fetch（JSON → adminToken + 会话 Cookie）；
+   脚本被禁用时原生提交（application/x-www-form-urlencoded）→ 服务端 303 跳转，同样可用。 #}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>管理员登录 · 碳小布后台</title>
+  <link rel="stylesheet" href="{{ prefix }}/static/admin.css">
+</head>
+<body class="login-body">
+<main class="login-card">
+  <div class="brand brand-login">
+    <span class="brand-mark">碳</span>
+    <span class="brand-text">
+      <strong>碳小布</strong>
+      <small>Web 后台管理端</small>
+    </span>
+  </div>
+
+  <h1>管理员登录</h1>
+  <p class="muted small">
+    独立于 App 用户体系的账号；登录后签发<b>管理侧独立 JWT</b>（与客户端令牌不同密钥、不同 audience）。
+    客户端令牌访问本页或任何 <code>/admin/*</code> 一律 403。
+  </p>
+
+  {% if error %}
+  <div class="flash is-error" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form id="login-form" method="post" action="{{ prefix }}/login" autocomplete="off">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label class="field">
+      <span>管理员用户名</span>
+      <input type="text" name="username" required maxlength="64" autofocus>
+    </label>
+    <label class="field">
+      <span>口令</span>
+      <input type="password" name="password" required maxlength="128">
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">登录</button>
+  </form>
+
+  <p class="muted small login-hint">
+    首次使用：在 <code>server/.env</code>(600) 配置 <code>ADMIN_BOOTSTRAP_USERNAME</code> /
+    <code>ADMIN_BOOTSTRAP_PASSWORD</code> 后直接登录（表为空时自动创建首个管理员），
+    或执行 <code>python -m admin_web.cli create-admin --username &lt;名字&gt;</code>。
+    口令要求 ≥12 位且至少 3 类字符。
+  </p>
+  <p class="muted small">{{ product }}</p>
+</main>
+<script src="{{ prefix }}/static/admin.js" defer></script>
+</body>
+</html>

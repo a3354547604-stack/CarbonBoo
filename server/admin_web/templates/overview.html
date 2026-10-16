@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{# ④ 数据总览（PLAN §13.2 ④）：接入设备数 / 总记录数 / 今日新增 / 总减排量 / 总积分发放。 #}
+{% block content %}
+<div class="kpi-grid">
+  <div class="card kpi">
+    <div class="kpi-label">接入设备数</div>
+    <div class="kpi-value">{{ data.deviceCount | int }}</div>
+    <div class="kpi-hint muted small">9 张同步表 <code>device_id</code> 去重</div>
+  </div>
+  <div class="card kpi">
+    <div class="kpi-label">总记录数</div>
+    <div class="kpi-value">{{ data.recordCount | int }}</div>
+    <div class="kpi-hint muted small">今日新增 {{ data.todayRecordCount | int }} 条</div>
+  </div>
+  <div class="card kpi">
+    <div class="kpi-label">总减排量</div>
+    <div class="kpi-value">{{ data.totalReductionKg | kg }}<span class="unit">kg</span></div>
+    <div class="kpi-hint muted small">4 位小数，与契约同精度</div>
+  </div>
+  <div class="card kpi">
+    <div class="kpi-label">总积分发放</div>
+    <div class="kpi-value">{{ data.totalPointsIssued | points }}</div>
+    <div class="kpi-hint muted small">支出 {{ data.totalPointsSpent | points }} · 结余 {{ data.totalPointsBalance | points }}</div>
+  </div>
+  <div class="card kpi">
+    <div class="kpi-label">账号数</div>
+    <div class="kpi-value">{{ data.accountCount | int }}</div>
+    <div class="kpi-hint muted small">未注销 {{ data.activeAccountCount | int }}</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2 class="card-title">减排量按四大类行为</h2>
+    {% if data.reductionByCategory %}
+    <table class="table table-tight">
+      <thead><tr><th>类别</th><th class="num">减排量 (kg)</th><th>占比</th></tr></thead>
+      <tbody>
+      {% for category, total in data.reductionByCategory.items() %}
+        {% set ratio = (total / data.totalReductionKg * 100) if data.totalReductionKg else 0 %}
+        <tr>
+          <td>{{ CATEGORY_LABELS.get(category, category) }} <span class="muted small">{{ category }}</span></td>
+          <td class="num">{{ total | kg }}</td>
+          <td>
+            <div class="bar"><span style="width: {{ '%.1f' % ratio }}%"></span></div>
+            <span class="muted small">{{ '%.1f' % ratio }}%</span>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty muted">暂无碳记录（客户端登录并同步后，这里会出现数据）。</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">碳小铺 / 云端</h2>
+    <table class="table table-tight">
+      <tbody>
+        <tr><th>商品数</th><td class="num">{{ data.itemCount | int }}（在架 {{ data.onShelfItemCount | int }}）</td></tr>
+        <tr><th>订单数</th><td class="num">{{ data.orderCount | int }}</td></tr>
+        <tr><th>商品目录版本</th><td><code>{{ data.shopVersion }}</code></td></tr>
+        <tr><th>最后同步时间</th><td>{{ data.lastSyncAt | time }}</td></tr>
+      </tbody>
+    </table>
+    {% if sections %}
+    <p class="muted small">分区：{% for name, count in sections.items() %}{{ name }} {{ count }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+    {% endif %}
+    <p class="muted small">改价详见 <a href="{{ prefix }}/items">商品管理</a>；改价后客户端<b>下次启动</b>经 <code>GET /api/v1/shop/items</code> 生效（附录 B §5.4）。</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2 class="card-title">最近操作</h2>
+  {% if recent %}
+  <table class="table">
+    <thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>目标</th><th>IP</th></tr></thead>
+    <tbody>
+    {% for row in recent %}
+      <tr>
+        <td class="nowrap">{{ row.createdAt | time }}</td>
+        <td>{{ row.adminUsername or row.adminId }}</td>
+        <td><span class="tag">{{ action_label(row.action) }}</span></td>
+        <td><code>{{ row.targetId or '—' }}</code></td>
+        <td class="muted small">{{ row.ip or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small"><a href="{{ prefix }}/logs">查看全部操作日志 →</a></p>
+  {% else %}
+  <p class="empty muted">还没有后台操作记录。</p>
+  {% endif %}
+</div>
+{% endblock %}

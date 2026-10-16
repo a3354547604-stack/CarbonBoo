@@ -1,0 +1,62 @@
+{# 后台管理端基础模板：左侧固定导航 + 顶部信息条 + 内容区。
+   口径：Jinja2 服务端渲染（PLAN §13.3），无前端框架、无构建链；
+   唯一的 JS 是 /admin/static/admin.js（原生 fetch，写操作全部走同路径的 JSON 接口）。
+   配色 tokens 取自 docs/APPENDIX-C-ui-screens.md §3.1（品牌主色 #2E7D5B 等），
+   不另造一套后台专属色板 —— 见 static/admin.css 顶部注释。 #}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>{{ title }} · 碳小布后台</title>
+  <link rel="stylesheet" href="{{ prefix }}/static/admin.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">碳</span>
+      <span class="brand-text">
+        <strong>碳小布</strong>
+        <small>Web 后台管理端</small>
+      </span>
+    </div>
+    <nav class="nav">
+      {% for key, label, href in nav %}
+      <a class="nav-item {% if key == active %}is-active{% endif %}" href="{{ href }}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="sidebar-foot">
+      <div class="badge-soft">可选件 · ADR-0001</div>
+      <div class="muted small">客户端只读取价，无权改价</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1>{{ title }}</h1>
+        <span class="muted small">{{ product }}</span>
+      </div>
+      <div class="topbar-actions">
+        <span class="chip">管理员：{{ admin.username }}</span>
+        <button class="btn btn-ghost" type="button" data-action="logout">退出登录</button>
+      </div>
+    </header>
+
+    <div id="flash" class="flash" hidden></div>
+
+    <section class="content">
+      {% block content %}{% endblock %}
+    </section>
+
+    <footer class="footer muted small">
+      数据来源：服务端 MySQL（仅统计已上行到云端的数据；客户端本机数据以本机为准 —— 铁律 1「本地优先」）。
+    </footer>
+  </main>
+</div>
+<script src="{{ prefix }}/static/admin.js" defer></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

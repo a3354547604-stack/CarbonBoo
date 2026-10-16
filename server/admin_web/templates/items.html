@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{# ② 商品管理（PLAN §13.2 ②）：新增 / 上下架 / 改价 / 改描述 / 排序 / 传图标。
+   所有写操作由 static/admin.js 调同路径 JSON 接口（PATCH/POST），成功后整页重载，
+   保证页面显示 = 服务端真值（不做局部 DOM 状态）。 #}
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2 class="card-title">商品列表</h2>
+    <div class="card-actions">
+      <span class="chip">目录版本 <code>{{ catalog.version }}</code></span>
+      <span class="chip">共 {{ catalog['items'] | length }} 件（含下架）</span>
+      {% for name, count in sections.items() %}<span class="chip chip-soft">{{ name }} {{ count }}</span>{% endfor %}
+    </div>
+  </div>
+  <p class="muted small">
+    改价后写入服务端并 bump 目录版本，客户端<b>下次启动</b>经 <code>GET /api/v1/shop/items</code> 整份覆盖生效
+    （附录 B §5.4）。每次改动都写操作日志（谁、何时、改前 / 改后）。
+  </p>
+
+  <table class="table table-form">
+    <thead>
+      <tr>
+        <th>图标</th><th>编码 / 分区</th><th>名称</th><th>描述</th>
+        <th class="num">价格</th><th class="num">排序</th><th>在架</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for item in catalog['items'] %}
+      <tr data-item-id="{{ item.id }}">
+        <td class="cell-icon">
+          {% if item.icon and item.icon.startswith('/admin/icons/') %}
+            <img class="icon-preview" src="{{ item.icon }}" alt="{{ item.name }}">
+          {% else %}
+            <span class="icon-ref" title="{{ item.icon }}">{{ item.icon }}</span>
+          {% endif %}
+          <input class="input-file" type="file" accept="image/png,image/jpeg,image/webp"
+                 data-action="upload-icon" data-item-id="{{ item.id }}">
+        </td>
+        <td>
+          <code>{{ item.id }}</code>
+          <div class="muted small">{{ item.section }}{% if item.isDefaultFree %} · 默认免费{% endif %}</div>
+        </td>
+        <td><input class="input" type="text" maxlength="64" value="{{ item.name }}" data-field="name"></td>
+        <td><input class="input" type="text" maxlength="255" value="{{ item.description or '' }}" data-field="description"></td>
+        <td class="num"><input class="input input-num" type="number" min="0" step="1" value="{{ item.price }}" data-field="price"></td>
+        <td class="num"><input class="input input-num" type="number" min="0" step="1" value="{{ item.order }}" data-field="order"></td>
+        <td class="cell-shelf">
+          <label class="switch">
+            <input type="checkbox" data-field="onShelf" {% if item.onShelf %}checked{% endif %}>
+            <span class="switch-text">{% if item.onShelf %}在架{% else %}已下架{% endif %}</span>
+          </label>
+        </td>
+        <td class="cell-actions">
+          <button class="btn btn-primary btn-sm" type="button" data-action="save-item" data-item-id="{{ item.id }}">保存</button>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 class="card-title">新增商品</h2>
+  <form id="create-item-form" class="form-grid" data-action="create-item">
+    <label class="field">
+      <span>商品编码</span>
+      <input type="text" name="id" required pattern="[a-z0-9][a-z0-9_]{1,35}" value="{{ suggested_id }}">
+      <small class="muted">小写字母 / 数字 / 下划线，2–36 位</small>
+    </label>
+    <label class="field">
+      <span>分区</span>
+      <select name="section">
+        <option value="frame">frame（头像框）</option>
+        <option value="theme">theme（主题）</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>名称</span>
+      <input type="text" name="name" required maxlength="64" placeholder="如：春风">
+    </label>
+    <label class="field">
+      <span>描述</span>
+      <input type="text" name="description" maxlength="255" placeholder="一句话描述">
+    </label>
+    <label class="field">
+      <span>价格（积分）</span>
+      <input type="number" name="price" min="0" step="1" required value="1000">
+    </label>
+    <label class="field">
+      <span>排序</span>
+      <input type="number" name="order" min="0" step="1" value="9">
+    </label>
+    <label class="field">
+      <span>状态</span>
+      <select name="onShelf">
+        <option value="1">在架</option>
+        <option value="0">已下架</option>
+      </select>
+    </label>
+    <div class="field field-actions">
+      <button class="btn btn-primary" type="submit">新增商品</button>
+    </div>
+  </form>
+  <p class="muted small">
+    <code>icon</code> 缺省写为 <code>res://&lt;编码&gt;</code>（与内置商品同形）；需要自定义图标时用上表的「选择文件」，
+    只接受 PNG / JPEG / WebP，按文件内容识别类型（不看扩展名），默认上限 512 KB。
+  </p>
+</div>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{# ⑤ 订单记录（PLAN §13.2 ⑤）：谁在什么时间买了什么、花了多少分。
+   price_paid 是下单时的成交价（不随后台改价变化）。 #}
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2 class="card-title">购买记录</h2>
+    <div class="card-actions">
+      <span class="chip">共 {{ data.total | int }} 笔</span>
+      <span class="chip chip-soft">第 {{ data.page }} / {{ ((data.total - 1) // data.pageSize + 1) if data.total else 1 }} 页</span>
+    </div>
+  </div>
+
+  {% if data['items'] %}
+  <table class="table">
+    <thead>
+      <tr><th>购买时间</th><th>用户</th><th>商品</th><th class="num">花费积分</th><th>订单号</th></tr>
+    </thead>
+    <tbody>
+    {% for row in data['items'] %}
+      <tr>
+        <td class="nowrap">{{ row.purchasedAt | time }}</td>
+        <td>
+          {{ row.username or '（无账号）' }}
+          <div class="muted small"><code>{{ row.userId }}</code></div>
+        </td>
+        <td>{{ row.itemName or '（商品已下线）' }} <div class="muted small"><code>{{ row.itemId }}</code></div></td>
+        <td class="num">{{ row.pricePaid | points }}</td>
+        <td><code class="small">{{ row.id }}</code></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty muted">还没有订单（App 碳小铺购买后同步上来即出现）。</p>
+  {% endif %}
+</div>
+
+<div class="pager">
+  {% set last = ((data.total - 1) // data.pageSize + 1) if data.total else 1 %}
+  {% if data.page > 1 %}<a class="btn btn-ghost" href="{{ prefix }}/orders?page={{ data.page - 1 }}&pageSize={{ data.pageSize }}">← 上一页</a>
+  {% else %}<span class="btn btn-ghost is-disabled">← 上一页</span>{% endif %}
+  <span class="pager-info muted small">{{ data.page }} / {{ last }}</span>
+  {% if data.page < last %}<a class="btn btn-ghost" href="{{ prefix }}/orders?page={{ data.page + 1 }}&pageSize={{ data.pageSize }}">下一页 →</a>
+  {% else %}<span class="btn btn-ghost is-disabled">下一页 →</span>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{# ⑥ 系统配置（PLAN §13.2 ⑥）：目标奖励分值 / 每日封顶值 / 徽章开关。
+   存储位置：app_config['points_daily_cap'] / app_config['badges_enabled'] / goal_def.reward。 #}
+{% block content %}
+<div class="grid-2">
+  <div class="card">
+    <h2 class="card-title">运行期配置</h2>
+    <form id="config-form" data-action="save-config" class="form-stack">
+      <label class="field">
+        <span>每日记录积分封顶值（points_daily_cap）</span>
+        <input type="number" name="dailyCap" min="0" step="1" value="{{ data.dailyCap }}" required>
+        <small class="muted">对应 PLAN §9.2 的 <code>实入 A = max(0, min(C, 200 − D))</code>；文档默认 200。</small>
+      </label>
+      <label class="field">
+        <span>徽章开关（badges_enabled）</span>
+        <select name="badgesEnabled">
+          <option value="1" {% if data.badgesEnabled %}selected{% endif %}>启用（1）</option>
+          <option value="0" {% if not data.badgesEnabled %}selected{% endif %}>关闭（0）</option>
+        </select>
+        <small class="muted">关闭后徽章不再解锁（徽章本身不发积分，见 PLAN §9.1 R3）。</small>
+      </label>
+      <label class="field">
+        <span>商品目录版本（只读）</span>
+        <input type="text" value="{{ data.shopVersion }}" readonly>
+        <small class="muted">由商品管理自动 bump；客户端据此判断是否整份覆盖本地价目表。</small>
+      </label>
+      <div class="field field-actions">
+        <button class="btn btn-primary" type="submit">保存运行期配置</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">目标奖励分值（goal_def.reward）</h2>
+    <p class="muted small">11 个目标（PLAN §10.1 / 附录 B §8.1）。目标奖励不计入每日封顶（PLAN §9.2 R2）。</p>
+    <form id="goal-form" data-action="save-goals">
+      <table class="table table-tight">
+        <thead><tr><th>目标</th><th>周期</th><th class="num">奖励积分</th></tr></thead>
+        <tbody>
+        {% for goal in data.goalRewards %}
+          <tr>
+            <td>{{ goal.name }} <div class="muted small"><code>{{ goal.id }}</code></div></td>
+            <td>{{ goal.tier }}</td>
+            <td class="num"><input class="input input-num" type="number" min="0" step="1"
+                                   value="{{ goal.reward }}" data-goal-id="{{ goal.id }}"></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <div class="field field-actions">
+        <button class="btn btn-primary" type="submit">保存目标奖励</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <h2 class="card-title">口径提示（未决问题）</h2>
+  <p class="muted small">
+    附录 D10-5 的通过判据写有「App 侧能读到」，但附录 B §5.4 与 PLAN §13.3 只定义了<b>商品目录</b>的下发通道
+    （<code>GET /api/v1/shop/items</code>），没有把 <code>points_daily_cap</code> / <code>badges_enabled</code> /
+    <code>goal_def.reward</code> 下发给客户端的接口。本页面保证<b>服务端侧</b>写入正确、可回读、有审计；
+    客户端下发通道属「服务端 API」写入范围（server-api），已在任务报告中登记为 STOP / 未决问题，
+    未自行新增接口。
+  </p>
+</div>
+{% endblock %}

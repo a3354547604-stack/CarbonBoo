@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{# ⑦ 操作日志（PLAN §13.2 ⑦）：谁改了价格、什么时候改的（含改前 / 改后）。时间倒序。 #}
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2 class="card-title">操作日志</h2>
+    <div class="card-actions">
+      <span class="chip">共 {{ data.total | int }} 条</span>
+      {% if action %}<span class="chip chip-soft">筛选：{{ action_label(action) }}（{{ action }}）</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="filter-row">
+    <a class="btn btn-sm {% if not action %}btn-primary{% else %}btn-ghost{% endif %}" href="{{ prefix }}/logs">全部</a>
+    {% for code in ['login', 'change_price', 'toggle_shelf', 'update_item', 'create_item', 'upload_icon', 'update_config', 'change_password'] %}
+    <a class="btn btn-sm {% if action == code %}btn-primary{% else %}btn-ghost{% endif %}"
+       href="{{ prefix }}/logs?action={{ code }}">{{ action_label(code) }}</a>
+    {% endfor %}
+  </div>
+
+  {% if data['items'] %}
+  <table class="table">
+    <thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>目标</th><th>改前 / 改后</th><th>IP</th></tr></thead>
+    <tbody>
+    {% for row in data['items'] %}
+      <tr>
+        <td class="nowrap">{{ row.createdAt | time }}</td>
+        <td>{{ row.adminUsername or row.adminId }}</td>
+        <td><span class="tag">{{ action_label(row.action) }}</span> <div class="muted small"><code>{{ row.action }}</code></div></td>
+        <td>
+          {% if row.targetId %}<code>{{ row.targetId }}</code>{% else %}—{% endif %}
+          {% if row.targetType %}<div class="muted small">{{ row.targetType }}</div>{% endif %}
+        </td>
+        <td class="cell-detail">
+          {% if row.detail %}<code class="detail-json">{{ row.detail | tojson }}</code>{% else %}—{% endif %}
+        </td>
+        <td class="muted small">{{ row.ip or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty muted">还没有操作日志。</p>
+  {% endif %}
+</div>
+
+<div class="pager">
+  {% set last = ((data.total - 1) // data.pageSize + 1) if data.total else 1 %}
+  {% set suffix = ('&action=' ~ action) if action else '' %}
+  {% if data.page > 1 %}<a class="btn btn-ghost" href="{{ prefix }}/logs?page={{ data.page - 1 }}&pageSize={{ data.pageSize }}{{ suffix }}">← 上一页</a>
+  {% else %}<span class="btn btn-ghost is-disabled">← 上一页</span>{% endif %}
+  <span class="pager-info muted small">{{ data.page }} / {{ last }}</span>
+  {% if data.page < last %}<a class="btn btn-ghost" href="{{ prefix }}/logs?page={{ data.page + 1 }}&pageSize={{ data.pageSize }}{{ suffix }}">下一页 →</a>
+  {% else %}<span class="btn btn-ghost is-disabled">下一页 →</span>{% endif %}
+</div>
+{% endblock %}

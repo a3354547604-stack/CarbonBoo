@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{# ③ 用户列表（PLAN §13.2 ③）：设备 / 账号标识、首次接入时间、最后同步时间、记录数。
+   设备列表口径 = 该用户已同步行按 device_id 去重 + 各自最后一次同步时间（附录 B §3 注）。 #}
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h2 class="card-title">账号与设备</h2>
+    <div class="card-actions">
+      <span class="chip">共 {{ data.total | int }} 个账号</span>
+      <span class="chip chip-soft">第 {{ data.page }} / {{ ((data.total - 1) // data.pageSize + 1) if data.total else 1 }} 页</span>
+    </div>
+  </div>
+
+  {% if data['items'] %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>账号</th><th>user_id</th><th>状态</th>
+        <th>首次接入</th><th>最后同步</th>
+        <th class="num">记录数</th><th class="num">同步行</th><th>设备（按 device_id 去重）</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in data['items'] %}
+      <tr>
+        <td>
+          <strong>{{ row.username }}</strong>
+          {% if row.lastLoginAt %}<div class="muted small">最后登录 {{ row.lastLoginAt | time }}</div>{% endif %}
+        </td>
+        <td><code class="small">{{ row.userId }}</code></td>
+        <td>
+          {% if row.isActive %}<span class="tag tag-ok">正常</span>
+          {% else %}<span class="tag tag-warn">已注销 / 无账号</span>{% endif %}
+        </td>
+        <td class="nowrap">{{ (row.accountCreatedAt or row.firstSeenAt) | time }}</td>
+        <td class="nowrap">{{ row.lastSyncAt | time }}</td>
+        <td class="num">{{ row.recordCount | int }}</td>
+        <td class="num">{{ row.rowCount | int }}</td>
+        <td>
+          {% if row.devices %}
+          <ul class="device-list">
+            {% for device in row.devices %}
+            <li>
+              <code class="small">{{ device.deviceId }}</code>
+              <span class="muted small">{{ device.lastSyncAt | time }} · {{ device.rowCount | int }} 行</span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}<span class="muted small">—（该账号尚无上行数据）</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty muted">还没有账号（App 注册并登录后，云端这里会出现账号与设备）。</p>
+  {% endif %}
+</div>
+
+<div class="pager">
+  {% set last = ((data.total - 1) // data.pageSize + 1) if data.total else 1 %}
+  {% if data.page > 1 %}<a class="btn btn-ghost" href="{{ prefix }}/users?page={{ data.page - 1 }}&pageSize={{ data.pageSize }}">← 上一页</a>
+  {% else %}<span class="btn btn-ghost is-disabled">← 上一页</span>{% endif %}
+  <span class="pager-info muted small">{{ data.page }} / {{ last }}</span>
+  {% if data.page < last %}<a class="btn btn-ghost" href="{{ prefix }}/users?page={{ data.page + 1 }}&pageSize={{ data.pageSize }}">下一页 →</a>
+  {% else %}<span class="btn btn-ghost is-disabled">下一页 →</span>{% endif %}
+</div>
+{% endblock %}
