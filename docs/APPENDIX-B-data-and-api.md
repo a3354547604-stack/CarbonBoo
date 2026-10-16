@@ -863,6 +863,7 @@ export interface AppResult<T> {
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
 | GET | `/api/v1/shop/items` | 无 | 商品目录与价格（客户端启动拉取一次） |
+| GET | `/api/v1/config` | 无 | **全局可读配置**（系统配置的下发通道，见 §5.5；客户端启动拉取一次） |
 | GET | `/admin/login` | 无 | 后台登录页 |
 | POST | `/admin/login` | 无 | 管理员登录 → `adminToken` |
 | POST | `/admin/password` | adminToken | 修改管理员密码 |
@@ -894,6 +895,64 @@ export interface AppResult<T> {
 ```
 
 **客户端取价规则**：启动时有网 → 拉取并整份覆盖 `app_config['shop_items']`；失败或数据非法 → **整份丢弃**，继续用上一份有效配置；从未拉到过 → 用 `rawfile/shop/shop-items.json` 内置默认价。后台改价**下次启动生效**。
+
+### 5.5 config（客户端可读配置，**免鉴权**）
+
+> **用途**：把后台 `/admin/config` 的三项系统配置**下发**给 App —— 这是验收 **D10-5**「改目标奖励分值 / 每日封顶值 / 徽章开关 → App 侧能读到」的**唯一通道**。
+> **鉴权：无**（与 §5.4 的 `GET /api/v1/shop/items` 同组）：公共只读配置，**未登录也要能读到**；后端不可用时照常用本地值（D10-8 / 铁律 1）。
+> **语义边界（铁律 1）**：服务端只提供**下行默认值**（"搬运"），本机 `app_config` 仍是唯一真相源；本端点**只读、不写 `admin_op_log`、不写 `sync_log`**（它不是同步端点），服务端**不回写**任何客户端本地值。
+> `app_config` 依旧是**本机专属表、不参与同步**（§1.1/§1.2 的清单与口径**不变**）。
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | `/api/v1/config` | 无 | 全局可读配置（客户端**冷启动**拉取一次；失败或非法 → 整份丢弃） |
+
+```jsonc
+// GET /api/v1/config
+// res 200
+{
+  "ok": true,
+  "data": {
+    "version": "2026-11-06-1",     // 非空字符串：本份配置的版本号（客户端只比较"与上一份是否相同"）
+    "pointsDailyCap": 200,         // 非负整数：记录类积分每日封顶
+    "badgesEnabled": true,         // **布尔**（不是 0/1 整数）：徽章开关
+    "goalRewards": [               // **可缺省**：缺省（或空数组）= 用 App 内置 rawfile 种子
+      { "goalId": "S1", "reward": 60 },
+      { "goalId": "M2", "reward": 300 }
+    ],
+    "serverTime": 1762300000000    // 毫秒整数（服务端时钟）
+  }
+}
+// res 500（服务端配置读取失败）
+{ "ok": false, "code": "SERVER_ERROR", "message": "配置读取失败" }
+```
+
+**服务端生成规则（逐字照此实现）**
+
+> 下表里的 `app_config` 指**服务端库**里的同名键值表（列 `id` / `value` / `version` / `fetched_at`），
+> 与客户端**本机** `app_config` 同名但各自独立；客户端把整份响应落盘到自己的 `app_config['server_config']`。
+
+| 字段 | 取值来源 | 缺失时 |
+|---|---|---|
+| `version` | 服务端 `app_config['config_version']`：先取该键的 `value`，没有则取它的 `version` 列（与 `shop_items_version` 同一套优先级规则，但**用独立键名 `config_version`**，避免与商品目录的版本互相顶替） | 键不存在 → `"0.0.0"`（**非空**，不回 null） |
+| `pointsDailyCap` | 服务端 `app_config['points_daily_cap']`（种子 `200`，见 `server/sql/seed.sql`） | 缺键或值不是整数 → **`200`**（不改写库、不报错） |
+| `badgesEnabled` | 服务端 `app_config['badges_enabled']`（库内 `1` 启用 / `0` 关闭）→ **序列化为 JSON 布尔**（`1 → true`、`0 → false`） | 缺键 → **`true`**（缺省启用；同样不改写库） |
+| `goalRewards` | 服务端 `goal_def` 表逐行（按 `goal_def.id` 升序；**不新增表**）—— `goalId` = `goal_def.id`，`reward` = `goal_def.reward` | 表为空 → 省略该字段（或回 `[]`，客户端行为相同） |
+| `serverTime` | 服务端当前毫秒时间戳 | — |
+
+> ⚠️ **`badgesEnabled` 是 JSON 布尔**：后台 API（`/admin/config`）内部用 `1`/`0` 表示无所谓，但**客户端端点必须序列化成 `true`/`false`**——
+> 客户端侧要的是布尔语义，回 `1` 会把"数据库里的整数表示"泄漏到公共契约里（这类"同名不同表示"正是本轮在收敛的缺陷）。
+> ⚠️ **版本必须真的会变**：`PUT /admin/config` 成功保存后，**必须**同步更新 `app_config['config_version']`（任意非空字符串，惯例 `<yyyy.MM.dd>-<n>` 递增）；
+> 否则客户端无法判断"内容是否变了"，D10-5 的"改了能读到"就退化成"碰运气"。
+
+**客户端校验与落地口径**
+
+1. **整份校验**：`version` 非空字符串；`pointsDailyCap` 非负整数；`badgesEnabled` 布尔；`goalRewards` 若出现必须是数组且每项为 `{ goalId: 非空字符串, reward: 非负整数 }`；`serverTime` 为整数。
+2. **任一字段非法 → 整份丢弃**：不写 `app_config['server_config']`，沿用上一份有效值；从未成功拉到过 → 用 App 内置 `rawfile` 种子（`rawfile/goals/goal-defs.json` + 内置封顶 200 + 徽章启用）。
+3. `goalRewards` **缺省或空数组 → 用内置种子**；出现时，**`goalId` 必须能在 `rawfile/goals/goal-defs.json` 里找到，未知 `goalId` 整条忽略**（其余条目照常生效）。
+4. **落盘**：整份 JSON 写入 `app_config['server_config']`；**生效时机 = 客户端冷启动**拉取一次（与取价同一次启动流程），后台改动**下次启动生效**。
+5. `version` 与上一份**相同** → 由客户端自行决定（可跳过写入）；本契约**只强制**第 2 条的"整份校验失败即整份丢弃"。
+6. 与取价的关系：两者各自独立（一个失败不影响另一个）；都失败时 App 仍以本地值与内置种子运行（D10-8）。
 
 ---
 
