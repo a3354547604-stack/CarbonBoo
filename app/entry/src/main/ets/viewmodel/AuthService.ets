@@ -63,11 +63,13 @@ export class ServerAuthProvider implements AuthProvider {
   }
 
   async logout(token: string): Promise<AppResult<boolean>> {
+    // 附录 B §5.2：令牌**只从 `Authorization` 头取**，请求体不带 token（体可为空）。
     const res: HttpResponse = await this.http.request({
       method: 'POST',
       url: `${this.http.baseUrl()}/api/v1/auth/logout`,
-      body: JSON.stringify({ token }),
+      body: '',
       timeoutMs: HTTP_TIMEOUT_MS,
+      token,
     });
     if (res.status === 200) {
       return ok<boolean>(true);
@@ -76,11 +78,13 @@ export class ServerAuthProvider implements AuthProvider {
   }
 
   async deleteAccount(password: string, token: string): Promise<AppResult<number>> {
+    // 附录 B §5.2：注销体**只带 `password`**，令牌走 `Authorization` 头。
     const res: HttpResponse = await this.http.request({
       method: 'DELETE',
       url: `${this.http.baseUrl()}/api/v1/auth/account`,
-      body: JSON.stringify({ password, token }),
+      body: JSON.stringify({ password }),
       timeoutMs: HTTP_TIMEOUT_MS,
+      token,
     });
     if (res.status !== 200) {
       return fail<number>('DELETE_ACCOUNT_FAILED', ServerAuthProvider.messageOf(res));

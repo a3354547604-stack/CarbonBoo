@@ -131,8 +131,15 @@ export class PointService {
         input.occurredAt, now, now, this.deviceOf(), this.syncOf(),
       ]
     );
-    const exists = await this.store.query('SELECT id FROM point_record WHERE source_type = ? AND source_id = ? AND flow_kind = ?',
-      [input.sourceType, input.sourceId, input.type === 'reverse' ? 'reverse' : 'primary']);
+    // 回读幂等键：**键必须与 uq_pr_source 的键完全一致**（含 user_id）。
+    // t9 缺陷 B：唯一键已改为 (user_id, source_type, source_id, flow_kind)，
+    // 而 `source_id` 本身不含账号维度 —— 少了 user_id 就可能命中**别的账号**的同名键
+    // （典型：两天/两账号同名目标 'S1:D:2026-11-06'），把"确实写入成功"误判成"重复、未入账"。
+    // 对齐索引键之后，"被 IGNORE 的行必是本账号的同一业务事实"才是自洽的。
+    const flowKind: string = input.type === 'reverse' ? 'reverse' : 'primary';
+    const exists = await this.store.query(
+      'SELECT id FROM point_record WHERE user_id = ? AND source_type = ? AND source_id = ? AND flow_kind = ?',
+      [userId, input.sourceType, input.sourceId, flowKind]);
     const row = firstOf(exists);
     const actualId: string = row === undefined ? '' : textOf(row, 'id');
     if (actualId === id) {

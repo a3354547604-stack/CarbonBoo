@@ -25,6 +25,17 @@ export interface HttpRequest {
   body: string;
   /** 超时（毫秒）。 */
   timeoutMs: number;
+  /**
+   * 可选登录令牌（**鉴权头由网络层统一拼装**，见 `HttpClient.request`）。
+   *
+   * 契约（附录 B §5.2/§5.3）：需要鉴权的端点**只从 `Authorization` 头取令牌**
+   * （`Authorization: Bearer <token>`），**不读请求体里的 token 字段**。
+   * 取值来源是 `ConfigKeys.AUTH_TOKEN`（`preferences`/`app_config`，
+   * 由 `AuthService` 唯一写入）；调用方把读到的值填在这里，
+   * 页面层不参与、也不得自行拼头。
+   * 缺省（`undefined`）＝本请求不带鉴权头（登录/注册、取价这类公开端点）。
+   */
+  token?: string;
 }
 
 /** 一次响应。 */
@@ -64,6 +75,12 @@ export class HttpClient implements HttpPort {
     try {
       const method: http.RequestMethod = HttpClient.methodOf(req.method);
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      // 鉴权头的**唯一拼装点**：任何调用方都别自己拼，交给这里。
+      // 未带令牌时（登录/注册、取价）不加该头，避免发出空 `Bearer `。
+      const token: string | undefined = req.token;
+      if (token !== undefined && token.length > 0) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       const options: http.HttpRequestOptions = {
         method,
         header: headers,
@@ -143,6 +160,31 @@ export class FakeHttpClient implements HttpPort {
   /** 已发生的请求（顺序保留，断言用）。 */
   requests(): HttpRequest[] {
     return this.log;
+  }
+
+  /**
+   * 实际会被送出的 `Authorization` 头值（无令牌时为空串）。
+   *
+   * 与 `HttpClient` 用**同一套拼装规则**（`Bearer <token>`），
+   * 这样用例断言的"会发出什么头"与生产路径完全一致——
+   * 而不是在用例里另写一份拼接逻辑（那会掩盖生产侧的拼装缺陷）。
+   */
+  static authHeaderOf(req: HttpRequest): string {
+    const token: string | undefined = req.token;
+    return token === undefined || token.length === 0 ? '' : `Bearer ${token}`;
+  }
+
+  /** 已发生请求里带鉴权头的条数（鉴权覆盖度断言用）。 */
+  countWithAuth(): number {
+    let n: number = 0;
+    let i: number = 0;
+    while (i < this.log.length) {
+      if (FakeHttpClient.authHeaderOf(this.log[i]).length > 0) {
+        n = n + 1;
+      }
+      i = i + 1;
+    }
+    return n;
   }
 
   /** 请求总数（「未登录时上传请求数 = 0」用它断言）。 */

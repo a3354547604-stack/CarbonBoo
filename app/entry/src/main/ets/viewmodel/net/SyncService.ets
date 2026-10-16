@@ -130,16 +130,21 @@ export class SyncService {
     }
     const t0: number = now;
     const since: number = await this.cfg.stamp(ConfigKeys.LAST_SYNC_AT);
+    const token: string = await this.authToken();
     const payload: string = await this.pushBody(userId, since);
     const pushUrl: string = `${this.http.baseUrl()}/api/v1/sync/push`;
-    const pushRes: HttpResponse = await this.http.request({ method: 'POST', url: pushUrl, body: payload, timeoutMs: HTTP_TIMEOUT_MS });
+    const pushRes: HttpResponse = await this.http.request({
+      method: 'POST', url: pushUrl, body: payload, timeoutMs: HTTP_TIMEOUT_MS, token,
+    });
     if (pushRes.status !== 200) {
       await this.writeLog(userId, 'push', 'failed', 0, 0, 0, SyncService.errorOf(pushRes), t0, Date.now());
       return fail<SyncOutcome>('SYNC_FAILED', `同步失败：${SyncService.errorOf(pushRes)}（未更新最后同步时间）`);
     }
     const pushed: number = await this.markSynced(userId, since);
     const pullUrl: string = `${this.http.baseUrl()}/api/v1/sync/pull?since=${since}`;
-    const pullRes: HttpResponse = await this.http.request({ method: 'GET', url: pullUrl, body: '', timeoutMs: HTTP_TIMEOUT_MS });
+    const pullRes: HttpResponse = await this.http.request({
+      method: 'GET', url: pullUrl, body: '', timeoutMs: HTTP_TIMEOUT_MS, token,
+    });
     if (pullRes.status !== 200) {
       await this.writeLog(userId, 'pull', 'failed', 0, pushed, 0, SyncService.errorOf(pullRes), t0, Date.now());
       return fail<SyncOutcome>('SYNC_FAILED', `同步失败：${SyncService.errorOf(pullRes)}（未更新最后同步时间）`);
@@ -168,6 +173,7 @@ export class SyncService {
       url: `${this.http.baseUrl()}/api/v1/sync/push`,
       body,
       timeoutMs: HTTP_TIMEOUT_MS,
+      token: await this.authToken(),
     });
     if (res.status !== 200) {
       await this.writeLog(userId, 'push', 'failed', 0, 0, 0, SyncService.errorOf(res), now, Date.now());
@@ -188,6 +194,7 @@ export class SyncService {
       url: `${this.http.baseUrl()}/api/v1/sync/pull?since=0`,
       body: '',
       timeoutMs: HTTP_TIMEOUT_MS,
+      token: await this.authToken(),
     });
     if (res.status !== 200) {
       await this.writeLog(userId, 'pull', 'failed', 0, 0, 0, SyncService.errorOf(res), now, Date.now());
@@ -327,6 +334,24 @@ export class SyncService {
       pushedCount: 0,
       conflictCount: 0,
     };
+  }
+
+  /**
+   * 读取登录令牌（`ConfigKeys.AUTH_TOKEN`），填进 `HttpRequest.token`。
+   *
+   * 为什么由本层读、而不是让 `HttpClient` 自己去查：
+   *  - `HttpClient` 是**纯网络适配器**（`baseUrl` + `request`），constructor 只有 baseUrl，
+   *    不持有 `AppConfig`；给它注入配置会把一个窄端口变成有状态的业务组件，
+   *    也会让 `FakeHttpClient` 的用例装配复杂化；
+   *  - 本层已经有 `cfg`，且**只在已登录分支才走到这里**（`sync`/`fullUpload`/`fullRestore`
+   *    开头都判过 `state.isLoggedIn()`），读到的必然是有效令牌。
+   * 头部的实际拼装仍然只在 `HttpClient.request` 一处（`Bearer <token>`）。
+   *
+   * ⚠️ 只**读**该 key：按 AGENTS/`ConfigKeys` 约定，`AUTH_TOKEN` 的写方只有 `AuthService`。
+   */
+  private async authToken(): Promise<string> {
+    const token: string | undefined = await this.cfg.get(ConfigKeys.AUTH_TOKEN);
+    return token === undefined ? '' : token;
   }
 
   /** 推送体（`since = 0` 时是全量快照）。 */

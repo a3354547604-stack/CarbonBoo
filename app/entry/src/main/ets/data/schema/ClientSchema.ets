@@ -127,7 +127,18 @@ export class ClientSchema {
   device_id    TEXT,
   sync_state   TEXT    NOT NULL DEFAULT 'local'
 )`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_source ON point_record(source_type, source_id, flow_kind)`,
+    // ⚠️ 与 `docs/APPENDIX-B-data-and-api.md` §2:142 **有意不一致**（t9 修复）：
+    //   附录 B 现文是 (source_type, source_id, flow_kind)，**缺少 user_id**。
+    //   业务唯一键的取值口径本身不含账号（附录 B §2:135-138：
+    //     goal → '<goalId>:<periodKey>'、shop_item → '<item.id>'、
+    //     carbon_record → '<id>#<revision>'、carbon_include → '<id>'），
+    //   而本机库同时容纳 local-guest / demo-user / 账号 userId 三种 user_id
+    //   （服务端更是多账号共库）→ 两个账号同一天达成同名目标会得到完全相同的键值，
+    //   后入账者被唯一索引挡下，**合法积分流水丢失**。
+    //   服务端 t5 已改为含 user_id（server/sql/schema.sql + migrations/001），
+    //   客户端此处与之逐字对齐：`UNIQUE KEY uq_pr_source (user_id, source_type, source_id, flow_kind)`。
+    //   → 文档侧待修：APPENDIX-B §2:130-142（索引行 + 上方"唯一性"注释段）。
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_source ON point_record(user_id, source_type, source_id, flow_kind)`,
     `CREATE INDEX IF NOT EXISTS idx_pr_user_time ON point_record(user_id, occurred_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_pr_cap       ON point_record(user_id, occurred_at, source_type, is_deleted)`,
     `CREATE INDEX IF NOT EXISTS idx_pr_updated   ON point_record(updated_at)`,

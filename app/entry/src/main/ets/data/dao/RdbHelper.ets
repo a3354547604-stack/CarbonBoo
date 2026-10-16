@@ -101,6 +101,11 @@ export class RdbHelper {
       await store.executeSql(statements[i]);
       i = i + 1;
     }
+    // 索引口径迁移（t9）：旧版本建的是 uq_pr_source(source_type, source_id, flow_kind)，
+    // 而 `CREATE UNIQUE INDEX IF NOT EXISTS` **不会**替换已存在的同名索引 ——
+    // 于是"覆盖安装"的机器会继续用旧索引，缺陷在新老机器上表现不一致。
+    // 这里显式判断：若现存 uq_pr_source 不含 user_id，则删掉重建为含 user_id 的形态。
+    await RdbHelper.migrateUqPrSource(store);
     const now: number = Date.now();
     // schema 版本只写一次：已存在就不覆盖（升版逻辑在后续切片按 §9 实现）。
     const existing: relationalStore.ResultSet = await store.querySql(
@@ -142,6 +147,51 @@ export class RdbHelper {
       rs.close();
     }
     return out;
+  }
+
+  /**
+   * 幂等迁移：把 `uq_pr_source` 统一成**含 `user_id`** 的口径（t9 / 缺陷 B）。
+   *
+   * 为什么不能只靠 `ClientSchema.DDL` 里的 `CREATE UNIQUE INDEX IF NOT EXISTS`：
+   * 该语句对**已存在**的同名索引是空操作，所以老库升级后仍会保留旧口径
+   * （`source_type, source_id, flow_kind`），导致"新装机器正常、覆盖安装丢积分"这种
+   * 最难查的不一致。这里对照 `PRAGMA index_info` 的真实列序判断，必要时 DROP 后重建。
+   *
+   * 幂等性：索引不存在 → 什么都不做（交给 DDL 建）；已含 `user_id` → 什么都不做；
+   * 仅"存在且不含 user_id"这一种情况才 DROP + CREATE。
+   * @param store 已打开的 RdbStore
+   * @returns 是否真的做过迁移（供启动日志/用例断言）
+   */
+  static async migrateUqPrSource(store: relationalStore.RdbStore): Promise<boolean> {
+    const rs: relationalStore.ResultSet = await store.querySql(`PRAGMA index_info('uq_pr_source')`);
+    const columns: string[] = [];
+    try {
+      while (rs.goToNextRow()) {
+        // index_info 的列序：seqno(0) / cid(1) / name(2)
+        columns.push(rs.getString(2));
+      }
+    } finally {
+      rs.close();
+    }
+    if (columns.length === 0) {
+      return false;
+    }
+    let hasUser: boolean = false;
+    let i: number = 0;
+    while (i < columns.length) {
+      if (columns[i] === 'user_id') {
+        hasUser = true;
+      }
+      i = i + 1;
+    }
+    if (hasUser) {
+      return false;
+    }
+    await store.executeSql('DROP INDEX IF EXISTS uq_pr_source');
+    await store.executeSql(
+      'CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_source ON point_record(user_id, source_type, source_id, flow_kind)'
+    );
+    return true;
   }
 
   /** 取已打开的 store；未打开时抛错（调用方必须先 `open`）。 */
