@@ -79,6 +79,15 @@ export class ResultSetMapper {
   }
 
   /**
+   * 按列序号读取原始值（公开版：给"列名取不到但知道下标"的聚合场景用）。
+   * @param rs 结果集
+   * @param idx 列下标
+   */
+  static rawValueAt(rs: relationalStore.ResultSet, idx: number): relationalStore.ValueType {
+    return ResultSetMapper.rawByIndex(rs, idx);
+  }
+
+  /**
    * 按列序号读取原始值。
    *
    * 为什么要自己 `isColumnNull` 再按类型分派：SDK 的 `getString` 对 NULL 列会抛异常，

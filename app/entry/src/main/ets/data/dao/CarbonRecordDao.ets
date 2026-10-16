@@ -211,14 +211,23 @@ export class CarbonRecordDao {
     );
   }
 
-  /** 单值聚合（SUM / COUNT 一律走 SQL，禁止取回内存浮点累加）。 */
+  /**
+   * 单值聚合（SUM / COUNT 一律走 SQL，禁止取回内存浮点累加）。
+   *
+   * 注意：API 12 的 `ResultSet` **只有 `getColumnName(columnIndex: number): string`**，
+   * 没有 `getColumnNames()`（复数形式不存在）。聚合查询一律只 SELECT 一列，
+   * 故按下标 0 取名即可；取不到名字时回落到下标直读，避免因列名异常静默返回 0。
+   */
   private async scalar(sql: string, args: relationalStore.ValueType[]): Promise<number> {
     const rs: relationalStore.ResultSet = await this.store.querySql(sql, args);
     try {
       if (!rs.goToNextRow()) {
         return 0;
       }
-      const v: relationalStore.ValueType = ResultSetMapper.columnValue(rs, rs.getColumnNames()[0]);
+      const name: string = rs.getColumnName(0);
+      const v: relationalStore.ValueType = name.length > 0
+        ? ResultSetMapper.columnValue(rs, name)
+        : ResultSetMapper.rawValueAt(rs, 0);
       if (typeof v === 'number') {
         return v;
       }

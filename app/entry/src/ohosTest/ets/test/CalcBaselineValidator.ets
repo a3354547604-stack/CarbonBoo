@@ -91,6 +91,33 @@ function fixed4(v: number): string {
   return v.toFixed(4);
 }
 
+/**
+ * 基准字段的「数值 或 数值字符串」统一取数（**本文件自足，不依赖解析层的转换**）。
+ *
+ * 为什么必须在这里再做一次：基准 JSON 里数值有两种写法 ——
+ * `pointsPerKgCo2e: 100`（number）与 `minReductionForPoint: "0.005"`（**字符串**）。
+ * `CalcTestTypes.parseBenchmark` 会把后者转成 number，但校验逻辑不该依赖那一步：
+ * 一旦解析层出问题（漏编译、离线脚本跳过转换、字段被改成别的写法），
+ * 传进来的就是字符串，`Dec.from("0.005")` 会抛「只接受有限数」，
+ * 于是"校验器"变成"崩溃器"——这是本切片实测踩到过的坑。
+ * 这里按运行期类型分派：number 直接用；string 才 parseFloat；两条调用路径结果一致。
+ * @param v 基准字段原值
+ * @param path 出错时用于定位的字段路径
+ */
+function numLike(v: number | string, path: string): number {
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) {
+      throw new Error(`基准字段错误：${path} 期望有限数值，实际 ${v}`);
+    }
+    return v;
+  }
+  const n: number = Number.parseFloat(v);
+  if (!Number.isFinite(n)) {
+    throw new Error(`基准字段错误：${path} 期望可解析为数值，实际 "${v}"`);
+  }
+  return n;
+}
+
 export class CalcBaselineValidator {
   /**
    * 逐条复算基准。
@@ -235,7 +262,7 @@ export class CalcBaselineValidator {
             actual: `${pointC}`,
           });
         }
-        const required: boolean = CarbonCalc.isPointRequired(red, bench.meta.minReductionForPoint);
+        const required: boolean = CarbonCalc.isPointRequired(red, numLike(bench.meta.minReductionForPoint, 'meta.minReductionForPoint'));
         const expectRequired: boolean = bd.noPointRow !== true;
         checked = checked + 1;
         if (required !== expectRequired) {

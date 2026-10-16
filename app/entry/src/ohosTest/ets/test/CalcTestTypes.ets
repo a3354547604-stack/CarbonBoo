@@ -27,7 +27,8 @@ export interface CalcMeta {
   formulas: CalcFormula;
   pointsPerKgCo2e: number;
   dailyRecordCap: number;
-  minReductionForPoint: number;
+  /** 基准里写作字符串 "0.005"；解析层转 number，校验层再用 `numLike` 兜一次。 */
+  minReductionForPoint: number | string;
   carbonCoinRate: number;
 }
 

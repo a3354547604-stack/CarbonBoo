@@ -67,16 +67,24 @@ export default function calcSamples(): void {
       const benchJson: string = await readRaw(BENCH_RAW);
       const bench: CalcBenchmark = parseBenchmark(benchJson);
 
-      // 基准自检：条数必须与文档一致，防止"基准被删了几组还照样全绿"
+      // 基准自检：条数必须与文档一致，防止"基准被删了几组还照样全绿"。
+      // ⚠️ `factors` 是 **31** 条，不是 30：30 条因子（含 10 条 recording:false 对照镜像）
+      //    **+ 1 条换算常量 `CAR_OWN_FACTOR`**（数组最后一条）。
+      //    口径原文见 `docs/APPENDIX-A-carbon-factors.md` §2.5：
+      //    「`tests/cases/carbon-calc.json → factors` 收录本表全部 30 条 + 换算常量 1 条 = 31 项」。
+      //    而 app 侧 `rawfile/factors/carbon-factors.json` 的 `factors` 只有 **30** 条
+      //    （`CAR_OWN_FACTOR` 在该文件的 `conversions` 里，见 A §7），故下面两个断言值不同。
       expect(bench.samples.length).assertEqual(18);
       expect(bench.capSamples.length).assertEqual(5);
       expect(bench.conversions.length).assertEqual(2);
-      expect(bench.factors.length).assertEqual(30);
+      expect(bench.boundarySamples.length).assertEqual(6);
+      expect(bench.factors.length).assertEqual(31);
       expect(bench.meta.factorVersion).assertEqual(VERSION);
       expect(bench.meta.dailyRecordCap).assertEqual(200);
       expect(bench.meta.pointsPerKgCo2e).assertEqual(100);
 
       const appFactors: FactorCase[] = factorsOf(await readRaw(FACTOR_RAW));
+      // app 因子库 JSON 只有 30 条因子；第 31 项 CAR_OWN_FACTOR 在它的 `conversions` 里。
       expect(appFactors.length).assertEqual(30);
 
       const report: ValidationReport = CalcBaselineValidator.run(bench, appFactors);

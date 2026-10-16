@@ -60,6 +60,17 @@ export class ClientSchema {
    * 建表与建索引语句，**按执行顺序**排列。
    * 顺序敏感点：`point_record` 的唯一索引依赖同表列，必须紧跟其建表语句。
    */
+  /**
+   * 建表与建索引语句（**43 条** = 19 CREATE TABLE + 24 CREATE INDEX），按执行顺序排列。
+   *
+   * ⚠️ 这些字符串与 `docs/APPENDIX-B-data-and-api.md` §2 的语句体**逐字等值**
+   *（只去掉文档里的行尾分号），改动任意一个字符都会破坏该等值关系；
+   * 可执行性核对脚本会逐条比对原文。
+   *
+   * 顺序敏感点：`point_record` 的唯一索引依赖同表列，必须紧跟其建表语句。
+   * 文档中夹在语句之间的说明性注释（「取值口径」等）不在本数组里——
+   * 它们不是可执行 SQL，见下方 `SOURCE_NOTES`。
+   */
   static readonly DDL: string[] = [
     // ========== 1. 碳记录 ==========
     `CREATE TABLE IF NOT EXISTS carbon_record (
@@ -89,7 +100,6 @@ export class ClientSchema {
     `CREATE INDEX IF NOT EXISTS idx_cr_user_time ON carbon_record(user_id, occurred_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_cr_user_cat  ON carbon_record(user_id, category, occurred_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_cr_updated   ON carbon_record(updated_at)`,
-
     // ========== 2. 因子元信息（静态字典） ==========
     `CREATE TABLE IF NOT EXISTS carbon_factor_meta (
   id             TEXT PRIMARY KEY,
@@ -99,16 +109,15 @@ export class ClientSchema {
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL
 )`,
-
     // ========== 3. 积分流水（只增） ==========
     `CREATE TABLE IF NOT EXISTS point_record (
   id           TEXT PRIMARY KEY,
   user_id      TEXT    NOT NULL,
   type         TEXT    NOT NULL,   -- record | record_capped | goal | purchase | carbon_include | reverse
-  flow_kind    TEXT    NOT NULL,   -- primary | reverse（同一业务事实只允许一条 primary）
+  flow_kind    TEXT    NOT NULL,   -- primary | reverse（B30/B31 修复：同一业务事实只允许一条 primary）
   points       INTEGER NOT NULL,   -- 正 = 收入，负 = 支出
-  source_type  TEXT    NOT NULL,   -- carbon_record | goal | shop_item | carbon_include（无 'adjust'：无产生方）
-  source_id    TEXT    NOT NULL,   -- 关联业务主键；取值口径见下
+  source_type  TEXT    NOT NULL,   -- carbon_record | goal | shop_item | carbon_include（无 'adjust'：无产生方，见 §7.1）
+  source_id    TEXT    NOT NULL,   -- 关联业务主键；取值口径见下方注释
   title        TEXT    NOT NULL,   -- 展示用标题
   remark       TEXT,
   occurred_at  INTEGER NOT NULL,
@@ -118,16 +127,10 @@ export class ClientSchema {
   device_id    TEXT,
   sync_state   TEXT    NOT NULL DEFAULT 'local'
 )`,
-    // 幂等约束（v4.1）：`source_id` 取值口径**必须写死**（`PointService` 是唯一产生方）：
-    //   carbon_record  → '<carbon_record.id>#<revision>'   入账与冲正取同一值，靠 flow_kind 区分
-    //   goal           → '<goalId>:<periodKey>'            如 'S1:D:2026-02-01'
-    //   shop_item      → '<shop_item.id>'                   商品编码，如 'frame_01'
-    //   carbon_include → '<carbon_include.id>'              兑换记录主键
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_source ON point_record(source_type, source_id, flow_kind)`,
     `CREATE INDEX IF NOT EXISTS idx_pr_user_time ON point_record(user_id, occurred_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_pr_cap       ON point_record(user_id, occurred_at, source_type, is_deleted)`,
     `CREATE INDEX IF NOT EXISTS idx_pr_updated   ON point_record(updated_at)`,
-
     // ========== 4. 每日积分缓存（派生，可重建；不参与判定、不参与同步） ==========
     `CREATE TABLE IF NOT EXISTS point_daily_stat (
   user_id        TEXT    NOT NULL,
@@ -141,7 +144,6 @@ export class ClientSchema {
   PRIMARY KEY (user_id, day_key)              -- 主键必须含 user_id：demo-user 与 local-guest 同日并存
 )`,
     `CREATE INDEX IF NOT EXISTS idx_pds_day ON point_daily_stat(day_key DESC)`,
-
     // ========== 5. 目标定义（静态字典） ==========
     `CREATE TABLE IF NOT EXISTS goal_def (
   id          TEXT PRIMARY KEY,       -- S1..S5, M1..M5, L1
@@ -159,7 +161,6 @@ export class ClientSchema {
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 )`,
-
     // ========== 6. 用户目标进度 ==========
     `CREATE TABLE IF NOT EXISTS user_goal (
   id          TEXT PRIMARY KEY,
@@ -178,7 +179,6 @@ export class ClientSchema {
 )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_ug ON user_goal(user_id, goal_id, period_key)`,
     `CREATE INDEX IF NOT EXISTS idx_ug_updated ON user_goal(updated_at)`,
-
     // ========== 7. 徽章定义（静态字典） ==========
     `CREATE TABLE IF NOT EXISTS badge_def (
   id          TEXT PRIMARY KEY,       -- B_FIRST ...
@@ -192,7 +192,6 @@ export class ClientSchema {
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 )`,
-
     // ========== 8. 用户徽章 ==========
     `CREATE TABLE IF NOT EXISTS user_badge (
   id          TEXT PRIMARY KEY,
@@ -209,7 +208,6 @@ export class ClientSchema {
 )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_ub ON user_badge(user_id, badge_id)`,
     `CREATE INDEX IF NOT EXISTS idx_ub_updated ON user_badge(updated_at)`,
-
     // ========== 9. 商品（价格可由后台下发） ==========
     `CREATE TABLE IF NOT EXISTS shop_item (
   id              TEXT PRIMARY KEY,   -- frame_01..frame_08 / theme_default
@@ -224,7 +222,6 @@ export class ClientSchema {
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL
 )`,
-
     // ========== 10. 购买记录 ==========
     `CREATE TABLE IF NOT EXISTS user_purchase (
   id           TEXT PRIMARY KEY,
@@ -240,7 +237,6 @@ export class ClientSchema {
 )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_up ON user_purchase(user_id, item_id)`,
     `CREATE INDEX IF NOT EXISTS idx_up_updated ON user_purchase(updated_at)`,
-
     // ========== 11. 外观设置 ==========
     `CREATE TABLE IF NOT EXISTS user_appearance (
   id         TEXT PRIMARY KEY,
@@ -257,7 +253,6 @@ export class ClientSchema {
 )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_ua ON user_appearance(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_ua_updated ON user_appearance(updated_at)`,
-
     // ========== 12. 科普索引（静态字典，正文在 rawfile） ==========
     `CREATE TABLE IF NOT EXISTS science_article (
   id           TEXT PRIMARY KEY,      -- sci-01..sci-12
@@ -271,7 +266,6 @@ export class ClientSchema {
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
 )`,
-
     // ========== 13. 科普阅读进度 ==========
     `CREATE TABLE IF NOT EXISTS science_progress (
   id           TEXT PRIMARY KEY,
@@ -288,7 +282,6 @@ export class ClientSchema {
 )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_sp ON science_progress(user_id, article_id)`,
     `CREATE INDEX IF NOT EXISTS idx_sp_updated ON science_progress(updated_at)`,
-
     // ========== 14. 碳普惠兑换记录（模拟演示） ==========
     `CREATE TABLE IF NOT EXISTS carbon_include (
   id           TEXT PRIMARY KEY,
@@ -307,7 +300,6 @@ export class ClientSchema {
 )`,
     `CREATE INDEX IF NOT EXISTS idx_ci_user_time ON carbon_include(user_id, occurred_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_ci_updated   ON carbon_include(updated_at)`,
-
     // ========== 15. 分享记录（本机专属） ==========
     `CREATE TABLE IF NOT EXISTS share_record (
   id           TEXT PRIMARY KEY,
@@ -320,7 +312,6 @@ export class ClientSchema {
   created_at   INTEGER NOT NULL
 )`,
     `CREATE INDEX IF NOT EXISTS idx_sr_user_time ON share_record(user_id, created_at DESC)`,
-
     // ========== 16. 协同日志（本机专属） ==========
     `CREATE TABLE IF NOT EXISTS sync_log (
   id             TEXT PRIMARY KEY,
@@ -337,7 +328,6 @@ export class ClientSchema {
   created_at     INTEGER NOT NULL
 )`,
     `CREATE INDEX IF NOT EXISTS idx_sl_user_time ON sync_log(user_id, created_at DESC)`,
-
     // ========== 17. 用户档案（参与同步） ==========
     `CREATE TABLE IF NOT EXISTS user_profile (
   id             TEXT PRIMARY KEY,
@@ -354,7 +344,6 @@ export class ClientSchema {
 )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_uprofile ON user_profile(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_uprofile_updated ON user_profile(updated_at)`,
-
     // ========== 18. 设备信息（本机专属） ==========
     `CREATE TABLE IF NOT EXISTS device_info (
   id             TEXT PRIMARY KEY,
@@ -367,7 +356,6 @@ export class ClientSchema {
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL
 )`,
-
     // ========== 19. 应用配置（本机专属；含后台下发的商品价格） ==========
     `CREATE TABLE IF NOT EXISTS app_config (
   id         TEXT PRIMARY KEY,        -- config key
@@ -377,5 +365,20 @@ export class ClientSchema {
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 )`,
+  ];
+
+  /**
+   * 附录 B §2 中夹在语句之间的**说明性注释**（非可执行 SQL，故不进 `DDL`）。
+   * 原文逐字留存，便于与文档 diff；`PointService` 写流水时按这里的口径生成 `source_id`。
+   */
+  static readonly SOURCE_NOTES: string[] = [
+    '幂等约束（v4.1）：`source_id` 取值口径**必须写死**（`PointService` 是唯一产生方）：',
+    "  carbon_record  → '<carbon_record.id>#<revision>'   入账与冲正取同一值，靠 flow_kind 区分",
+    "  goal           → '<goalId>:<periodKey>'            如 'S1:D:2026-02-01'",
+    "  shop_item      → '<shop_item.id>'                   商品编码，如 'frame_01'",
+    "  carbon_include → '<carbon_include.id>'              兑换记录主键",
+    '唯一性：同一 source_type+source_id+flow_kind 只能有一条 → 同 revision 的 record / record_capped',
+    "  不可能并存（它们都是 flow_kind='primary'），而 reverse 可与 primary 并存（冲正必进 D，见 PLAN §9.2）。",
+    '  目标按 goalId:periodKey、商品按 item_id、记录按 <id>#<revision> 去重，跨设备重复发放只入账一次。',
   ];
 }
