@@ -1,0 +1,11 @@
+[
+  { "id": "frame_01", "section": "frame", "name": "嫩芽", "description": "初生的绿色", "price": 1500,  "icon": "res://frame_01", "order": 1, "onShelf": 1, "isDefaultFree": 0 },
+  { "id": "frame_02", "section": "frame", "name": "藤蔓", "description": "向上生长",   "price": 2500,  "icon": "res://frame_02", "order": 2, "onShelf": 1, "isDefaultFree": 0 },
+  { "id": "frame_03", "section": "frame", "name": "风车", "description": "清洁能源",   "price": 3500,  "icon": "res://frame_03", "order": 3, "onShelf": 1, "isDefaultFree": 0 },
+  { "id": "frame_04", "section": "frame", "name": "星河", "description": "夜空中的光", "price": 4500,  "icon": "res://frame_04", "order": 4, "onShelf": 1, "isDefaultFree": 0 },
+  { "id": "frame_05", "section": "frame", "name": "极光", "description": "极地之美",   "price": 6000,  "icon": "res://frame_05", "order": 5, "onShelf": 1, "isDefaultFree": 0 },
+  { "id": "frame_06", "section": "frame", "name": "墨竹", "description": "坚韧挺拔",   "price": 8000,  "icon": "res://frame_06", "order": 6, "onShelf": 1, "isDefaultFree": 0 },
+  { "id": "frame_07", "section": "frame", "name": "鎏金", "description": "岁月沉淀",   "price": 10000, "icon": "res://frame_07", "order": 7, "onShelf": 1, "isDefaultFree": 0 },
+  { "id": "frame_08", "section": "frame", "name": "年轮", "description": "时间的礼物", "price": 15000, "icon": "res://frame_08", "order": 8, "onShelf": 1, "isDefaultFree": 0 },
+  { "id": "theme_default", "section": "theme", "name": "默认主题（免费）", "description": "绿色系默认外观", "price": 0, "icon": "res://theme_default", "order": 1, "onShelf": 1, "isDefaultFree": 1 }
+]

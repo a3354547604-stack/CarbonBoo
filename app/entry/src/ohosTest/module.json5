@@ -1,0 +1,49 @@
+{
+  /**
+   * ohosTest 测试模块清单（Stage 模型 · API 12）。
+   *
+   * 为什么必须存在：hvigor 的 `ohosTest` target 会去找
+   * `entry/src/ohosTest/module.json5`，缺了就直接失败在本任务契约的 verify 命令上：
+   *   `ERROR: The './entry/src/main/ohosTest' directory cannot be found,
+   *     or the './entry/src/main/ohosTest/module.json5' file.`
+   * （报错里写的 `src/main/ohosTest` 是 hvigor 的路径拼接笔误，实际读的是 `src/ohosTest/`。）
+   *
+   * 这是 DevEco Studio 生成测试模块时的**标准形态**，故本文件与它们保持一致：
+   *  - 模块名 `entry_test`、`type: "feature"`、`deliveryWithInstall: false`
+   *    —— 测试模块**不随应用安装**，只是把用例装到设备上跑；
+   *  - `deviceTypes: ["default"]`：与主模块 `entry/src/main/module.json5` 一致
+   *    （写 `"phone"` 会报「多个设备的系统能力集交集为空」）；
+   *  - `testRunner` 指向 `OpenHarmonyTestRunner.ets`，由它把 `ets/test/List.test.ets`
+   *    汇总的 hypium 套件交给测试框架执行。
+   *
+   * 本模块**不引入任何第三方包**，也不新增任何业务代码。
+   */
+  "module": {
+    "name": "entry_test",
+    "type": "feature",
+    "description": "$string:module_test_desc",
+    "mainElement": "TestAbility",
+    "deviceTypes": [
+      "default"
+    ],
+    "deliveryWithInstall": false,
+    "installationFree": false,
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "TestAbility",
+        "srcEntry": "./ets/testability/TestAbility.ets",
+        "description": "$string:TestAbility_desc",
+        "icon": "$media:app_icon",
+        "label": "$string:TestAbility_label",
+        "exported": true,
+        "startWindowIcon": "$media:app_icon",
+        "startWindowBackground": "$color:start_window_background"
+      }
+    ],
+    "testRunner": {
+      "name": "OpenHarmonyTestRunner",
+      "srcPath": "./ets/testability/OpenHarmonyTestRunner.ets"
+    }
+  }
+}

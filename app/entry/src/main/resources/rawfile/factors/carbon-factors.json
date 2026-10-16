@@ -1,0 +1,85 @@
+{
+  "meta": {
+    "version": "CF-2026.2",
+    "updatedAt": "2026-10-15",
+    "owner": "carbonboo",
+    "note": "单一因子值口径，无修正系数"
+  },
+  "sources": [
+    { "id": "SRC-MEE-GRID-2022", "name": "生态环境部办公厅 环办气候函〔2023〕43号 第（四）条：2022 年度全国电网平均排放因子", "level": "verified" },
+    { "id": "SRC-GB51366", "name": "【已停用·依据不可核实，见 §1.1】GB/T 51366 经 T/CECA-G 转引", "level": "deprecated" },
+    { "id": "SRC-SH-INC", "name": "上海市碳普惠方法学（回收类唯一可核实原始资料）", "level": "verified" },
+    { "id": "SRC-MEE-GHG", "name": "省级温室气体清单编制指南", "level": "verified" },
+    { "id": "SRC-IEA", "name": "IEA 交通与能源统计口径", "level": "provisional" },
+    { "id": "SRC-EEA", "name": "【已停用·不发布中国数据，见 §1.1】欧洲环境署交通排放系数", "level": "deprecated" },
+    { "id": "SRC-CALC", "name": "本项目按同类量级推算", "level": "provisional" },
+    { "id": "SRC-CCAP-FW", "name": "中国碳普惠方法学（食物浪费）", "level": "provisional" },
+    { "id": "SRC-DERIVED", "name": "本项目按「燃油车自身排放 − 该方式自身排放」推导", "level": "provisional" }
+  ],
+  "categories": [
+    { "key": "travel", "name": "出行", "unit": "km", "icon": "ic_cat_travel", "color": "#4A90D9", "order": 1 },
+    { "key": "utility", "name": "水电燃气", "unit": "mixed", "icon": "ic_cat_utility", "color": "#E6A23C", "order": 2 },
+    { "key": "recycle", "name": "旧物回收", "unit": "kg", "icon": "ic_cat_recycle", "color": "#7FB069", "order": 3 },
+    { "key": "plate", "name": "光盘行动", "unit": "mixed", "icon": "ic_cat_plate", "color": "#D98C6A", "order": 4 }
+  ],
+  "factors": [
+    { "category": "travel", "subType": "walk",        "name": "步行",            "unit": "km",   "value": 0.1920, "ownValue": 0.0000, "source": "SRC-DERIVED", "confidence": "provisional", "recording": true  },
+    { "category": "travel", "subType": "bicycle",     "name": "自行车",          "unit": "km",   "value": 0.1920, "ownValue": 0.0000, "source": "SRC-DERIVED", "confidence": "provisional", "recording": true  },
+    { "category": "travel", "subType": "ebike",       "name": "电动自行车",      "unit": "km",   "value": 0.1800, "ownValue": 0.0120, "source": "SRC-DERIVED", "confidence": "provisional", "recording": true  },
+    { "category": "travel", "subType": "bus",         "name": "公交车",          "unit": "km",   "value": 0.1520, "ownValue": 0.0400, "source": "SRC-DERIVED", "confidence": "provisional", "recording": true  },
+    { "category": "travel", "subType": "metro",       "name": "地铁",            "unit": "km",   "value": 0.1620, "ownValue": 0.0300, "source": "SRC-DERIVED", "confidence": "provisional", "recording": true  },
+    { "category": "travel", "subType": "ev",          "name": "新能源车",        "unit": "km",   "value": 0.0870, "ownValue": 0.1050, "source": "SRC-DERIVED", "confidence": "provisional", "recording": true  },
+    { "category": "travel", "subType": "carpool",     "name": "拼车（人均）",    "unit": "km",   "value": 0.0720, "ownValue": 0.1200, "source": "SRC-DERIVED", "confidence": "provisional", "recording": true  },
+    { "category": "travel", "subType": "car",         "name": "燃油车（对照）",  "unit": "km",   "value": 0.0000, "ownValue": 0.1920, "source": "SRC-CALC",     "confidence": "provisional", "recording": false },
+    { "category": "travel", "subType": "motorcycle",  "name": "摩托车（对照）",  "unit": "km",   "value": 0.0890, "ownValue": 0.1030, "source": "SRC-DERIVED", "confidence": "provisional", "recording": false },
+    { "category": "travel", "subType": "hsr",         "name": "高铁（对照）",    "unit": "km",   "value": 0.1650, "ownValue": 0.0270, "source": "SRC-DERIVED", "confidence": "provisional", "recording": false },
+    { "category": "travel", "subType": "flight",      "name": "飞机（对照）",    "unit": "km",   "value": 0.0340, "ownValue": 0.1580, "source": "SRC-DERIVED", "confidence": "provisional", "recording": false },
+
+    { "category": "utility", "subType": "elec_grid",   "name": "电网用电",       "unit": "kWh",   "value": 0.5703,   "source": "SRC-MEE-GRID-2022", "confidence": "verified",    "recording": true  },
+    { "category": "utility", "subType": "water",       "name": "自来水",         "unit": "L",     "value": 0.000168, "source": "SRC-CALC",     "confidence": "provisional", "recording": true  },
+    { "category": "utility", "subType": "gas",         "name": "天然气",         "unit": "m³",    "value": 2.1840,   "source": "SRC-MEE-GHG",  "confidence": "verified",    "recording": true  },
+    { "category": "utility", "subType": "lpg",         "name": "液化石油气",     "unit": "kg",    "value": 3.1010,   "source": "SRC-MEE-GHG",  "confidence": "verified",    "recording": true  },
+    { "category": "utility", "subType": "heating",     "name": "集中供暖",       "unit": "m²·月", "value": 3.1000,   "source": "SRC-CALC",     "confidence": "provisional", "recording": true  },
+    { "category": "utility", "subType": "water_treat", "name": "污水处理（对照）","unit": "L",    "value": 0.000120, "source": "SRC-CALC",     "confidence": "provisional", "recording": false },
+    { "category": "utility", "subType": "elec_thermal","name": "燃煤发电（对照）","unit": "kWh",   "value": 0.8700,   "source": "SRC-CALC",     "confidence": "provisional", "recording": false },
+    { "category": "utility", "subType": "elec_gas",    "name": "燃气发电（对照）","unit": "kWh",   "value": 0.4200,   "source": "SRC-CALC",     "confidence": "provisional", "recording": false },
+
+    { "category": "recycle", "subType": "paper",      "name": "废纸",       "unit": "kg", "value": 0.9000,  "source": "SRC-CALC",     "confidence": "provisional",    "recording": true  },
+    { "category": "recycle", "subType": "aluminum",   "name": "废铝",       "unit": "kg", "value": 9.0000,  "source": "SRC-CALC",     "confidence": "provisional",    "recording": true  },
+    { "category": "recycle", "subType": "steel",      "name": "废钢铁",     "unit": "kg", "value": 1.2000,  "source": "SRC-CALC",     "confidence": "provisional",    "recording": true  },
+    { "category": "recycle", "subType": "plastic",    "name": "废塑料",     "unit": "kg", "value": 1.5000,  "source": "SRC-CALC",     "confidence": "provisional",    "recording": true  },
+    { "category": "recycle", "subType": "glass",      "name": "废玻璃",     "unit": "kg", "value": 1.0000,  "source": "SRC-CALC",     "confidence": "provisional",    "recording": true  },
+    { "category": "recycle", "subType": "electronic", "name": "废电子产品", "unit": "kg", "value": 12.0000, "source": "SRC-CALC",     "confidence": "provisional",    "recording": true  },
+    { "category": "recycle", "subType": "textile",    "name": "旧衣物",     "unit": "kg", "value": 3.6000,  "source": "SRC-CALC",     "confidence": "provisional",    "recording": false },
+    { "category": "recycle", "subType": "wood",       "name": "废木材",     "unit": "kg", "value": 0.7000,  "source": "SRC-CALC",     "confidence": "provisional", "recording": false },
+
+    { "category": "plate", "subType": "meal",         "name": "光盘行动（按餐次）", "unit": "次", "value": 0.3500, "source": "SRC-CCAP-FW", "confidence": "provisional", "recording": true  },
+    { "category": "plate", "subType": "food_waste",   "name": "减少食物浪费",       "unit": "kg", "value": 2.5000, "source": "SRC-CCAP-FW", "confidence": "provisional", "recording": true  },
+    { "category": "plate", "subType": "kitchen_waste","name": "厨余减量（对照）",   "unit": "kg", "value": 0.9000, "source": "SRC-CALC",     "confidence": "provisional", "recording": false }
+  ],
+  "conversions": {
+    "AVG_ITEM_WEIGHT_KG": 0.5,
+    "AVG_CAR_TRIP_KM": 8.0,
+    "KWH_PER_KG": 1.75,
+    "CAR_OWN_FACTOR": 0.1920
+  },
+  "equivalents": {
+    "TREE_ABSORB_KG_PER_YEAR": 18.3,
+    "CAR_KM_PER_KG": 5.21,
+    "PHONE_CHARGE_KG": 0.0082
+  },
+  "limits": {
+    "travelKm": 200,
+    "elecKwh": 200,
+    "waterL": 2000,
+    "gasM3": 100,
+    "recycleKg": 500,
+    "plateTimes": 20
+  },
+  "points": {
+    "perKgCo2e": 100,
+    "dailyRecordCap": 200,
+    "minReductionForPoint": 0.005,
+    "carbonCoinRate": 100
+  }
+}

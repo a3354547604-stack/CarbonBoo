@@ -1,0 +1,7 @@
+[
+  { "id": "ben_tree_1",   "name": "模拟认养一棵树",    "description": "模拟认养一棵树苗（不可提现）", "coinCost": 5,  "icon": "res://ben_tree"   },
+  { "id": "ben_green_1",  "name": "模拟捐赠 1 kWh 绿电","description": "模拟支持绿电 1 kWh",          "coinCost": 2,  "icon": "res://ben_green"  },
+  { "id": "ben_cert_1",   "name": "模拟低碳证书",      "description": "生成一张模拟电子证书",        "coinCost": 10, "icon": "res://ben_cert"   },
+  { "id": "ben_public_1", "name": "模拟公益助力",      "description": "模拟助力一次环保公益",        "coinCost": 20, "icon": "res://ben_public" },
+  { "id": "ben_badge_1",  "name": "模拟碳普惠勋章",    "description": "模拟获得一枚碳普惠勋章",      "coinCost": 30, "icon": "res://ben_badge"  }
+]

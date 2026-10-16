@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "碳小布主模块：本地碳账本数据地基与业务功能"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "碳小布主入口"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "碳小布"
+    },
+    {
+      "name": "placeholder_index_title",
+      "value": "碳小布"
+    },
+    {
+      "name": "placeholder_index_note",
+      "value": "数据地基切片（S1）尚未接入页面，本页为构建占位。"
+    }
+  ]
+}

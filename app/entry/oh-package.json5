@@ -1,0 +1,22 @@
+/**
+ * entry 模块包描述（ohpm）。
+ *
+ * 唯一的依赖是**测试框架** `@ohos/hypium`：
+ *  - 版本冻结 `1.0.21`——API 12 下的最高可用版本；1.0.24/1.0.27/1.0.29 都会报
+ *    `The compatibleSdkVersion 12 cannot be smaller than version 17 declared in library [:hypium]`；
+ *  - 放在 `devDependencies`，**不进主 HAP**；
+ *  - 它是官方测试框架，不是第三方业务库，不违反 AGENTS.md §7.1「不引入第三方包」。
+ */
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "CarbonBoo 鸿蒙客户端主模块（数据地基 + 业务功能）",
+  "main": "",
+  "author": "CarbonBoo Team",
+  "license": "Apache-2.0",
+  "dependencies": {},
+  "devDependencies": {
+    "@ohos/hypium": "1.0.21"
+  },
+  "dynamicDependencies": {}
+}

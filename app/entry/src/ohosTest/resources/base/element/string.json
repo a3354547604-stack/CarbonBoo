@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_test_desc",
+      "value": "碳小布 ohosTest 测试模块：L1 碳计算与封顶样例"
+    },
+    {
+      "name": "TestAbility_desc",
+      "value": "碳小布单元测试入口"
+    },
+    {
+      "name": "TestAbility_label",
+      "value": "碳小布测试"
+    }
+  ]
+}

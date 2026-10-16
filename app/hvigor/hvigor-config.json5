@@ -1,0 +1,27 @@
+/**
+ * hvigor 运行时配置。
+ *
+ * ⚠️ 位置敏感：必须在 **`<项目>/hvigor/hvigor-config.json5`**，放到工程根目录不生效，
+ *    会报 `Hvigor config file .../hvigor/hvigor-config.json5 does not exist.`
+ *
+ * ⚠️ 依赖必须指向**本地命令行工具链**（file: 绝对路径），否则 hvigor 会去 npm 拉插件；
+ *    本机 npm 源慢且易失败，且会污染仓库锁文件。
+ *    路径由 `~/harmony-toolchain/env.sh` 安装的 CLT 提供；换机器需同步改这两行。
+ */
+{
+  "modelVersion": "5.0.0",
+  "dependencies": {
+    "@ohos/hvigor-ohos-plugin": "file:/home/qinyixiang/harmony-toolchain/clt/command-line-tools/hvigor/hvigor-ohos-plugin",
+    "@ohos/hvigor": "file:/home/qinyixiang/harmony-toolchain/clt/command-line-tools/hvigor/hvigor"
+  },
+  "execution": {},
+  "logging": {
+    "level": "info"
+  },
+  "debugging": {
+    "stacktrace": false
+  },
+  "nodeOptions": {
+    "maxOldSpaceSize": 8192
+  }
+}

@@ -1,0 +1,10 @@
+[
+  { "id": "avatar_leaf",    "name": "绿叶",     "icon": "res://avatar_leaf",    "default": true  },
+  { "id": "avatar_drop",    "name": "水滴",     "icon": "res://avatar_drop",    "default": false },
+  { "id": "avatar_bike",    "name": "单车",     "icon": "res://avatar_bike",    "default": false },
+  { "id": "avatar_bulb",    "name": "灯泡",     "icon": "res://avatar_bulb",    "default": false },
+  { "id": "avatar_recycle", "name": "回收标志", "icon": "res://avatar_recycle", "default": false },
+  { "id": "avatar_plate",   "name": "餐盘",     "icon": "res://avatar_plate",   "default": false },
+  { "id": "avatar_sprout",  "name": "树苗",     "icon": "res://avatar_sprout",  "default": false },
+  { "id": "avatar_earth",   "name": "地球",     "icon": "res://avatar_earth",   "default": false }
+]

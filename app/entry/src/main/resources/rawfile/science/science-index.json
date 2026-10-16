@@ -1,0 +1,122 @@
+[
+  {
+    "id": "sci-01",
+    "title": "什么是碳达峰与碳中和",
+    "category": "policy",
+    "summary": "「双碳」目标的时间表与路线图：2030 年前碳达峰、2060 年前碳中和分别意味着什么。",
+    "cover": "res://sci_01",
+    "readMinutes": 3,
+    "tags": ["双碳目标", "碳达峰", "碳中和"],
+    "order": 1
+  },
+  {
+    "id": "sci-02",
+    "title": "读懂 1.5℃ 与 2℃ 的差别",
+    "category": "policy",
+    "summary": "《巴黎协定》温控目标为什么定在 1.5℃，每升高 0.5℃ 会多发生什么。",
+    "cover": "res://sci_02",
+    "readMinutes": 4,
+    "tags": ["巴黎协定", "温控目标", "气候变化"],
+    "order": 2
+  },
+  {
+    "id": "sci-03",
+    "title": "全国碳市场与碳普惠有什么关系",
+    "category": "policy",
+    "summary": "强制碳市场管企业，碳普惠把个人减排行为也纳入激励——两者的定位与边界。",
+    "cover": "res://sci_03",
+    "readMinutes": 4,
+    "tags": ["碳市场", "碳普惠", "政策"],
+    "order": 3
+  },
+  {
+    "id": "sci-04",
+    "title": "个人碳账户是怎么算出来的",
+    "category": "policy",
+    "summary": "行为数据 × 排放因子 = 减排量的基本核算思路，以及为什么因子值要标注来源。",
+    "cover": "res://sci_04",
+    "readMinutes": 4,
+    "tags": ["碳账户", "核算口径", "排放因子"],
+    "order": 4
+  },
+  {
+    "id": "sci-05",
+    "title": "绿色出行的 7 个实用技巧",
+    "category": "tips",
+    "summary": "通勤、购物、接送孩子的低碳选择：从步行拼车到错峰充电，都能立刻上手。",
+    "cover": "res://sci_05",
+    "readMinutes": 4,
+    "tags": ["绿色出行", "通勤", "骑行"],
+    "order": 5
+  },
+  {
+    "id": "sci-06",
+    "title": "家庭省电的 6 个常识",
+    "category": "tips",
+    "summary": "待机功耗、空调温度、峰谷电价：不用换电器也能降下来的那部分用电。",
+    "cover": "res://sci_06",
+    "readMinutes": 3,
+    "tags": ["节约用电", "待机功耗", "峰谷电价"],
+    "order": 6
+  },
+  {
+    "id": "sci-07",
+    "title": "垃圾分类怎么分才真正减碳",
+    "category": "tips",
+    "summary": "废纸、废铝、废塑料、废玻璃的回收减排量差别很大——哪些最值得单独攒。",
+    "cover": "res://sci_07",
+    "readMinutes": 4,
+    "tags": ["垃圾分类", "旧物回收", "循环利用"],
+    "order": 7
+  },
+  {
+    "id": "sci-08",
+    "title": "光盘行动能减多少碳",
+    "category": "tips",
+    "summary": "从「按需点餐」到「剩菜打包」：减少食物浪费为什么是低成本减碳动作。",
+    "cover": "res://sci_08",
+    "readMinutes": 3,
+    "tags": ["光盘行动", "食物浪费", "低碳饮食"],
+    "order": 8
+  },
+  {
+    "id": "sci-09",
+    "title": "一度电背后的碳排放",
+    "category": "knowledge",
+    "summary": "电网平均排放因子是怎么来的：为什么同样是 1 kWh，不同年份数值会变。",
+    "cover": "res://sci_09",
+    "readMinutes": 4,
+    "tags": ["电网因子", "电力", "碳排放系数"],
+    "order": 9
+  },
+  {
+    "id": "sci-10",
+    "title": "碳中和里的「碳」到底指什么",
+    "category": "knowledge",
+    "summary": "二氧化碳当量（CO₂e）、温室气体种类，以及为什么统一折算成 kgCO₂e。",
+    "cover": "res://sci_10",
+    "readMinutes": 4,
+    "tags": ["二氧化碳当量", "温室气体", "CO2e"],
+    "order": 10
+  },
+  {
+    "id": "sci-11",
+    "title": "碳足迹、碳减排、碳积分不是一回事",
+    "category": "knowledge",
+    "summary": "排放量、避免排放（减排量）、激励凭证：三个常被混用的概念的区别。",
+    "cover": "res://sci_11",
+    "readMinutes": 4,
+    "tags": ["碳足迹", "减排量", "碳积分"],
+    "order": 11
+  },
+  {
+    "id": "sci-12",
+    "title": "一棵树能吸收多少二氧化碳",
+    "category": "knowledge",
+    "summary": "以「一棵树每年约吸收 18.3 kgCO₂e」为尺子，量一量你的日常减排量。",
+    "cover": "res://sci_12",
+    "readMinutes": 3,
+    "tags": ["等效换算", "植树造林", "碳中和"],
+    "order": 12
+  }
+]

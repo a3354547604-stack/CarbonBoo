@@ -29,6 +29,8 @@ _out/
 oh_modules/
 .hvigor/
 app/**/build/
+# hvigorw test 生成的本地单测中间产物（入口临时工程 + 编译缓存），与 build/ 同类
+app/**/.test/
 app/**/.cxx/
 local.properties
 *.hap

@@ -1,0 +1,21 @@
+/**
+ * 工程级包描述（ohpm）。
+ *
+ * 铁律：**不引入任何第三方 npm/HAR 包**（AGENTS.md §7.1）。
+ * 本文件只声明工程自身元信息与构建期开发依赖（hvigor 插件），业务依赖一律为空。
+ * 单元测试用的 `@ohos/hypium` 声明在 `entry` 模块里——测试框架不进主 HAP。
+ */
+{
+  "modelVersion": "5.0.0",
+  "name": "carbonboo",
+  "version": "1.0.0",
+  "description": "碳小布 CarbonBoo · OpenHarmony 个人碳账本（赛题二）",
+  "main": "",
+  "author": "CarbonBoo Team",
+  "license": "Apache-2.0",
+  "dependencies": {},
+  "devDependencies": {
+    "@ohos/hypium": "1.0.21"
+  },
+  "dynamicDependencies": {}
+}

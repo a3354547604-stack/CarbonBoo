@@ -1,0 +1,41 @@
+/**
+ * 工程级构建配置（Stage 模型 · API 12 · OpenHarmony 纯北向）
+ *
+ * 本切片的硬性约束（实测得来，改动会直接导致 hvigor 报错）：
+ *  ① `compatibleSdkVersion` / `compileSdkVersion` / `targetSdkVersion` 必须是 **整数 12**，
+ *     不能写 "5.0.0(12)" 这类字符串；
+ *  ② 三处都要显式给出，否则报 `Please configure compileSdkVersion in the product`；
+ *  ③ `signingConfigs` 保持空数组时，**不要在 product 里写 `signingConfig`**，
+ *     否则报 `Cannot read properties of undefined (reading 'app')`。
+ * 签名材料由打包方（DevEco Studio 或命令行签名）另行注入，不入库。
+ */
+{
+  "app": {
+    "signingConfigs": [],
+    "products": [
+      {
+        "name": "default",
+        "compatibleSdkVersion": 12,
+        "compileSdkVersion": 12,
+        "targetSdkVersion": 12,
+        "runtimeOS": "OpenHarmony"
+      }
+    ],
+    "buildModeSet": [
+      { "name": "debug" },
+      { "name": "release" }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": ["default"]
+        }
+      ]
+    }
+  ]
+}

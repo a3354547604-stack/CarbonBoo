@@ -1,0 +1,10 @@
+[
+  { "id": "B_FIRST",      "name": "初次碳迹",  "description": "完成第 1 条低碳行为记录",          "tier": "bronze", "icon": "ic_badge_first",    "metric": "first_record",    "threshold": 1,   "order": 1 },
+  { "id": "B_STREAK_7",   "name": "七日不辍",  "description": "连续 7 个自然日每天至少 1 条记录",  "tier": "bronze", "icon": "ic_badge_streak7",  "metric": "streak",          "threshold": 7,   "order": 2 },
+  { "id": "B_STREAK_30",  "name": "月度坚持",  "description": "连续 30 个自然日每天至少 1 条记录", "tier": "silver", "icon": "ic_badge_streak30", "metric": "streak",          "threshold": 30,  "order": 3 },
+  { "id": "B_TOTAL_10",   "name": "减排十千克","description": "累计减排量达到 10 kgCO₂e",        "tier": "bronze", "icon": "ic_badge_total10",  "metric": "total_reduction", "threshold": 10,  "order": 4 },
+  { "id": "B_TOTAL_100",  "name": "减排百千克","description": "累计减排量达到 100 kgCO₂e",       "tier": "gold",   "icon": "ic_badge_total100", "metric": "total_reduction", "threshold": 100, "order": 5 },
+  { "id": "B_GREEN_TRIP", "name": "绿色骑士",  "description": "出行类低碳记录累计 50 条",         "tier": "silver", "icon": "ic_badge_green",    "metric": "travel_count",    "threshold": 50,  "order": 6 },
+  { "id": "B_RECYCLER",   "name": "循环使者",  "description": "回收类累计 20 kg",                "tier": "silver", "icon": "ic_badge_recycler", "metric": "recycle_kg",      "threshold": 20,  "order": 7 },
+  { "id": "B_TREE",       "name": "种树人",    "description": "集齐全部 8 个头像框",              "tier": "gold",   "icon": "ic_badge_tree",     "metric": "frame_count",     "threshold": 8,   "order": 8 }
+]

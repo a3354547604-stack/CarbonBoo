@@ -1,0 +1,22 @@
+/**
+ * 应用级清单（AppScope）。
+ *
+ * ⚠️ 这个文件**必须存在**：缺失时报错信息完全看不出原因
+ *    （`Cannot read properties of undefined (reading 'app')`，栈在
+ *    `integrated-hsp-utils.js → initIntegratedHspCache`）。
+ *    同理必须有 `AppScope/resources/base/element/string.json`（app_name）
+ *    与 `AppScope/resources/base/media/app_icon.png`。
+ *
+ * `bundleName` 冻结为 `com.carbonboo.app`（见 t2 契约）；改动它会同时影响
+ * 服务端 `server_user` 关联与后台展示口径，必须走文档变更流程。
+ */
+{
+  "app": {
+    "bundleName": "com.carbonboo.app",
+    "vendor": "CarbonBoo",
+    "versionCode": 1000000,
+    "versionName": "1.0.0",
+    "icon": "$media:app_icon",
+    "label": "$string:app_name"
+  }
+}

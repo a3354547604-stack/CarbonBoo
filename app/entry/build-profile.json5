@@ -1,0 +1,19 @@
+/**
+ * entry 模块构建配置（Stage 模型 · API 12）。
+ *
+ * 两个 target：
+ *  - `default`：主 HAP（`src/main`）
+ *  - `ohosTest`：单元测试 HAP（`src/ohosTest`），仅测试构建（`buildMode=test`）时生效
+ */
+{
+  "apiType": "stageMode",
+  "buildOption": {},
+  "targets": [
+    {
+      "name": "default"
+    },
+    {
+      "name": "ohosTest"
+    }
+  ]
+}

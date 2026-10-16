@@ -1,0 +1,13 @@
+[
+  { "id": "S1", "name": "零碳出行",       "tier": "short", "period": "day",          "metric": "count",         "category": "travel",  "subTypes": ["walk","bicycle","ebike","bus","metro","carpool"], "unit": "条", "threshold": 1,   "reward": 20,   "icon": "ic_goal_s1", "order": 1 },
+  { "id": "S2", "name": "省电小标兵",     "tier": "short", "period": "day",          "metric": "sum_amount",    "category": "utility", "subTypes": ["elec_grid"], "unit": "kWh", "threshold": 5,   "reward": 20,   "icon": "ic_goal_s2", "order": 2 },
+  { "id": "S3", "name": "光盘卫士",       "tier": "short", "period": "day",          "metric": "count",         "category": "plate",   "subTypes": ["meal"], "unit": "条", "threshold": 1,   "reward": 15,   "icon": "ic_goal_s3", "order": 3 },
+  { "id": "S4", "name": "回收一袋",       "tier": "short", "period": "week",         "metric": "count",         "category": "recycle", "unit": "条", "threshold": 3,   "reward": 40,   "icon": "ic_goal_s4", "order": 4 },
+  { "id": "S5", "name": "记录不间断",     "tier": "short", "period": "week",         "metric": "distinct_days", "unit": "天", "threshold": 5,   "reward": 60,   "icon": "ic_goal_s5", "order": 5 },
+  { "id": "M1", "name": "百公里绿色出行", "tier": "mid",   "period": "month",        "metric": "sum_amount",    "category": "travel",  "subTypes": ["walk","bicycle","ebike","bus","metro","carpool"], "unit": "km", "threshold": 100, "reward": 200,  "icon": "ic_goal_m1", "order": 6 },
+  { "id": "M2", "name": "减碳吨目标",     "tier": "mid",   "period": "quarter",      "metric": "sum_reduction", "unit": "kg", "threshold": 50,  "reward": 300,  "icon": "ic_goal_m2", "order": 7 },
+  { "id": "M3", "name": "回收百千克",     "tier": "mid",   "period": "quarter",      "metric": "sum_amount",    "category": "recycle", "unit": "kg", "threshold": 20,  "reward": 200,  "icon": "ic_goal_m3", "order": 8 },
+  { "id": "M4", "name": "光盘习惯养成",   "tier": "mid",   "period": "month",        "metric": "count",         "category": "plate",   "subTypes": ["meal"], "unit": "条", "threshold": 20,  "reward": 150,  "icon": "ic_goal_m4", "order": 9 },
+  { "id": "M5", "name": "减碳达人",       "tier": "mid",   "period": "year",         "metric": "sum_reduction", "unit": "kg", "threshold": 200, "reward": 500,  "icon": "ic_goal_m5", "order": 10 },
+  { "id": "L1", "name": "种树百天计划",   "tier": "long",  "period": "hundred_days", "metric": "distinct_days", "unit": "天", "threshold": 80,  "reward": 1000, "icon": "ic_goal_l1", "order": 11 }
+]
