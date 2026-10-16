@@ -1,22 +1,28 @@
 /**
- * SyncService —— 账号与云端同步 / 家庭合并 / 近场演示层（S6 的客户端一侧）。
+ * SyncService —— 账号与云端同步 / 云端备份 / 家庭合并 / 近场演示层（S6 的客户端一侧）。
  *
  * 职责：
  *  ① **待同步数**：参与同步的 9 张表（`ClientSchema.SYNCED_TABLES`）里 `sync_state='pending'` 的行数之和
  *     （附录 C §18.1、验收 D6-6 的唯一口径）；
- *  ② **同步**：`POST /api/v1/sync/push` 推送增量 → `GET /api/v1/sync/pull?since=` 拉取增量 →
- *     按附录 B §6 的 LWW 应用（`updated_at` 大者胜；相等不冲突；本地较新记一次冲突并保留本地）；
- *  ③ **未登录时一行都不发**：`sync()` 第一件事就是判登录态，未登录直接返回失败，
- *     **不会**创建任何 HTTP 请求（验收 D6 的「未登录态不发起任何上传请求」靠 `FakeHttpClient.count()` 断言）；
- *  ④ **家庭合并（只读）**：按 `device_id` 分组求和，口径「同一账号下多设备只读汇总，不合并账本、不改写流水」；
- *  ⑤ **近场演示层**：同一 Wi-Fi 的双机演示（创新项 Ⅰ），**不承担跨设备一致性**；
+ *  ② **增量同步**：`POST /api/v1/sync/push` 推送增量 → `GET /api/v1/sync/pull?since=` 拉取增量 →
+ *     按附录 B §6 的 LWW 应用：`updated_at` 大者胜；**相等时按 `deviceId` 字典序大者胜**
+ *     （`deviceId` 也相同 = 同一版本，保留本机）；对端时间戳先按 `offsetMs` 换算到本机基准；
+ *     「真冲突」仅当两端自上次同步后都改过这一行（§6.3）；
+ *  ③ **未登录时一行都不发**：`sync()`/`fullUpload()`/`fullRestore()` 第一件事就是判登录态，
+ *     未登录直接返回失败，**不会**创建任何 HTTP 请求（验收 D6 的「未登录态不发起任何上传请求」
+ *     靠 `FakeHttpClient.count()` 断言）；
+ *  ④ **云端备份 / 恢复 = 独立三端点**（附录 B §5.3:807/817-819）：`POST /sync/backup` 上传快照、
+ *     `GET /sync/backup` 下载快照、`POST /sync/backup/restore` **覆盖式**恢复。
+ *     只存快照，**不做 LWW 比较、不算冲突、不用 `lastSyncAt`**；恢复前把响应 `preRestore`
+ *     （+ `preRestoreAt`）落盘（服务端不建表，由调用方保存，见 PLAN §7.8）。
+ *     ⚠️ 这两条链路**语义不同、不可互相替代**：备份是"快照/覆盖"，增量同步是"合并"。
+ *  ⑤ **家庭合并（只读）**：按 `device_id` 分组求和，口径「同一账号下多设备只读汇总，不合并账本、不改写流水」；
+ *  ⑥ **近场演示层**：同一 Wi-Fi 的双机演示（创新项 Ⅰ），**不承担跨设备一致性**；
  *     本机没有分布式数据服务栈时给出空态「未发现已配对设备」，不编造设备；
- *  ⑥ 每次同步写一行 `sync_log`（成功/失败、拉取数、上传数、冲突数、错误原因）；
- *     失败时**不更新** `last_sync_at`（附录 C §18.1 规则）。
- *
- * 云端备份用**契约里已有的** `/sync/pull|push` 实现（`since=0` 即全量快照），
- * 不发明新路径——附录 B §5.3 没有独立的「云端备份」端点，复用增量接口是唯一不越界的做法。
+ *  ⑦ 每次操作写一行 `sync_log`（成功/失败、拉取数、上传数、冲突数、错误原因）；
+ *     增量同步失败时**不更新** `last_sync_at`（附录 C §18.1 规则），备份路径则从不读写它。
  */
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DevicePeer, SyncSessionState } from '../../model/SyncTypes';
 import { ClientSchema } from '../../data/schema/ClientSchema';
 import { StorePort, RowShape, SqlValue, firstOf, numOf, textOf } from '../store/StorePort';
@@ -68,6 +74,33 @@ export interface SyncOutcome {
   pulled: number;
   serverTime: number;
 }
+
+/**
+ * 一次 LWW 裁决的结果（替代原来的 `1/0/-1` 三态数字）。
+ *
+ * 为什么要换成显式类型：原来的返回值把**两件独立的事**混在一起 ——
+ * 「动作」（写入 / 保留本机）与「是否真冲突」。于是 `applyPull` 只能用
+ * `outcome === 0` 当冲突计数，导致：
+ *   · 平局跳过（动作=跳过）被当成"冲突"；
+ *   · 对端更新后写入（动作=写入）反而不计冲突；
+ *   · `since` 形参被完全忽略 → `conflicts` 事实上恒为 0。
+ * 按 §6.3「真冲突 = 两端自上次同步后都改过这一行」拆开后，两者可独立判定。
+ */
+export class LwwDecision {
+  /** `written` = 写了远端；`kept` = 保留本机；`skipped` = 未处理（如缺 id）。 */
+  readonly action: string;
+  /** 是否满足 §6.3 的「真冲突」条件（与动作无关）。 */
+  readonly conflict: boolean;
+
+  constructor(action: string, conflict: boolean) {
+    this.action = action;
+    this.conflict = conflict;
+  }
+}
+
+/** 日志域与 TAG（`hilog` 需要）。 */
+const DOMAIN: number = 0x0001;
+const TAG: string = 'CarbonBooSync';
 
 export class SyncService {
   private readonly store: StorePort;
@@ -162,47 +195,131 @@ export class SyncService {
     });
   }
 
-  /** 云端全量上传（备份）：`since = 0` 把全部行推上去。 */
+  /**
+   * **云端备份上传**：`POST /api/v1/sync/backup`（附录 B §5.3:817）。
+   *
+   * ⚠️ 这里是**快照备份**，不是"一次增量同步"：文档 §5.3:807 明确
+   * 「云端备份 = 独立三端点：只存快照，**不做 LWW 比较、不算冲突、不用 `lastSyncAt`**；
+   * **不是**『备份复用 `push`/`pull` 的 `since=0`』——那条路径会走 §6.3 的 LWW 合并。」
+   * 因此本方法刻意：
+   *  - **不调用** `applyPull()`/`applyRow()`（那两个是 LWW 合并路径）；
+   *  - **不产生** `conflicts`（快照无"冲突"概念，撞 id 由服务端按"同 id 覆盖"处理）；
+   *  - **不读写** `ConfigKeys.LAST_SYNC_AT`（`lastSyncAt` 是增量同步的锚点，备份不能污染它）。
+   * @param userId 服务端账号 id（仅用于服务端对账；身份一律取自令牌）
+   * @param now 本次操作起始时间（写 `sync_log` 用）
+   * @returns 服务端确认写入的快照行数（`data.stored`）
+   */
   async fullUpload(userId: string, now: number): Promise<AppResult<number>> {
     if (!this.state.isLoggedIn()) {
       return fail<number>('NOT_LOGGED_IN', '未登录，未发起任何上传');
     }
-    const body: string = await this.pushBody(userId, 0);
+    const snapshot: string = await this.snapshotTables();
+    const body: string =
+      `{"userId":${JSON.stringify(userId)},"deviceId":${JSON.stringify(this.state.deviceId())},` +
+      `"clientNow":${Date.now()},"tables":{${snapshot}}}`;
     const res: HttpResponse = await this.http.request({
       method: 'POST',
-      url: `${this.http.baseUrl()}/api/v1/sync/push`,
+      url: SyncService.backupUrl(this.http.baseUrl()),
       body,
       timeoutMs: HTTP_TIMEOUT_MS,
       token: await this.authToken(),
     });
     if (res.status !== 200) {
-      await this.writeLog(userId, 'push', 'failed', 0, 0, 0, SyncService.errorOf(res), now, Date.now());
+      await this.writeLog(userId, 'backup_up', 'failed', 0, 0, 0, SyncService.errorOf(res), now, Date.now());
       return fail<number>('CLOUD_BACKUP_FAILED', `云端备份失败：${SyncService.errorOf(res)}`);
     }
-    const count: number = await this.markSynced(userId, 0);
-    await this.writeLog(userId, 'push', 'success', 0, count, 0, '', now, Date.now());
-    return ok<number>(count);
+    let stored: number = 0;
+    try {
+      const data: JsonObject = SyncService.dataOf(res.body);
+      const v: number | undefined = optNum(data, 'stored');
+      stored = v === undefined ? 0 : v;
+    } catch (e) {
+      return fail<number>('CLOUD_BACKUP_BAD_RESPONSE', '云端备份响应不完整');
+    }
+    // 上传成功 = 本机这份就是云端快照，故可把它们标 `synced`（快照是权威，不涉及合并判定）。
+    await this.markSynced(userId, 0);
+    // 记一行 pull=0 的日志：备份**不产生 conflicts**，第三个计数位恒为 0。
+    await this.writeLog(userId, 'backup_up', 'success', 0, stored, 0, '', now, Date.now());
+    return ok<number>(stored);
   }
 
-  /** 云端恢复（覆盖式）：拉全量后按 LWW 写回本机。 */
+  /**
+   * **云端备份恢复（覆盖式）**：先 `GET /api/v1/sync/backup` 取快照，
+   * 再 `POST /api/v1/sync/backup/restore` 让服务端按快照整体对齐（附录 B §5.3:818-819）。
+   *
+   * ⚠️ 语义是**覆盖**，不是合并（文档 §5.3:807「恢复**即覆盖**」）：
+   *  - **不调用** `applyPull()`/`applyRow()`，**不产生** `conflicts`，**不动** `lastSyncAt`；
+   *  - 覆盖**之前**先把服务端回带的 `preRestore`（云端原状）+ `preRestoreAt` 落盘
+   *    （文档 §5.3:819「覆盖前原状随响应 `preRestore`（+ `preRestoreAt`）返回」；
+   *     服务端**不新建表**、由调用方负责保存，见 PLAN §7.8）；
+   *  - 只增账本表（`point_record`/`carbon_include`）在服务端**只补不删**（铁律 4），
+   *    本方法不参与该判断——那是服务端 `restore` 的职责（§5.3:819）。
+   * @param userId 服务端账号 id
+   * @param now 本次操作起始时间
+   * @returns 本次覆盖恢复影响的行数（`restored + removed`）
+   */
   async fullRestore(userId: string, now: number): Promise<AppResult<number>> {
     if (!this.state.isLoggedIn()) {
       return fail<number>('NOT_LOGGED_IN', '未登录，未发起任何请求');
     }
-    const res: HttpResponse = await this.http.request({
+    const token: string = await this.authToken();
+    // ① 取快照（覆盖的数据源）
+    const snapRes: HttpResponse = await this.http.request({
       method: 'GET',
-      url: `${this.http.baseUrl()}/api/v1/sync/pull?since=0`,
+      url: SyncService.backupUrl(this.http.baseUrl()),
       body: '',
       timeoutMs: HTTP_TIMEOUT_MS,
-      token: await this.authToken(),
+      token,
+    });
+    if (snapRes.status !== 200) {
+      await this.writeLog(userId, 'backup_down', 'failed', 0, 0, 0, SyncService.errorOf(snapRes), now, Date.now());
+      return fail<number>('CLOUD_RESTORE_FAILED', `云端快照下载失败：${SyncService.errorOf(snapRes)}`);
+    }
+    let tables: string = '';
+    try {
+      const data: JsonObject = SyncService.dataOf(snapRes.body);
+      tables = SyncService.tablesJson(SyncService.objField(data, 'tables'));
+    } catch (e) {
+      await this.writeLog(userId, 'backup_down', 'failed', 0, 0, 0, SyncService.messageOf(e), now, Date.now());
+      return fail<number>('CLOUD_RESTORE_BAD_SNAPSHOT', '云端快照结构非法，已放弃恢复（本机未改动）');
+    }
+    // ② 覆盖式恢复
+    const restoreBody: string =
+      `{"userId":${JSON.stringify(userId)},"deviceId":${JSON.stringify(this.state.deviceId())},` +
+      `"clientNow":${Date.now()},"tables":${tables}}`;
+    const res: HttpResponse = await this.http.request({
+      method: 'POST',
+      url: `${SyncService.backupUrl(this.http.baseUrl())}/restore`,
+      body: restoreBody,
+      timeoutMs: HTTP_TIMEOUT_MS,
+      token,
     });
     if (res.status !== 200) {
-      await this.writeLog(userId, 'pull', 'failed', 0, 0, 0, SyncService.errorOf(res), now, Date.now());
+      await this.writeLog(userId, 'backup_restore', 'failed', 0, 0, 0, SyncService.errorOf(res), now, Date.now());
       return fail<number>('CLOUD_RESTORE_FAILED', `云端恢复失败：${SyncService.errorOf(res)}`);
     }
-    const applied: SyncOutcome = await this.applyPull(res.body, 0);
-    await this.writeLog(userId, 'pull', 'success', applied.pulled, 0, applied.conflicts, '', now, Date.now());
-    return ok<number>(applied.pulled);
+    let restored: number = 0;
+    let removed: number = 0;
+    try {
+      const data: JsonObject = SyncService.dataOf(res.body);
+      const r: number | undefined = optNum(data, 'restored');
+      const d: number | undefined = optNum(data, 'removed');
+      restored = r === undefined ? 0 : r;
+      removed = d === undefined ? 0 : d;
+      // ③ 覆盖**之前**的云端原状落盘（调用方负责，服务端不建表）
+      const pre: Object | undefined = data['preRestore'];
+      if (pre !== undefined) {
+        const at: number | undefined = optNum(data, 'preRestoreAt');
+        await this.cfg.set(ConfigKeys.CLOUD_PRE_RESTORE, SyncService.wrapPreRestore(pre, at === undefined ? 0 : at));
+      }
+    } catch (e) {
+      // 写库失败或响应不完整：恢复**已在云端生效**，故不谎报失败，但如实记录
+      await this.writeLog(userId, 'backup_restore', 'partial', 0, 0, 0, SyncService.messageOf(e), now, Date.now());
+      return ok<number>(restored + removed);
+    }
+    // 恢复是覆盖：本机应重新拉一次增量即可与云端一致，但**不动** lastSyncAt，故只记日志。
+    await this.writeLog(userId, 'backup_restore', 'success', 0, restored + removed, 0, '', now, Date.now());
+    return ok<number>(restored + removed);
   }
 
   /** 家庭碳积分（只读合并；单设备时返回空 members，页面显示空态）。 */
@@ -367,8 +484,10 @@ export class SyncService {
       tables.push(`${JSON.stringify(name)}:[${SyncService.rowsJson(rows)}]`);
       i = i + 1;
     }
+    // `clientNow`（附录 B §5.3:825）：客户端当前时钟（毫秒），服务端据此测时钟偏移并回带 `offsetMs`；
+    // 缺失 = 服务端按"无偏移"处理（不猜值）。
     return `{"userId":${JSON.stringify(userId)},"deviceId":${JSON.stringify(this.state.deviceId())},` +
-      `"lastSyncAt":${since},"tables":{${tables.join(',')}}}`;
+      `"lastSyncAt":${since},"clientNow":${Date.now()},"tables":{${tables.join(',')}}}`;
   }
 
   /** 行数组 → JSON 片段。 */
@@ -427,6 +546,20 @@ export class SyncService {
     const data: JsonObject = asObject(dataNode, 'sync.data');
     const st: number | undefined = optNum(data, 'serverTime');
     serverTime = st === undefined ? 0 : st;
+    // 时钟偏移（附录 B §5.3:838-841）：响应字段 `offsetMs` 的定义是「**服务端时钟 − 客户端时钟**」，
+    // 即**服务端视角**的"本机 − 对端"；而 §6.3 伪码 `r.updatedAt + offsetMs` 里的 offsetMs 是
+    // **客户端视角**的"本机 − 对端" —— 二者**互为相反数**（§6.4-6 原话）。故此处取反：
+    //   offsetMsClient = -respOffsetMs
+    // 判据：respOffsetMs = +60000（服务端快 60 秒）→ offsetMsClient = -60000
+    //      → 同一条服务端时间戳相对本机**显得更旧**，绝不能显得更新。
+    const respOffset: number | undefined = optNum(data, 'offsetMs');
+    const offsetMsClient: number = respOffset === undefined ? 0 : -respOffset;
+    const warning: string | undefined = optStr(data, 'clockWarning');
+    if (warning !== undefined && warning.length > 0) {
+      // 超 ±5 分钟容差：服务端已给提示，**仍继续合并**（§6.4-6），只在本地留一行告警日志。
+      hilog.warn(DOMAIN, TAG, '同步时钟告警：%{public}s（已按 offsetMs=%{public}d 换算后继续合并）',
+        warning, offsetMsClient);
+    }
     const tablesNode: Object | undefined = data['tables'];
     if (tablesNode === undefined) {
       return { accepted: 0, skipped, conflicts, pulled, serverTime };
@@ -441,13 +574,17 @@ export class SyncService {
         let k: number = 0;
         while (k < rows.length) {
           const row: RowShape = SyncService.rowOf(asObject(rows[k], `${name}[${k}]`));
-          const outcome: number = await this.applyRow(name, row, since);
-          if (outcome === 1) {
+          const decision: LwwDecision = await this.applyRow(name, row, since, offsetMsClient);
+          if (decision.action === 'written') {
             pulled = pulled + 1;
-          } else if (outcome === 0) {
-            conflicts = conflicts + 1;
-          } else {
+          } else if (decision.action === 'kept') {
             skipped = skipped + 1;
+          }
+          // ⚠️ 冲突只按 §6.3 的「真冲突」条件计数（`l.updatedAt > since && r.updatedAt > since`），
+          //    **与写入/保留无关**：既不是"写入了才算冲突"，也不是"跳过就是冲突"（§6.4-3：
+          //    去重丢弃的行只计 ignored/skipped，不得计入 conflicts）。
+          if (decision.conflict) {
+            conflicts = conflicts + 1;
           }
           k = k + 1;
         }
@@ -457,27 +594,66 @@ export class SyncService {
     return { accepted: 0, skipped, conflicts, pulled, serverTime };
   }
 
-  /** 1 = 写入；0 = 冲突（保留本地）；-1 = 跳过。 */
-  private async applyRow(table: string, row: RowShape, since: number): Promise<number> {
+  /**
+   * 应用一行远端数据（附录 B §6.3 的 LWW 裁决）。
+   *
+   * 裁决顺序（与服务端 `sync_service.py:471-484` **逐字同规则**，§6.4-6「两端用同一规则，结论一致」）：
+   *  1. `rUpdated > lUpdated` → 写远端（`written`）；
+   *  2. `rUpdated === lUpdated` → **平局按 `deviceId` 字典序大者胜**（远端更大则写远端，
+   *     否则保留本机）；**两端 `deviceId` 相同视为同一版本 → 保留本机**；
+   *  3. `rUpdated < lUpdated` → 保留本机（`kept`）。
+   *
+   * `rUpdated` 是**换算后**的对端时间戳（`r.updatedAt + offsetMs`，`offsetMs` 为客户端视角）；
+   * 真冲突计数用的却是**原始** `r.updatedAt`（见下），换算只服务于大小比较。
+   *
+   * @param table 表名
+   * @param row 远端行（原始字段，含原始 `updated_at` 与 `device_id`）
+   * @param since 上次成功同步时间（`lastSyncAt`），用于判定「真冲突」
+   * @param offsetMs **客户端视角**偏移（本机 − 对端）；0 = 未校正
+   */
+  private async applyRow(table: string, row: RowShape, since: number, offsetMs: number): Promise<LwwDecision> {
     const id: string = textOf(row, 'id');
     if (id.length === 0) {
-      return -1;
+      return new LwwDecision('skipped', false);
     }
-    const local: RowShape[] = await this.store.query(`SELECT updated_at FROM ${table} WHERE id = ?`, [id]);
-    const remoteUpdated: number = numOf(row, 'updated_at');
+    const local: RowShape[] = await this.store.query(
+      `SELECT updated_at, device_id FROM ${table} WHERE id = ?`, [id]);
+    const remoteRaw: number = numOf(row, 'updated_at');
+    // 对端时间戳 → 本机基准（§6.4-6）。offsetMs 已由 applyPull 取反，这里用加号与 §6.3 伪码一致。
+    const remoteUpdated: number = remoteRaw + offsetMs;
     if (local.length > 0) {
       const localUpdated: number = numOf(local[0], 'updated_at');
-      if (localUpdated === remoteUpdated) {
-        return -1;
-      }
+      // 「真冲突」= 两端自上次同步后**都改过这一行**（§6.3:959/966）。
+      // ⚠️ 用**原始** remoteRaw 与 since 比较（协议里落库的就是原始对端时间戳）。
+      const trueConflict: boolean = localUpdated > since && remoteRaw > since;
       if (localUpdated > remoteUpdated) {
-        return 0;
+        return new LwwDecision('kept', trueConflict);
       }
+      if (localUpdated === remoteUpdated) {
+        // 平局：deviceId 字典序大者胜（与 §6.3:960-967 / 服务端 :471-484 同规则）
+        const remoteDevice: string = textOf(row, 'device_id');
+        const localDevice: string = textOf(local[0], 'device_id');
+        if (remoteDevice > localDevice) {
+          // 远端胜出 → 走下面的写回
+          await this.store.exec(`DELETE FROM ${table} WHERE id = ?`, [id]);
+          return this.insertRow(table, row, trueConflict);
+        }
+        // 远端 deviceId 更小、或两端相同（同一版本）→ 保留本机
+        return new LwwDecision('kept', trueConflict);
+      }
+      // 对端更新 → 覆盖本机
       await this.store.exec(`DELETE FROM ${table} WHERE id = ?`, [id]);
+      return this.insertRow(table, row, trueConflict);
     }
+    // 本机没有该行 → 直接接纳（本机没有的行走不到"真冲突"条件，恒为 false）
+    return this.insertRow(table, row, false);
+  }
+
+  /** 落一行（`applyRow` 的写回半段）：列集合取自远端行，写成功返回 `written`。 */
+  private async insertRow(table: string, row: RowShape, conflict: boolean): Promise<LwwDecision> {
     const columns: string[] = Object.keys(row);
     if (columns.length === 0) {
-      return -1;
+      return new LwwDecision('skipped', conflict);
     }
     const args: SqlValue[] = [];
     let k: number = 0;
@@ -493,7 +669,73 @@ export class SyncService {
       m = m + 1;
     }
     await this.store.exec(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${marks.join(', ')})`, args);
-    return 1;
+    return new LwwDecision('written', conflict);
+  }
+
+  // ---------------------------------------------------------------- 备份三端点辅助
+
+  /** 备份组端点基址（附录 B §5.3:817-819 两条 `/sync/backup` + 一条 `/sync/backup/restore`）。 */
+  private static backupUrl(base: string): string {
+    return `${base}/api/v1/sync/backup`;
+  }
+
+  /**
+   * 取响应信封的 `data` 对象（备份三端点与增量端点同用 `{ok, data}`）。
+   * `ok=false` 或 `data` 缺失一律抛错 —— 调用方据此判"响应不完整"，不猜值。
+   */
+  private static dataOf(body: string): JsonObject {
+    const root: JsonObject = asObject(JSON.parse(body), 'sync');
+    if (root['ok'] === false) {
+      throw new Error('服务端 ok=false');
+    }
+    return SyncService.objField(root, 'data');
+  }
+
+  /** 取必填子对象（缺失即抛错）。 */
+  private static objField(o: JsonObject, key: string): JsonObject {
+    const v: Object | undefined = o[key];
+    if (v === undefined) {
+      throw new Error(`响应缺少字段 ${key}`);
+    }
+    return asObject(v, key);
+  }
+
+  /**
+   * 9 张参与同步表的**全量本机行** → JSON 片段（备份上传的 `tables`）。
+   *
+   * 与 `pushBody` 的区别：不按 `updated_at > since` 过滤、不带 `lastSyncAt`
+   * —— 备份要的是**整份快照**，不是增量（附录 B §5.3:807/817）。
+   */
+  private async snapshotTables(): Promise<string> {
+    const parts: string[] = [];
+    let i: number = 0;
+    while (i < ClientSchema.SYNCED_TABLES.length) {
+      const name: string = ClientSchema.SYNCED_TABLES[i];
+      const rows: RowShape[] = await this.store.query(`SELECT * FROM ${name}`, []);
+      parts.push(`${JSON.stringify(name)}:[${SyncService.rowsJson(rows)}]`);
+      i = i + 1;
+    }
+    return parts.join(',');
+  }
+
+  /**
+   * 把已解析的 `tables` 对象**原样重序列化**为 JSON 片段（快照下载 → 恢复上传）。
+   *
+   * 为什么重序列化而不是把原始文本切出来：`tables` 嵌在 `data` 里，
+   * 直接切字符串要重新实现一遍 JSON 扫描、易错；`JSON.stringify` 对已解析对象
+   * 是等价的（同一份数据、同一套字段），且天然丢弃服务端可能多给的 `serverTime` 等字段。
+   */
+  private static tablesJson(tables: JsonObject): string {
+    return JSON.stringify(tables);
+  }
+
+  /** 把 `preRestore` 连同 `preRestoreAt` 包成落盘形态（服务端不建表，由调用方保存）。 */
+  private static wrapPreRestore(pre: Object, at: number): string {
+    return JSON.stringify({ preRestoreAt: at, preRestore: pre });
+  }
+
+  private static messageOf(e: Object): string {
+    return e instanceof Error ? e.message : `${e}`;
   }
 
   private static rowOf(o: JsonObject): RowShape {

@@ -52,6 +52,13 @@ export class ConfigKeys {
   static readonly AUTH_USER_ID: string = 'auth_user_id';
   /** 上次同步下来的商品目录版本（取价整份覆盖用）。 */
   static readonly SHOP_ITEMS: string = 'shop_items';
+  /**
+   * 云端恢复**前**的云端原状快照（`preRestore` + `preRestoreAt` 的 JSON）。
+   *
+   * 为什么由客户端落盘：附录 B §5.3:819 规定覆盖前原状随响应 `preRestore` 返回，
+   * 「服务端**不新建表**、由调用方保存」（PLAN §7.8）。本机存一份即可满足"覆盖前可回看"。
+   */
+  static readonly CLOUD_PRE_RESTORE: string = 'cloud_pre_restore';
 }
 
 export class AppConfig {

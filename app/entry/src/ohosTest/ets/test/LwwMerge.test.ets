@@ -6,7 +6,7 @@
  * （`applyRow` 仍是 `private`、未改可见性、未改依赖）。
  *
  * 怎么在不改实现的前提下测到 private 方法：
- *   不直接调私有方法，而是走**唯一的公开入口** `SyncService.fullRestore()`
+ *   不直接调私有方法，而是走**公开入口** `SyncService.sync()`（增量 / LWW 路径）与 `fullRestore()`（备份覆盖路径）
  *   （拉全量 `GET /api/v1/sync/pull?since=0` → `applyPull()` → 逐行 `applyRow()`），
  *   把"服务端返回什么"通过 `FakeHttpClient.stub()` 精确喂进去。
  *   断言分两层：① `applyRow` 的返回值语义（经 `SyncOutcome.pulled/skipped/conflicts` 观察）；
@@ -31,7 +31,14 @@
  *    本任务对该文件的证据只有两条：① 随 ohosTest 目标 `assembleHap` **编译通过**
  *    （测试源码真进入编译，是真实静态门禁）；② 人工代码审查。
  *
- * 🛑 **STOP（AGENTS.md §1.3 停手条件 · 已报队长）**：附录 B §6.3 规定平局时按
+ * 🛑 **原 STOP 已被 t13 修复（本文件相应反转，见下）**：本文件最初写于 t11，
+ *    当时用两个用例把「实现未做平局裁决 / 未做时钟偏移校正」**钉住**作为告警。
+ *    t13 已按附录 B §6.3/§6.4-6 补齐实现 → 这两处断言**已反转为按文档口径的回归断言**：
+ *    用例③ 现在断言「平局按 `deviceId` 字典序大者胜」，用例⑥ 断言「`offsetMs` 方向正确」。
+ *    反转后的用例是回归防线：实现若回退，它们会重新失败。
+ *
+ * 🛑 历史记录（保留以便追溯）：
+ *  **STOP（AGENTS.md §1.3 停手条件 · 已报队长）**：附录 B §6.3 规定平局时按
  *    `deviceId` 字典序裁决（`(r.deviceId ?? '') > (l.deviceId ?? '')` 则取远端，
  *    且满足同一"真冲突"条件时 `conflicts++`；deviceId 也相同则保留本机版本），
  *    而 `applyRow():470-472` 是 `localUpdated === remoteUpdated → return -1`（**无条件跳过**）。
@@ -49,6 +56,8 @@ import { common } from '@kit.AbilityKit';
 import { FakeHttpClient } from '../../../main/ets/viewmodel/net/HttpPort';
 import { MemoryFiles } from '../../../main/ets/viewmodel/store/FilesPort';
 import { HubPorts, ServiceHub } from '../../../main/ets/viewmodel/ServiceHub';
+import { ConfigKeys } from '../../../main/ets/viewmodel/AppConfig';
+import { SyncOutcome } from '../../../main/ets/viewmodel/net/SyncService';
 import { AuthOutcome, ServerAuthProvider } from '../../../main/ets/viewmodel/AuthService';
 import { AppResult } from '../../../main/ets/model/Result';
 import { StorePort, RowShape, SqlValue, firstOf, numOf, textOf } from '../../../main/ets/viewmodel/store/StorePort';
@@ -131,11 +140,23 @@ class RecordingStore implements StorePort {
  * @param serverTime 服务端时间戳（本用例不依赖它，仅保持信封形状合法）
  */
 function pullBody(rows: RowShape[], serverTime: number): string {
-  // 手工拼信封而不是写嵌套对象字面量：ArkTS 的 `arkts-no-untyped-obj-literals` 要求
-  // 对象字面量必须对应显式声明的 class/interface，而 `arkts-identifiers-as-prop-names`
-  // 又禁掉了 `{ [TABLE]: rows }` 这种计算属性名。字符串拼接同时绕开两条限制，
-  // 且信封结构（附录 B §5.3）在下面一眼可见。
-  return `{"ok":true,"data":{"serverTime":${serverTime},"tables":{"${TABLE}":${JSON.stringify(rows)}}}}`;
+  return pullBodyWithOffset(rows, serverTime, 0, '');
+}
+
+/**
+ * 构造 pull 响应体，可带 `offsetMs` / `clockWarning`（附录 B §5.3:838-841）。
+ *
+ * `offsetMs` 的口径是「**服务端时钟 − 客户端时钟**」——即服务端视角的"本机 − 对端"，
+ * 与 §6.3 伪码里客户端视角的 `offsetMs` **互为相反数**。用例传的是**服务端响应字段**的值。
+ *
+ * 手工拼信封而不是写嵌套对象字面量：ArkTS 的 `arkts-no-untyped-obj-literals` 要求
+ * 对象字面量必须对应显式声明的 class/interface，而 `arkts-identifiers-as-prop-names`
+ * 又禁掉了 `{ [TABLE]: rows }` 这种计算属性名。字符串拼接同时绕开两条限制。
+ */
+function pullBodyWithOffset(rows: RowShape[], serverTime: number, offsetMs: number, clockWarning: string): string {
+  const warn: string = clockWarning.length === 0 ? 'null' : JSON.stringify(clockWarning);
+  return `{"ok":true,"data":{"serverTime":${serverTime},"offsetMs":${offsetMs},"clockWarning":${warn},` +
+    `"tables":{"${TABLE}":${JSON.stringify(rows)}}}}`;
 }
 
 /** 回读本机某行（不存在返回 `undefined`）。 */
@@ -315,9 +336,38 @@ async function setLocal(hub: ServiceHub, id: string, updatedAt: number, isDelete
   await hub.store.exec(`UPDATE ${TABLE} SET updated_at = ?, is_deleted = ? WHERE id = ?`, args);
 }
 
-/** 让下一次 `fullRestore` 收到指定远端行。 */
-function stubPull(fx: Fixture, rows: RowShape[], serverTime: number): void {
-  fx.fake.stub('GET', `${fx.hub.http.baseUrl()}/api/v1/sync/pull?since=0`, 200, pullBody(rows, serverTime));
+/** 让下一次增量同步的 pull 收到指定远端行（`since` 须与 `driveLww` 用的一致）。 */
+function stubPull(fx: Fixture, rows: RowShape[], serverTime: number, since: number): void {
+  fx.fake.stub('GET', `${fx.hub.http.baseUrl()}/api/v1/sync/pull?since=${since}`, 200, pullBody(rows, serverTime));
+}
+
+/** 让下一次增量同步的 pull 带 `offsetMs` / `clockWarning`（时钟偏移用例专用）。 */
+function stubPullOffset(fx: Fixture, rows: RowShape[], serverTime: number, since: number,
+  offsetMs: number, clockWarning: string): void {
+  fx.fake.stub('GET', `${fx.hub.http.baseUrl()}/api/v1/sync/pull?since=${since}`, 200,
+    pullBodyWithOffset(rows, serverTime, offsetMs, clockWarning));
+}
+
+/**
+ * 驱动一次**真实增量同步**（LWW 路径）：`POST /sync/push` + `GET /sync/pull?since=`。
+ *
+ * ⚠️ 为什么必须用 `sync()`而 不是 `fullRestore()`：t13 起 `fullRestore()` 已改为
+ * **云端备份的覆盖式恢复**（打 `/sync/backup` 三端点，**不经过 `applyPull`/`applyRow`**），
+ * 因此它**不再**是 LWW 的入口。本文件原先用 `fullRestore()` 驱动 LWW 断言 ——
+ * 那是 t13 之前的行为；若继续用它，这些断言会「通过但什么都没测到」（最危险的一类假绿）。
+ *
+ * `since` 取 `lastSyncAt`（与 `sync()` 内部同一处 `ConfigKeys.LAST_SYNC_AT`），
+ * 使 `stubPull` 能拼出与真实请求完全一致的 URL。
+ */
+async function driveLww(fx: Fixture, userId: string, now: number): Promise<AppResult<SyncOutcome>> {
+  fx.fake.stub('POST', `${fx.hub.http.baseUrl()}/api/v1/sync/push`, 200,
+    '{"ok":true,"data":{"accepted":0,"skipped":0,"ignored":0,"rejected":0,"conflicts":0,"serverTime":1,"offsetMs":0}}');
+  return fx.hub.sync.sync(userId, now);
+}
+
+/** 当前 `since`（供 stubPull 拼 URL）。 */
+async function since(fx: Fixture): Promise<number> {
+  return fx.hub.cfg.stamp(ConfigKeys.LAST_SYNC_AT);
 }
 
 export default function lwwMergeTest(): void {
@@ -334,8 +384,8 @@ export default function lwwMergeTest(): void {
       const remote: RowShape = remoteFrom(local, new Overrides().set('updated_at', 2000).set('amount', 42).set('device_id', 'dev-remote'));
 
       const before: number = fx.rec.recorded().length;
-      stubPull(fx, [remote], 3000);
-      const res: AppResult<number> = await hub.sync.fullRestore(userId, now);
+      stubPull(fx, [remote], 3000, await since(fx));
+      const res: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
       expect(res.ok).assertTrue();
 
       // ① 返回值语义：applyRow 返回 1 → pulled +1
@@ -377,24 +427,22 @@ export default function lwwMergeTest(): void {
       // 远端同时间戳但内容不同（amount 99）：若实现误判为"新者胜"，落库后 amount 会变 99
       const remote: RowShape = remoteFrom(local, new Overrides().set('updated_at', 5000).set('amount', 99).set('device_id', 'dev-remote'));
 
-      stubPull(fx, [remote], 6000);
-      const res: AppResult<number> = await hub.sync.fullRestore(userId, now);
+      stubPull(fx, [remote], 6000, await since(fx));
+      const res: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
       expect(res.ok).assertTrue();
 
-      // applyRow 返回 -1 → skipped +1、pulled 为 0
-      expect(res.data === undefined ? -1 : res.data).assertEqual(0);
+      // applyRow 判定为「保留本机」 → skipped +1、pulled 为 0
+      expect(res.data === undefined ? -1 : res.data.pulled).assertEqual(0);
       // 本机版本被保留：amount 仍是 5，时间戳不变
       const after: RowShape | undefined = await localRow(hub, id);
       expect(numOf(after === undefined ? {} : after, 'amount')).assertEqual(5);
       expect(numOf(after === undefined ? {} : after, 'updated_at')).assertEqual(5000);
     });
 
-    it('③ 平局不按 deviceId 裁决（与附录 B §6.3 不一致的实测登记）', 0, async () => {
-      // 🛑 本用例**断言的是被测实现的实际行为**，不是文档规则。
-      //     §6.3：平局时 `(r.deviceId ?? '') > (l.deviceId ?? '')` 则取远端。
-      //     applyRow():470-472：平局无条件 `return -1`。
-      //     → 故远端 device_id='dev-zzz'（字典序大于本机 'dev-aaa'）**仍应被跳过**。
-      //     若将来实现按文档修正，本用例会失败 —— 这正是我们要的告警（它会提醒同步改文档或改用例）。
+    it('③ 平局按 deviceId 字典序大者胜（§6.3；t13 已补齐实现，本用例为回归防线）', 0, async () => {
+      // ✅ t13 起，实现与文档一致：平局时 `(r.deviceId ?? '') > (l.deviceId ?? '')` 则取远端，
+      //    两端 deviceId 相同视为同一版本、保留本机（与服务端 sync_service.py:471-484 同规则）。
+      //    本用例原先断言的是"实现未做平局裁决"（告警），t13 后**反转为按文档口径的断言**。
       const fx: Fixture = await setup();
       const hub: ServiceHub = fx.hub;
       const userId: string = hub.state.userId();
@@ -403,17 +451,36 @@ export default function lwwMergeTest(): void {
       const id: string = textOf(local, 'id');
       await setLocal(hub, id, 7000, 0);
       await hub.store.exec(`UPDATE ${TABLE} SET device_id = ? WHERE id = ?`, ['dev-aaa', id]);
+
+      // (a) 远端 deviceId 字典序**更大** → 远端胜出
       const remote: RowShape = remoteFrom(local, new Overrides().set('updated_at', 7000).set('amount', 77).set('device_id', 'dev-zzz'));
-
-      stubPull(fx, [remote], 8000);
-      const res: AppResult<number> = await hub.sync.fullRestore(userId, now);
+      stubPull(fx, [remote], 8000, await since(fx));
+      const res: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
       expect(res.ok).assertTrue();
-
-      // 实测：平局一律跳过，deviceId 不参与裁决
-      expect(res.data === undefined ? -1 : res.data).assertEqual(0);
+      expect(res.data === undefined ? -1 : res.data.pulled).assertEqual(1);
       const after: RowShape | undefined = await localRow(hub, id);
-      expect(numOf(after === undefined ? {} : after, 'amount')).assertEqual(5);
-      expect(textOf(after === undefined ? {} : after, 'device_id')).assertEqual('dev-aaa');
+      expect(numOf(after === undefined ? {} : after, 'amount')).assertEqual(77);
+      expect(textOf(after === undefined ? {} : after, 'device_id')).assertEqual('dev-zzz');
+
+      // (b) 远端 deviceId 字典序**更小** → 保留本机（远端不写）
+      await setLocal(hub, id, 7000, 0);
+      await hub.store.exec(`UPDATE ${TABLE} SET device_id = ?, amount = ? WHERE id = ?`, ['dev-zzz', 77, id]);
+      const weaker: RowShape = remoteFrom(local, new Overrides().set('updated_at', 7000).set('amount', 11).set('device_id', 'dev-aaa'));
+      stubPull(fx, [weaker], 8000, await since(fx));
+      const res2: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
+      expect(res2.ok).assertTrue();
+      expect(res2.data === undefined ? -1 : res2.data.pulled).assertEqual(0);
+      const after2: RowShape | undefined = await localRow(hub, id);
+      expect(numOf(after2 === undefined ? {} : after2, 'amount')).assertEqual(77);
+
+      // (c) 两端 deviceId **相同** = 同一版本 → 保留本机（不计数冲突）
+      const same: RowShape = remoteFrom(local, new Overrides().set('updated_at', 7000).set('amount', 11).set('device_id', 'dev-zzz'));
+      stubPull(fx, [same], 8000, await since(fx));
+      const res3: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
+      expect(res3.ok).assertTrue();
+      expect(res3.data === undefined ? -1 : res3.data.pulled).assertEqual(0);
+      const after3: RowShape | undefined = await localRow(hub, id);
+      expect(numOf(after3 === undefined ? {} : after3, 'amount')).assertEqual(77);
     });
 
     it('④ 软删除传播：远端 is_deleted=1 且更新更晚 → 本地也变软删除', 0, async () => {
@@ -428,8 +495,8 @@ export default function lwwMergeTest(): void {
       // 远端是软删除行、且 updated_at 更新（§6.4-2：软删除行的 updated_at 更新后同样按 LWW 取胜）
       const remote: RowShape = remoteFrom(local, new Overrides().set('updated_at', 2000).set('is_deleted', 1).set('device_id', 'dev-remote'));
 
-      stubPull(fx, [remote], 3000);
-      const res: AppResult<number> = await hub.sync.fullRestore(userId, now);
+      stubPull(fx, [remote], 3000, await since(fx));
+      const res: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
       expect(res.ok).assertTrue();
 
       // 删除必须**真的落到本机**（不是只写注释）：
@@ -455,17 +522,17 @@ export default function lwwMergeTest(): void {
       const remote: RowShape = remoteFrom(local, new Overrides().set('updated_at', 2000).set('amount', 42).set('device_id', 'dev-remote'));
 
       // 第一次：远端较新 → 写入
-      stubPull(fx, [remote], 3000);
-      const first: AppResult<number> = await hub.sync.fullRestore(userId, now);
+      stubPull(fx, [remote], 3000, await since(fx));
+      const first: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
       expect(first.ok).assertTrue();
-      expect(first.data === undefined ? -1 : first.data).assertEqual(1);
+      expect(first.data === undefined ? -1 : first.data.pulled).assertEqual(1);
 
       // 第二次：同样的远端行再来一遍 —— 本机 now 已是 2000，与远端**平局** → 跳过
       const before: number = fx.rec.recorded().length;
-      stubPull(fx, [remote], 4000);
-      const second: AppResult<number> = await hub.sync.fullRestore(userId, now);
+      stubPull(fx, [remote], 4000, await since(fx));
+      const second: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
       expect(second.ok).assertTrue();
-      expect(second.data === undefined ? -1 : second.data).assertEqual(0);
+      expect(second.data === undefined ? -1 : second.data.pulled).assertEqual(0);
 
       // 行数不变（同一 id 不重复），updated_at 未被再次改动
       const cnt: RowShape[] = await hub.store.query(
@@ -491,34 +558,159 @@ export default function lwwMergeTest(): void {
       expect(writes).assertEqual(0);
     });
 
-    it('⑥ 时钟偏移：当前实现**不做**偏移校正（§6.4-6 未实现，如实登记）', 0, async () => {
-      // 🛑 断言的是"实现不做校正"这一事实，用来把缺失钉住（而不是伪造通过）。
-      // §6.4-6 要求把对端时间戳按 offsetMs 换算到本机基准（容差 ±5 分钟）；
-      // 而 applyRow() 直接比较裸 updated_at，applyPull() 也没有 offsetMs 形参。
-      // 场景：对端时钟比本机慢 10 分钟（对端"刚刚"改的行，其 updated_at 看起来更旧）。
+    it('⑥ 时钟偏移校正：符号方向正确（§6.4-6；t13 已补齐实现，本用例为回归防线）', 0, async () => {
+      // ✅ t13 起实现按 §6.4-6 校正偏移。**符号是关键**：
+      //    响应字段 `offsetMs` = 「服务端时钟 − 客户端时钟」（服务端视角）；
+      //    §6.3 伪码里的 `offsetMs` 是客户端视角的「本机 − 对端」→ 二者互为相反数。
+      //    故客户端必须 `rUpdated = r.updatedAt - respOffsetMs`。
+      //    **判据**：respOffsetMs = +60000（服务端快 60 秒）时，同一条服务端时间戳
+      //    相对本机必须**显得更旧**（−60000），绝不能显得更新。
       const fx: Fixture = await setup();
       const hub: ServiceHub = fx.hub;
       const userId: string = hub.state.userId();
       const now: number = Date.now();
       const local: RowShape = await seedLocal(hub, userId, now);
       const id: string = textOf(local, 'id');
-      const localUpdated: number = 10 * 60 * 1000;      // 本机 10 分钟
-      const remoteBehind: number = 60 * 1000;           // 对端时钟慢 → 只显示 1 分钟
+      // 本条用例**不**走 fullRestore（那是备份覆盖路径），走真实增量同步路径 sync()
+      // 才能让 applyPull 从响应里读到 offsetMs。
+      const localUpdated: number = 10 * 60 * 1000;   // 本机时间戳（10 分钟）
+      const remoteRaw: number = 60 * 1000;           // 服务端"刚刚"改过，但服务端时钟快 60 秒
       await setLocal(hub, id, localUpdated, 0);
-      const remote: RowShape = remoteFrom(local, new Overrides().set('updated_at', remoteBehind).set('amount', 88).set('device_id', 'dev-remote'));
+      const remote: RowShape = remoteFrom(local, new Overrides().set('updated_at', remoteRaw).set('amount', 88).set('device_id', 'dev-remote'));
 
-      stubPull(fx, [remote], 9000);
-      const res: AppResult<number> = await hub.sync.fullRestore(userId, now);
+      // 服务端快 60 秒 → respOffsetMs = +60000 → 客户端视角 offsetMs = −60000
+      // → rUpdated = 60000 + (−60000) = 0 < localUpdated(600000) → 保留本机。
+      // ⚠️ 若符号写反（+60000），rUpdated = 120000…仍 < 600000，判不出来 —— 故再加一组对照：
+      //    下面的 (b) 用「本机 30 秒」的小时间戳，符号写反会让远端胜出，从而把错误暴露出来。
+      stubPullOffset(fx, [remote], 9000, await since(fx), 60000, '客户端时钟与服务端相差 60.0 秒');
+      const res: AppResult<SyncOutcome> = await hub.sync.sync(userId, now);
       expect(res.ok).assertTrue();
-
-      // 实测：按裸时间戳比较 → 远端"更旧" → 保留本机（若做了偏移校正，远端应取胜并写入 88）
-      expect(res.data === undefined ? -1 : res.data).assertEqual(0);
       const after: RowShape | undefined = await localRow(hub, id);
       expect(numOf(after === undefined ? {} : after, 'amount')).assertEqual(5);
       expect(numOf(after === undefined ? {} : after, 'updated_at')).assertEqual(localUpdated);
+
+      // (b) 方向对照：本机 30 秒、服务端原始 100 秒、服务端快 60 秒
+      //     → 客户端视角 offsetMs=−60000 → rUpdated = 100000 − 60000 = 40000 > 30000 → 远端胜出。
+      //     **若符号写反**（+60000）→ rUpdated = 160000 > 30000 也胜出，区分度不足；
+      //     故再取「本机 90 秒」：正确符号 rUpdated=40000 < 90000（保留本机）；
+      //     写反则 rUpdated=160000 > 90000（远端胜出）→ 能真正把符号错误暴露出来。
+      await setLocal(hub, id, 90 * 1000, 0);
+      await hub.store.exec(`UPDATE ${TABLE} SET amount = ? WHERE id = ?`, [5, id]);
+      const remote2: RowShape = remoteFrom(local, new Overrides().set('updated_at', 100 * 1000).set('amount', 55).set('device_id', 'dev-remote'));
+      stubPullOffset(fx, [remote2], 9500, await since(fx), 60000, '');
+      const res2: AppResult<SyncOutcome> = await hub.sync.sync(userId, now);
+      expect(res2.ok).assertTrue();
+      const after2: RowShape | undefined = await localRow(hub, id);
+      // 正确符号：rUpdated = 100000 − 60000 = 40000 < 90000 → 保留本机（amount 仍 5）
+      expect(numOf(after2 === undefined ? {} : after2, 'amount')).assertEqual(5);
+
+      // (c) 反向偏移：服务端慢 60 秒（respOffsetMs = −60000）→ 客户端视角 +60000
+      //     → 同一条服务端时间戳显得**更新**：本机 90 秒 vs 原始 100 秒
+      //     → rUpdated = 100000 + 60000 = 160000 > 90000 → 远端胜出
+      const remote3: RowShape = remoteFrom(local, new Overrides().set('updated_at', 100 * 1000).set('amount', 66).set('device_id', 'dev-remote'));
+      stubPullOffset(fx, [remote3], 9700, await since(fx), -60000, '');
+      const res3: AppResult<SyncOutcome> = await hub.sync.sync(userId, now);
+      expect(res3.ok).assertTrue();
+      const after3: RowShape | undefined = await localRow(hub, id);
+      expect(numOf(after3 === undefined ? {} : after3, 'amount')).assertEqual(66);
     });
 
-    it('⑦ 冲突计数：远端较新且两端自上次同步后都改过 → conflicts +1（经 sync_log 观察）', 0, async () => {
+    it('⑧ 真冲突计数：仅当两端自上次同步后都改过（§6.3；t13 已补齐）', 0, async () => {
+      // §6.3：`l.updatedAt > since && r.updatedAt > since`（r 用**原始**对端时间戳）。
+      // t11 时 `since` 形参被完全忽略 → conflicts 恒为 0；t13 起按条件计数。
+      const fx: Fixture = await setup();
+      const hub: ServiceHub = fx.hub;
+      const userId: string = hub.state.userId();
+      const now: number = Date.now();
+      const local: RowShape = await seedLocal(hub, userId, now);
+      const id: string = textOf(local, 'id');
+
+      // 场景 A：两端都比 since 新 → 真冲突（count=1）
+      // 先把 lastSyncAt 设成一个很小的值，使 l/r 都 > since
+      await fx.hub.cfg.set(ConfigKeys.LAST_SYNC_AT, '1');
+      await setLocal(hub, id, 5000, 0);
+      const remoteA: RowShape = remoteFrom(local, new Overrides().set('updated_at', 6000).set('amount', 21).set('device_id', 'dev-remote'));
+      fx.fake.stub('GET', `${fx.hub.http.baseUrl()}/api/v1/sync/pull?since=1`, 200, pullBody([remoteA], 7000));
+      const resA: AppResult<SyncOutcome> = await hub.sync.sync(userId, now);
+      expect(resA.ok).assertTrue();
+      expect(resA.data === undefined ? -1 : resA.data.conflicts).assertEqual(1);
+
+      // 场景 B：本机比 since 旧（只有对端改过）→ 不是真冲突（count=0）
+      await fx.hub.cfg.set(ConfigKeys.LAST_SYNC_AT, '4000');
+      await setLocal(hub, id, 5000, 0);   // 本机 5000 > 4000 → 仍是两端都改过…故把 since 抬到 5500
+      await fx.hub.cfg.set(ConfigKeys.LAST_SYNC_AT, '5500');
+      const remoteB: RowShape = remoteFrom(local, new Overrides().set('updated_at', 6000).set('amount', 22).set('device_id', 'dev-remote'));
+      fx.fake.stub('GET', `${fx.hub.http.baseUrl()}/api/v1/sync/pull?since=5500`, 200, pullBody([remoteB], 7000));
+      const resB: AppResult<SyncOutcome> = await hub.sync.sync(userId, now);
+      expect(resB.ok).assertTrue();
+      expect(resB.data === undefined ? -1 : resB.data.conflicts).assertEqual(0);
+    });
+
+    it('⑩ 云端备份走独立三端点，且绕开 LWW（附录 B §5.3:807/817-819）', 0, async () => {
+      // 备份 = 快照（`POST/GET /sync/backup` + `POST /sync/backup/restore`），
+      // **不是**"复用 push/pull 的 since=0"——后者会走 §6.3 的 LWW 合并（文档明文禁止）。
+      const fx: Fixture = await setup();
+      const hub: ServiceHub = fx.hub;
+      const userId: string = hub.state.userId();
+      const now: number = Date.now();
+      // 造一条本机行，使快照里有内容
+      const local: RowShape = await seedLocal(hub, userId, now);
+      const id: string = textOf(local, 'id');
+      await setLocal(hub, id, 1000, 0);
+      // 备份基线：lastSyncAt 记成一个**可辨识**的值，断言备份路径不碰它
+      await hub.cfg.set(ConfigKeys.LAST_SYNC_AT, '424242');
+
+      const base: string = hub.http.baseUrl();
+      // ① 上传快照
+      fx.fake.stub('POST', `${base}/api/v1/sync/backup`, 200,
+        '{"ok":true,"data":{"stored":3,"ignored":0,"rejected":0,"snapshotAt":111,"serverTime":222,"tables":{"carbon_record":3}}}');
+      const up = await hub.sync.fullUpload(userId, now);
+      expect(up.ok).assertTrue();
+      expect(up.data === undefined ? -1 : up.data).assertEqual(3);
+
+      // ② 下载快照 + ③ 覆盖式恢复
+      fx.fake.stub('GET', `${base}/api/v1/sync/backup`, 200,
+        '{"ok":true,"data":{"serverTime":333,"snapshotAt":444,"totalRows":1,' +
+        '"tables":{"carbon_record":[' + JSON.stringify(remoteFrom(local, new Overrides().set('updated_at', 9999).set('amount', 12))) + ']}}');
+      fx.fake.stub('POST', `${base}/api/v1/sync/backup/restore`, 200,
+        '{"ok":true,"data":{"restored":2,"removed":1,"preRestoreAt":555,' +
+        '"preRestore":{"carbon_record":[]},"serverTime":666,"tables":{"carbon_record":2}}}');
+      const down = await hub.sync.fullRestore(userId, now);
+      expect(down.ok).assertTrue();
+      expect(down.data === undefined ? -1 : down.data).assertEqual(3);
+
+      // 三条请求全部落在**新端点**上，且都带 Bearer
+      const reqs = fx.fake.requests();
+      let backupCalls: number = 0;
+      let pushOrPull: number = 0;
+      let authed: number = 0;
+      let i: number = 0;
+      while (i < reqs.length) {
+        const u: string = reqs[i].url;
+        if (u.indexOf('/api/v1/sync/backup') >= 0) {
+          backupCalls = backupCalls + 1;
+        }
+        if (u.indexOf('/api/v1/sync/push') >= 0 || u.indexOf('/api/v1/sync/pull') >= 0) {
+          pushOrPull = pushOrPull + 1;
+        }
+        if (FakeHttpClient.authHeaderOf(reqs[i]).length > 0) {
+          authed = authed + 1;
+        }
+        i = i + 1;
+      }
+      expect(backupCalls).assertEqual(3);
+      expect(pushOrPull).assertEqual(0);
+      expect(authed).assertEqual(3);
+
+      // 备份/恢复**不动** lastSyncAt（§5.3:807「不用 lastSyncAt」）
+      expect(await hub.cfg.stamp(ConfigKeys.LAST_SYNC_AT)).assertEqual(424242);
+      // 恢复前原状已落盘（调用方负责，服务端不建表）
+      const pre: string | undefined = await hub.cfg.get(ConfigKeys.CLOUD_PRE_RESTORE);
+      expect(pre !== undefined).assertTrue();
+      expect((pre === undefined ? '' : pre).indexOf('555') >= 0).assertTrue();
+    });
+
+    it('⑨ 备份/恢复日志：恢复不产生 conflicts（备份路径与 LWW 无关）', 0, async () => {
       // 口径来源：附录 B §6.3「真冲突 = 两端自上次同步后都改过这一行」。
       // ⚠️ 注意：`applyRow()` 的 `since` 形参在 :461-497 内**未被使用**，
       //    故"两端自上次同步后都改过"这一条件在当前实现里**不可判**；
@@ -533,16 +725,19 @@ export default function lwwMergeTest(): void {
       await setLocal(hub, id, 1000, 0);
       const remote: RowShape = remoteFrom(local, new Overrides().set('updated_at', 2000).set('device_id', 'dev-remote'));
 
-      stubPull(fx, [remote], 3000);
-      const res: AppResult<number> = await hub.sync.fullRestore(userId, now);
+      stubPull(fx, [remote], 3000, await since(fx));
+      const res: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
       expect(res.ok).assertTrue();
 
-      // fullRestore 写一行 direction='pull' 的 sync_log；冲突数从这里读
+      // sync() 写一行 direction='both' 的 sync_log；冲突数从这里读。
+      // t13 起按 §6.3 计数：本场景 `since` = lastSyncAt = 0，而本机 1000 / 远端 2000 都 > 0
+      // → 两端自上次同步后都改过 → 应计 1（此前"实现忽略 since、恒为 0"的登记已反转）。
       const log: RowShape | undefined = await lastPullLog(hub, userId);
       expect(log !== undefined).assertTrue();
       const conflicts: number = numOf(log === undefined ? {} : log, 'conflict_count');
-      // 实测口径：远端较新写入时 conflicts = 0（实现未实现 lastSyncAt 条件计数）
-      expect(conflicts).assertEqual(0);
+      expect(conflicts).assertEqual(1);
+      // 同时确认同步结果里的 conflicts 与日志一致
+      expect(res.data === undefined ? -1 : res.data.conflicts).assertEqual(1);
     });
   });
 }
