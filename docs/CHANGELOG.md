@@ -6,12 +6,29 @@
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v4.2** | 2026-11-06 | **文档契约勘误（对齐已实现并验证的口径）**：`uq_pr_source` 补 `user_id`、同步契约七处收紧（备份三端点 / `clientNow` / `ignored` 与 `conflicts` 分离 / 鉴权）、附录 C 落盘路径与附录 D §9 演示数据口径 |
 | **v4.1** | 2026-11-06 | **文档契约冻结**：统一账号与同步口径、补齐可执行契约、验收与界面双向承载、因子基准收敛 |
 | v4.0 | 2026-10-15 | 规划定稿：9 项官方要求全做、出行类净减排口径、因子 30 个、19 张表、11 个目标、8 枚徽章 |
 
 ---
 
-## v4.1（2026-11-06）· 文档契约冻结
+## v4.2（2026-11-06）· 文档契约勘误
+
+**触发**：三部分实现（`app/` t2+t4、`server/` t3+t5、`/admin` t6）落地后，发现文档契约与「已实现并已验证的正确口径」分叉（`server/README.md §9.1` 的行号清单 + 队长实测）。**本版不改任何实现代码**，只把分叉收敛到文档侧。
+**门禁**：`python3 tests/tools/check_l0.py --strict` → `L0-1 错误 0 / L0-2 命中 0 / L0-3 open 0 / 结论 PASS`，退出码 0。
+
+### 1. 附录 B 八处契约修正（B40 / B41）
+
+- **`uq_pr_source` 补 `user_id`**（§2）：`uq_pr_source(source_type, source_id, flow_kind)` → **`uq_pr_source(user_id, source_type, source_id, flow_kind)`**；幂等约束注释写清"`source_id` 取值口径不含账号维度 → 缺 `user_id` 时两个账号同日达成同名目标互相顶掉、后入账者丢积分"，并写明同步判重一律按 `(user_id, 业务键)` 组合。同口径同步到 PLAN §9.5 第 2/3 条与两处变更索引。服务端 `sql/schema.sql`（+ `migrations/001_uq_pr_source_user_id.sql`）与客户端 `ClientSchema.ets` 早已按含 `user_id` 实现。
+- **§6.3 伪码自洽**：`appendOnly` 分支新增 `businessKeyOf` / `keys` 集合，**同 `id` 或同业务唯一键已存在都算重复**（`ignored++`，不计 `conflicts`），不再把"业务唯一键兜底"只写在散文注释里；写回 `INSERT OR IGNORE` 明确为**第二道**兜底。
+- **§5.3 云端备份三端点补行**：`POST /api/v1/sync/backup`（上传快照）、`GET /api/v1/sync/backup`（下载快照）、`POST /api/v1/sync/backup/restore`（覆盖式恢复，返回覆盖前原状 `preRestore`）；写明"只存快照、不做 LWW、不算冲突、不用 `lastSyncAt`"，并**明确否决**"备份复用 `push`/`pull` 的 `since=0`"（那条路径走 LWW 合并，做不到"覆盖"）。D5-12 的判据同步指向这三端点。
+- **§5.3 push 请求体补 `clientNow`**（毫秒，可选）：§6.4-6 要求测得 `offsetMs = 本机时钟 − 对端时钟`，服务端侧即 `服务端时钟 − 客户端时钟`；缺失时 `offsetMs = 0`（未校正，不猜值）。响应示例补 `ignored` / `rejected` / `offsetMs` / `clockWarning`，并写明 `skipped = ignored + rejected`。
+- **§6.4-3 分离两个计数器**：`ignored`（跨设备重复已去重）**不计入** `conflicts`；`conflicts` 只按 §6.3 的「真冲突」条件计数。
+- **§6.5 `user_purchase`**：补"服务端忽略远端购买行时**不产生任何流水**"（无 `reverse`，也没有 `adjust` 这个 `source_type`）。
+- **§6.5 `user_profile`**：补"合并时按 `user_id` 收敛到一行，`id` 取胜者的"（同 `id` 两行仍按 `updated_at` 取新）。
+- **§5.2 / §5.3 鉴权**：§5.2 增「鉴权」列；§5.3 表头写明**本组全部端点**（`pull`/`push`/`status` + 备份三端点）均需 `Authorization: Bearer <userToken>`，身份取自令牌、请求体 `userId` 只用于对账（不一致整批 403），账号已注销者 401。
+
+
 
 **触发**：两轮独立交叉审计（31 条 + 8 条不一致）+ 负责人对 ADR-0001 四项未决项的拍板。
 **门禁**：`python3 tests/tools/check_l0.py --strict` → `L0-1 错误 0 / L0-2 命中 0 / L0-3 open 0 / 结论 PASS`，退出码 0。

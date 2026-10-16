@@ -930,6 +930,22 @@
       "bad": "ADR-0001 遗留四项「未决」，与 PLAN/附录的服务端、同步、注销口径悬空",
       "correct": "【已闭环·用户拍板 2026-11-06】ADR 新增 Decisions 表：① 首次登录时本机历史数据全部改挂账号并全量上传；② 鸿蒙分布式协同保留为近场演示层；③ 注销后云端数据软删除保留 30 天、期间可恢复，本机数据不删；④ 云服务器规格/地区/域名仍是唯一未决项（不阻塞编码，地址经配置注入）",
       "status": "closed"
+    },
+    {
+      "id": "B40",
+      "file": "docs/APPENDIX-B-data-and-api.md + docs/PLAN.md",
+      "locator": "APPENDIX-B:134-142（`uq_pr_source` + 幂等约束注释）、PLAN §9.5 第 2/3 条、APPENDIX-B §10 变更索引",
+      "bad": "唯一键 `uq_pr_source(source_type, source_id, flow_kind)` **缺 `user_id`**，而 `source_id` 取值口径（`goal → '<goalId>:<periodKey>'`、`shop_item → '<shop_item.id>'`）不含账号维度 → 本机 `local-guest` / `demo-user` / 账号 userId 并存、服务端多账号共库时，两个账号同一天达成同名目标会得到同一组键值，**后入账者被唯一索引挡下、合法积分流水丢失**",
+      "correct": "【已闭环·2026-11-06 文档对齐实现】`uq_pr_source(user_id, source_type, source_id, flow_kind)`：APPENDIX-B §2 建表 SQL 与幂等约束注释改为含 `user_id`（并写清「跨账号互不影响」、同步判重一律按 `(user_id, 业务键)` 组合）；PLAN §9.5 第 2/3 条与 §10 变更索引同步。服务端 `server/sql/schema.sql` + `sql/migrations/001_uq_pr_source_user_id.sql` 与客户端 `app/entry/src/main/ets/data/schema/ClientSchema.ets` **此前已按含 `user_id` 的口径实现并验证**，本条目只修文档侧分叉",
+      "status": "closed"
+    },
+    {
+      "id": "B41",
+      "file": "docs/APPENDIX-B-data-and-api.md + docs/APPENDIX-D-acceptance.md",
+      "locator": "APPENDIX-B:748（§5.2 端点表）、:792 / :794-798（§5.3 端点表）、:801-814（push 请求/响应示例）、:894-935（§6.3 伪码与写回块）、:939-942（§6.4-3）、:945（§6.4-6）、:953-954（§6.5）；APPENDIX-D D5-12",
+      "bad": "同步契约与已实现并验证的口径分叉七处：① §6.3 伪码的 `appendOnly` 只按 `id` 去重，业务唯一键兜底只写在散文注释里 → 伪码自身不自洽（照抄即跨设备重复发放）；② §5.3 端点表只有 pull/push/status，**云端备份三端点缺行**；③ push 请求体没有客户端时钟字段，而 §6.4-6 要求测得 `offsetMs = 本机时钟 − 对端时钟`，服务端无从测得；④ §6.4-3 把 `ignored` 与 `conflicts` 混写在一条里（容易被实现成「去重也计冲突」）；⑤ §6.5 `user_purchase` 行没写「忽略远端购买行不产生任何流水」；⑥ §6.5 `user_profile` 行没写按 `user_id` 收敛到一行、`id` 取胜者的；⑦ §5.2/§5.3 都没写明哪些端点需要 `Authorization: Bearer <userToken>`（账号已注销者 401）",
+      "correct": "【已闭环·2026-11-06 文档对齐实现】① §6.3 伪码新增 `businessKeyOf` / `keys` 集合，`appendOnly` 分支同时判 `id` 与业务唯一键（命中即 `ignored++`，不计 `conflicts`），并写明写回 `INSERT OR IGNORE` 是第二道兜底；② §5.3 补三行端点 `POST /api/v1/sync/backup`（上传快照）/ `GET /api/v1/sync/backup`（下载快照）/ `POST /api/v1/sync/backup/restore`（覆盖式恢复，返回 `preRestore`），并写明「备份是独立三端点、不是复用 push/pull 的 since=0」（t5 的 test_backup 钉住三条）；③ push 请求体补可选 `clientNow`（毫秒），响应补 `ignored`/`rejected`/`offsetMs`/`clockWarning`，并写明 `skipped = ignored + rejected`、`offsetMs = 服务端时钟 − 客户端时钟`、`clientNow` 缺失即按「无偏移」处理；④ §6.4-3 明确 `ignored` **不计入** `conflicts`；⑤ §6.5 明确忽略远端购买行**不产生任何流水**（无 `reverse`、无 `adjust` 枚举值）；⑥ §6.5 明确 `user_profile` 合并按 `user_id` 收敛到一行、`id` 取「保存下来的那一行」的 id；⑦ §5.2 加「鉴权」列、§5.3 表头写明本组全部端点（含备份三端点）均需客户端令牌、账号已注销者 401；另 D5-12 的判据指向附录 B §5.3 的三端点",
+      "status": "closed"
     }
   ]
 }

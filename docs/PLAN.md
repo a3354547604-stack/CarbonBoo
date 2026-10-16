@@ -719,8 +719,8 @@ capped = (A < C)
 ### 9.5 幂等与事务约束（防作弊）
 
 1. **积分发放与减排量计算在同一事务内完成**，不允许"先记录后补分"。
-2. **同一条 `carbon_record` 的每个版本只产生一条得分流水**：记录类流水的 `source_id = <记录ID>#<revision>`（`revision` 在 `carbon_record` 中每次编辑 +1）。于是 `UNIQUE(source_type, source_id, type)` 允许「每版本一条入账 + 一条 `reverse` 冲正」，二次编辑或删除后恢复都不会撞唯一索引；编辑一律产生 `reverse`，绝不改原流水。
-3. **同一个目标在同一周期只产生一条 `goal` 流水**（`source_id = goalId + periodKey` 唯一）。
+2. **同一条 `carbon_record` 的每个版本只产生一条得分流水**：记录类流水的 `source_id = <记录ID>#<revision>`（`revision` 在 `carbon_record` 中每次编辑 +1）。于是 `UNIQUE(user_id, source_type, source_id, flow_kind)`（v4.2 起含 `user_id`，见附录 B §2）允许「每版本一条入账 + 一条 `reverse` 冲正」，二次编辑或删除后恢复都不会撞唯一索引；编辑一律产生 `reverse`，绝不改原流水。
+3. **同一个目标在同一周期只产生一条 `goal` 流水**（`source_id = goalId + periodKey`，按 `user_id` 隔离——两个账号同一天达成同名目标互不影响，见附录 B §2 的 `uq_pr_source`）。
 4. **同步的封顶口径（v4.0 决策「甲2」）**：**以"本机已知的流水"判定封顶**；同步（云端或近场）完成后若发现当天总量超过 200，**不追回**已发分，仅在协同面板**冲突计数 +1**。
    > 否决了"同步后回溯生成 `reverse` 负流水"的方案：会导致"积分无缘无故变少"，体验差且逻辑复杂。
 5. **同一件商品只有一个购买流水**（`UNIQUE(user_id, item_id)`），重复购买必须被拒绝；两台设备各自离线购买同一商品时，合并按该唯一键去重，**只扣一次分**（见附录 B §6/§7）。

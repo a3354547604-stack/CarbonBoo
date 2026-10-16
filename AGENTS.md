@@ -52,7 +52,12 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 **仍未清零（阻塞对应模块的编码）**
 
 > ✅ **当前为空。** `python3 tests/tools/check_l0.py --strict` 已通过：0 处 DOC_SCAN 命中 + 0 条 open docConflicts（2026-11-06）。
-> 下面的 B20–B39 全部已清零；新增缺陷必须**同时**写进本表与 `tests/cases/carbon-calc.json → docConflicts`（`status: "open"`）。
+> 下面的 B20–B41 全部已清零；新增缺陷必须**同时**写进本表与 `tests/cases/carbon-calc.json → docConflicts`（`status: "open"`）。
+
+**已清零（2026-11-06 · v4.2 文档契约勘误）**
+
+- B40 `uq_pr_source` **补 `user_id`**：`uq_pr_source(user_id, source_type, source_id, flow_kind)`（附录 B §2 建表 SQL + 幂等约束注释、PLAN §9.5 第 2/3 条、§10 变更索引）；否则两个账号同一天达成同名目标互相顶掉、后入账者丢积分。服务端 `sql/schema.sql` + `migrations/001_*` 与客户端 `ClientSchema.ets` 早已按含 `user_id` 的口径实现
+- B41 同步契约七处对齐实现：§6.3 伪码 `appendOnly` 补业务唯一键判重（不再只按 `id`）、§5.3 补云端备份三端点（`POST/GET /sync/backup`、`POST /sync/backup/restore`）、push 请求体补 `clientNow` 与响应补 `ignored`/`rejected`/`offsetMs`、§6.4-3 明确 `ignored` 不计入 `conflicts`、§6.5 明确忽略远端购买行不产生流水且 `user_profile` 按 `user_id` 收敛一行、§5.2/§5.3 写明鉴权（Bearer，注销后 401）
 
 **已清零（2026-11-06 · v4.1 文档契约冻结）**
 

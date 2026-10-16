@@ -131,15 +131,22 @@ CREATE TABLE IF NOT EXISTS point_record (
   device_id    TEXT,
   sync_state   TEXT    NOT NULL DEFAULT 'local'
 );
--- 幂等约束（v4.1）：`source_id` 取值口径**必须写死**（`PointService` 是唯一产生方）：
+-- 幂等约束（v4.2）：唯一键**必须含 `user_id`**。理由：`source_id` 的取值口径（下面四行）**不含账号维度**，
+--   而本机库同时有 `local-guest` / `demo-user` / 账号 `userId`，服务端更是多账号共库 —— 唯一键缺 `user_id` 时，
+--   两个账号同一天达成同名目标会得到**同一组键值**，后入账者被唯一索引挡下 → **合法积分流水丢失**。
+-- `source_id` 取值口径**必须写死**（`PointService` 是唯一产生方）：
 --   carbon_record  → '<carbon_record.id>#<revision>'   入账与冲正取同一值，靠 flow_kind 区分
 --   goal           → '<goalId>:<periodKey>'            如 'S1:D:2026-02-01'
 --   shop_item      → '<shop_item.id>'                   商品编码，如 'frame_01'
 --   carbon_include → '<carbon_include.id>'              兑换记录主键
--- 唯一性：同一 source_type+source_id+flow_kind 只能有一条 → 同 revision 的 record / record_capped
+-- 唯一性：同一 user_id+source_type+source_id+flow_kind 只能有一条 → 同 revision 的 record / record_capped
 --   不可能并存（它们都是 flow_kind='primary'），而 reverse 可与 primary 并存（冲正必进 D，见 PLAN §9.2）。
---   目标按 goalId:periodKey、商品按 item_id、记录按 <id>#<revision> 去重，跨设备重复发放只入账一次。
-CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_source ON point_record(source_type, source_id, flow_kind);
+--   目标按 user_id+goalId:periodKey、商品按 user_id+item_id、记录按 user_id+<id>#<revision> 去重：
+--   跨设备重复发放只入账一次，**跨账号互不影响**（同步写入的业务唯一键判定也一律按 (user_id, 业务键) 组合，见 §6.3/§6.5）。
+-- [v4.2 文档对齐] 服务端 `server/sql/schema.sql`（老库走 `sql/migrations/001_uq_pr_source_user_id.sql`）与客户端
+--   `ClientSchema`（`app/entry/src/main/ets/data/schema/ClientSchema.ets`）**都已按含 `user_id` 的口径实现**；
+--   本条修正的是文档：v4.1 冻结的 `(source_type, source_id, flow_kind)` 少一个 `user_id`。
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_source ON point_record(user_id, source_type, source_id, flow_kind);
 CREATE INDEX IF NOT EXISTS idx_pr_user_time ON point_record(user_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pr_cap       ON point_record(user_id, occurred_at, source_type, is_deleted);
 CREATE INDEX IF NOT EXISTS idx_pr_updated   ON point_record(updated_at);
@@ -738,13 +745,16 @@ export interface AppResult<T> {
 
 ### 5.2 auth
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/api/v1/auth/register` | 注册（用户名 + 密码） |
-| POST | `/api/v1/auth/login` | 登录，返回 JWT |
-| GET | `/api/v1/auth/me` | 当前用户信息 |
-| POST | `/api/v1/auth/logout` | 登出：服务端无状态（只记 `last_login_at`），客户端清 token 并回未登录态；**本机业务数据一条不删** |
-| DELETE | `/api/v1/auth/account` | 注销账号（ADR-0001 决策 ③）：校验密码后把该账号云端数据**软删除并保留 30 天**，期间同一用户名+密码再次登录可恢复；**本机业务数据一条不删**，客户端回未登录态 |
+> 鉴权口径：`register` / `login` **无需令牌**（它们就是拿令牌的地方）；`me` / `logout` / `account` **均需**
+> `Authorization: Bearer <userToken>`，缺失/非法/过期 → 401，**账号已注销**（软删除保留期内旧令牌不可用）→ 401。
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| POST | `/api/v1/auth/register` | 无 | 注册（用户名 + 密码） |
+| POST | `/api/v1/auth/login` | 无 | 登录，返回 JWT |
+| GET | `/api/v1/auth/me` | Bearer | 当前用户信息 |
+| POST | `/api/v1/auth/logout` | Bearer | 登出：服务端无状态（只记 `last_login_at`），客户端清 token 并回未登录态；**本机业务数据一条不删** |
+| DELETE | `/api/v1/auth/account` | Bearer | 注销账号（ADR-0001 决策 ③）：校验密码后把该账号云端数据**软删除并保留 30 天**，期间同一用户名+密码再次登录可恢复；**本机业务数据一条不删**，客户端回未登录态 |
 
 ```jsonc
 // POST /api/v1/auth/register
@@ -786,32 +796,52 @@ export interface AppResult<T> {
 
 ### 5.3 sync（**必做**：多设备增量同步 + 云端备份 / 恢复）
 
+> **鉴权（本组全部端点，一个不漏）**：`GET /sync/pull`、`POST /sync/push`、`GET /sync/status`、
+> `POST /sync/backup`、`GET /sync/backup`、`POST /sync/backup/restore` **均需**
+> `Authorization: Bearer <userToken>`。身份一律取自**令牌**；请求体里的 `userId` 只用于**对账**——
+> 与令牌账号不一致时整批 403（一行都不写）。令牌缺失/非法/过期，或**账号已注销**（软删除保留期内的旧令牌不可用）
+> → **401**。未登录时客户端不调用本组任何端点。
 > 这组接口是 **ADR-0001 里跨设备一致性的唯一真通路**：登录后由 `CloudSyncService` 按 §6 的 LWW 算法交换增量。
 > **鸿蒙分布式数据服务是近场演示层**（§6.6），只做同一 Wi-Fi 下的双机演示，**不承担跨设备一致性**。
 > **未登录时不调用本组接口**，客户端全部功能照常可用（铁律 1 的例外集只含登录/注册、多设备同步、商品取价、云端备份）。
-> 云端备份 = 全量快照上传 / 下载覆盖（不做自动合并，恢复前先生成本地快照，见 PLAN §7.8）。
+> **云端备份 = 独立三端点**（下表的 `/sync/backup` 两条 + `/sync/backup/restore`）：只存快照，
+> **不做 LWW 比较、不算冲突、不用 `lastSyncAt`**；恢复**即覆盖**，并且覆盖**之前**先把云端原状随响应 `preRestore`
+> 返回给调用方落盘（见 PLAN §7.8）。**不是**"备份复用 `push`/`pull` 的 `since=0`"——那条路径会走 §6.3 的 LWW 合并，
+> 语义是"合并"而不是"快照 / 覆盖"，两者不可互相替代。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/v1/sync/pull?since={ms}` | 拉取增量（`updated_at > since`） |
-| POST | `/api/v1/sync/push` | 推送增量 |
-| GET | `/api/v1/sync/status` | 云端统计（各表条数、最后时间） |
+| GET | `/api/v1/sync/pull?since={ms}` | 拉取增量（`updated_at > since`，含软删除行）；`since=0` = 全量拉取 |
+| POST | `/api/v1/sync/push` | 推送增量（按 §6.3 合并，响应 `merged` 回带需回写的行） |
+| GET | `/api/v1/sync/status` | 云端统计（各表条数 / 软删除数 / 最后更新时间 / 出现过的 `device_id` / 最近一次同步日志） |
+| POST | `/api/v1/sync/backup` | **上传云端备份快照**：同 `id` 覆盖、新 `id` 插入；不做 LWW、不算冲突、不用 `lastSyncAt`；业务唯一键撞车计 `ignored`（不做自动合并）。响应 `stored` / `ignored` / `rejected` / `snapshotAt` / `tables` |
+| GET | `/api/v1/sync/backup` | **下载云端快照**（"恢复即覆盖"的数据源）：整份返回 9 张参与同步表的云端行（含软删除行）+ 快照时间。响应 `snapshotAt` / `totalRows` / `tables` |
+| POST | `/api/v1/sync/backup/restore` | **覆盖式恢复**：payload 里出现的表整体对齐快照（LWW 表按快照删 / 写；只增账本 `point_record` / `carbon_include` **只补不删**，铁律 4）；覆盖前原状随响应 `preRestore`（+ `preRestoreAt`）返回。响应 `restored` / `removed` / `tables` |
 
 ```jsonc
-// POST /api/v1/sync/push
+// POST /api/v1/sync/push                                  // 请求头：Authorization: Bearer <userToken>
 {
   "userId": "u-...", "deviceId": "d-8f3a21", "lastSyncAt": 1762290000000,
+  "clientNow": 1762299999999,   // 可选：客户端当前时钟（毫秒），服务端据此测时钟偏移；**缺失 = 按"无偏移"处理**
   "tables": { "carbon_record": [ /* CarbonRecord[] */ ], "point_record": [ /* ... */ ] }
 }
 // res 200
 {
   "ok": true,
   "data": {
-    "accepted": 42, "skipped": 3, "conflicts": 1, "serverTime": 1762300000000,
+    "accepted": 42, "skipped": 3, "ignored": 3, "rejected": 0, "conflicts": 1,
+    "serverTime": 1762300000000, "offsetMs": 1, "clockWarning": null,
     "merged": { "carbon_record": [ /* 服务端更新后需回写的行 */ ] }
   }
 }
 ```
+
+> **响应字段口径**：`skipped = ignored + rejected`（`skipped` 是本节原有的字段名，`ignored` 是 §6.4-3 的计数器名，
+> 两者是同一个数，两个名字都回带，避免下游各按一种名字对接）；`ignored` = 跨设备重复已去重（`id` 或业务唯一键命中已有行），
+> **不计入 `conflicts`**；`rejected` = 未采纳且保留服务端版本的行（已随 `merged` 回写，含非法行 / 越权行）；
+> `conflicts` = 真冲突（定义见 §6.3 / §6.4-3）。
+> `offsetMs = 服务端时钟 − 客户端时钟`（即服务端视角的"本机 − 对端"，见 §6.4-6）；`clientNow` 缺失时为 `0`（未校正，不猜值）；
+> 超 ±5 分钟容差时 `clockWarning` 给出提示但**继续合并**。
 
 ### 5.4 shop + admin
 
@@ -890,20 +920,37 @@ done          —— 写 sync_log(success)；更新 device_info.last_sync_at
 
 ```ts
 // lastSyncAt：上次成功同步的时间（device_info.last_sync_at），用于区分「真冲突」与「普通覆盖」
-// mode：'lww'（可改可删）| 'appendOnly'（账本表，按 id 已存在即跳过）
+// mode：'lww'（可改可删）| 'appendOnly'（账本表：同 id **或**同业务唯一键已存在即跳过）
+// businessKeyOf(row)：业务唯一键（§6.5 的 (user_id, 业务键) 组合）；
+//   账本表 = uq_pr_source 的 (user_id, source_type, source_id, flow_kind)；
+//   没有业务键的表（carbon_record / carbon_include / user_appearance / user_profile 除主键外）返回 null
 async function mergeTable<T extends BaseRow>(
   table: string, local: T[], remote: T[],
   offsetMs: number, lastSyncAt: number, mode: 'lww' | 'appendOnly'
 ): Promise<{ toApply: T[]; conflicts: number; ignored: number }> {
   const toApply: T[] = [];
   let conflicts = 0, ignored = 0;
-  const map = new Map<string, T>();
-  for (const row of local) map.set(row.id, row);
+  const map = new Map<string, T>();       // id → 本机行
+  const keys = new Set<string>();         // 业务唯一键（含 user_id）→ 本机已有
+  for (const row of local) {
+    map.set(row.id, row);
+    const k = businessKeyOf(row);
+    if (k !== null) keys.add(k);
+  }
 
   for (const r of remote) {
     const l = map.get(r.id);
+    if (mode === 'appendOnly') {
+      // 账本表（point_record / carbon_include）**只增不删**（铁律 4）：
+      // 同 id 已存在 → 跳过；id 不同但**业务唯一键已存在** → 同样是跨设备重复发放，一并跳过。
+      // 两者都只计 ignored（面板「跨设备重复已去重」），**不计 conflicts**。
+      const k = businessKeyOf(r);
+      if (l !== undefined || (k !== null && keys.has(k))) { ignored++; continue; }
+      toApply.push(r);
+      if (k !== null) keys.add(k);
+      continue;
+    }
     if (!l) { toApply.push(r); continue; }         // 本机没有 → 直接接纳
-    if (mode === 'appendOnly') { ignored++; continue; } // 账本已按 id 存在 → 跳过
 
     const rUpdated = r.updatedAt + offsetMs;       // 对端时间 → 本机时间基准
     if (rUpdated > l.updatedAt) {
@@ -924,34 +971,36 @@ async function mergeTable<T extends BaseRow>(
   return { toApply, conflicts, ignored };
 }
 
-// 写回（mergeTable 的两种 mode 都用同一句 SQL）：
+// 写回（mergeTable 的两种 mode 都用同一句 SQL；它是上面"提前跳过"的**第二道**兜底，不是唯一一道）：
 //   INSERT OR IGNORE INTO <table> (cols...) VALUES (...)
 //   ├ 主键冲突（同 id）                 → 该行被忽略，ignored++，accepted 不加
-//   ├ 业务唯一键冲突（uq_pr_source / uq_up / …）→ 该行被忽略，ignored++，面板计「跨设备重复已去重」
+//   ├ 业务唯一键冲突（uq_pr_source / uq_up / uq_uprofile / …）→ 该行被忽略，ignored++，面板计「跨设备重复已去重」
 //   └ 插入成功                          → accepted++
 // ⚠️ 账本表（point_record / carbon_include）**只增不删**（铁律 4）：只允许 INSERT OR IGNORE，
 //    不允许用 UPDATE 补救；user_purchase 属「有唯一键的 LWW」（§6.5），LWW 胜出的行同样走这句兜底。
-// 说明：appendOnly 分支只按 `id` 提前跳过，**业务唯一键的重复由写回这句 SQL 兜底**——两者合起来
-//    才是 §6.4-3 说的「`id` 与业务键双重幂等」，缺任何一个都会跨设备重复发放。
+// 说明：`id` 与业务键**两道判重都在这里**——appendOnly 分支提前跳过（上面的 `keys` 集合），
+//    写回时再由 `INSERT OR IGNORE` 兜底；缺任何一个都会跨设备重复发放（这就是 §6.4-3 的「双重幂等」）。
+//    只按 `id` 去重的实现是**错的**：跨设备各自离线达成同一目标时 id 不同、业务键相同。
 ```
 
 ### 6.4 六条硬约束
 
 1. **本机优先**：合并期间任何失败都必须保持本机数据可用（用事务或"先备份后合并"）。
 2. **删除也要传播**：比较 `is_deleted`；软删除行的 `updated_at` 更新后同样按 LWW 取胜。
-3. **`id` 与业务键双重幂等**：`id`（UUID）主键保证同一行不重复；业务唯一键（`uq_pr_source` / `uq_up`）保证跨设备重复发放**只入账一次**——账本表写入用 `INSERT OR IGNORE`，被忽略的行计入 `ignored` 与冲突数。
+3. **`id` 与业务键双重幂等**：`id`（UUID）主键保证同一行不重复；业务唯一键（`uq_pr_source` / `uq_up` / `uq_uprofile`）保证跨设备重复发放**只入账一次**——账本表写入用 `INSERT OR IGNORE`，被忽略的行计入 `ignored`（§5.3 里同义的字段名是 `skipped`）。
+   **`ignored` 不计入 `conflicts`**：`conflicts` 只按 §6.3 的「真冲突」条件计数（`l.updatedAt > lastSyncAt && r.updatedAt > lastSyncAt`，即"两端自上次同步后都改过这一行"）；去重丢弃的行是"同一事实的重复"，**不是冲突**，页面口径是「跨设备重复已去重」。
 4. **封顶与重复发放（决策「甲2」）**：记录分以**本机已知流水**判定封顶，合并后若某天总量超 200，**不追回**已发分，只计冲突 +1；而**目标奖励与商品购买属「同一事实」**，跨设备重复发放 / 重复扣费**只入账一次**（业务唯一键 + `INSERT OR IGNORE`），两端收敛到同一账本。
 5. **静态字典不参与合并**：`goal_def` / `badge_def` / `shop_item` / `science_article` / `carbon_factor_meta` 随 App 版本走。
-6. **时钟偏移校正**：握手时测得 `offsetMs = 本机时钟 − 对端时钟`（两端互为相反数），比较前统一把对端时间戳换算到本机基准；容差 ±5 分钟，超容差记 `sync_log.error_msg` 但仍继续。
+6. **时钟偏移校正**：握手时测得 `offsetMs = 本机时钟 − 对端时钟`（两端互为相反数）：**客户端侧**取 `客户端时钟 − 服务端时钟`，**服务端侧**取 `服务端时钟 − 客户端时钟`（§5.3 请求体里可选的 `clientNow` 就是给服务端测这个用的；`clientNow` 缺失时 `offsetMs = 0`，按"无偏移"处理，不猜值）。比较前统一把对端时间戳换算到本机基准；容差 ±5 分钟，超容差记 `sync_log.error_msg`（响应里的 `clockWarning`）但仍继续。
 
 ### 6.5 表分组与合并策略
 
 | 组 | 表 | 策略 |
 |---|---|---|
-| 只增（账本） | `point_record`、`carbon_include` | 按 `id` 去重后并集；写入统一 `INSERT OR IGNORE`，由业务唯一键兜底——跨设备重复发放只入账一次 |
+| 只增（账本） | `point_record`、`carbon_include` | 按 `id` **与业务唯一键**双重去重后并集；写入统一 `INSERT OR IGNORE`——跨设备重复发放只入账一次（判定一律按 `(user_id, 业务键)` 组合，见 §2 的 `uq_pr_source`） |
 | 可改可删 | `carbon_record`、`user_goal`、`user_badge`、`user_appearance`、`science_progress` | 完整 LWW |
-| 有唯一键的 LWW | `user_purchase` | 完整 LWW；写回时 `UNIQUE(user_id, item_id)` 兜底，重复购买那条被忽略——记账上等价于**没有多扣一次分**（本项目不做退款流水，所以不是"退回多扣的分"） |
-| 单例行 | `user_profile` | 按 `updated_at` 取新；每个 `user_id` 恒一行（`uq_uprofile` 保证），`id` 仍是不变的新 UUID |
+| 有唯一键的 LWW | `user_purchase` | 完整 LWW；写回时 `UNIQUE(user_id, item_id)` 兜底，重复购买那条被忽略——记账上等价于**没有多扣一次分**（本项目不做退款流水，所以不是"退回多扣的分"）。**服务端忽略远端购买行时不产生任何流水**：不产生 `reverse`、也没有 `adjust` 这种 `source_type`（枚举里不存在，见 §2/§7.1），只是把该行计进 `ignored` |
+| 单例行 | `user_profile` | **合并时按 `user_id` 收敛到一行，`id` 取胜者的**：同一 `user_id` 在两端各有一行（`id` 不同）时，只保留一行，落后的一方按响应 `merged` 把本机那行对齐到取胜行的 `id`；同 `id` 的两行仍按 `updated_at` 取新。每个 `user_id` 恒一行由 `uq_uprofile(user_id)` 保证 |
 
 ### 6.6 近场演示层（鸿蒙分布式）
 
@@ -1148,6 +1197,6 @@ export interface AuthProvider {
 > 本节全文（含"v4.0 相对 v3 的变更摘要"）已收敛到 **[CHANGELOG.md](./CHANGELOG.md)**——全仓库唯一的变更记录来源。
 > 数据层相关的 v4.0 变更在此只留索引：表数 21 → 19（删 `demo_marker`，新增 `carbon_include`、`share_record`）；
 > 参与同步 7 → 9 张；封顶判定改为 `point_record` 实时聚合（`point_daily_stat` 降为可重建缓存）；
-> `point_record` 幂等键 `UNIQUE(source_type, source_id, type)` → **`(source_type, source_id, flow_kind)`**（v4.1 修，见 §2）；
+> `point_record` 幂等键 `UNIQUE(source_type, source_id, type)` → **`(source_type, source_id, flow_kind)`**（v4.1 修）→ **`(user_id, source_type, source_id, flow_kind)`**（v4.2 修，多账号共库必须隔离，见 §2）；
 > **服务端为必做件（账号 + 同步 + 取价 + 备份），唯一可选件是 Web 后台管理端**（v4.1 修，ADR-0001）；
 > 同步机制 = 服务端云端同步（主通路）+ 鸿蒙近场演示层（§6）；本轮 v4.1 全部改动见 `CHANGELOG.md`。
