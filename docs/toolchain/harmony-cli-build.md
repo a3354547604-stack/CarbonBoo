@@ -206,10 +206,32 @@ BUILD FAILED
     `--experimental-strip-types` 用不了，所以必须走 esbuild。
   - **坑：`npm i esbuild` 会 404**。`~/.npmrc` 被 hvigor 引导 pnpm 时写成了华为源
     （`registry=https://repo.harmonyos.com/npm/`），该源没有 esbuild。已装好的副本在
-    `/tmp/t2verify/node_modules/esbuild/bin/esbuild`（`/tmp` 是 tmpfs，重启即失，
-    丢了就用 `--registry=https://registry.npmjs.org/` 重装）。
-  - 转出来的 `.mjs` 里 `import '../util/DecimalUtil'` 这类**无后缀相对路径** Node 解析不了，
-    需手工改成本地 `./DecimalUtil.mjs`（或用 esbuild `--bundle`）。
+    `~/harmony-toolchain/esbuild/bin/esbuild`（**持久位置，后续任务直接复用**；
+    若丢失用 `npm i --registry=https://registry.npmjs.org/ esbuild` 重装）。
+  - 转出来的 `.mjs` 里 `import "../util/DecimalUtil"` 这类**无后缀相对路径** Node 解析不了，
+    需改写成本地 `./DecimalUtil.mjs`（`~/cb-verify/run.sh` 已内置这一步）。
+  - **坑：`npm i esbuild` 会 404**。`~/.npmrc` 被 hvigor 引导 pnpm 时写成了华为源
+    （`registry=https://repo.harmonyos.com/npm/`），该源没有 esbuild。已装好的副本在
+    `~/harmony-toolchain/esbuild/bin/esbuild`（**持久位置，后续任务直接复用**；
+    若丢失用 `npm i --registry=https://registry.npmjs.org/ esbuild` 重装）。
+  - 转出来的 `.mjs` 里 `import "../util/DecimalUtil"` 这类**无后缀相对路径** Node 解析不了，
+    需改写成本地 `./DecimalUtil.mjs`（`~/cb-verify/run.sh` 已内置这一步）。
+
+### 6.1 现成的离线一致性检查（直接用，别重造）
+
+```bash
+sh ~/cb-verify/run.sh      # 退出码 0 = 全部一致
+```
+
+它做的事：用 `~/harmony-toolchain/esbuild/bin/esbuild` 把 app 侧的
+`util/DecimalUtil.ets`、`util/AppConstants.ets`、`service/CarbonCalc.ets`、`service/CarbonService.ets`
+转成 ESM 到 `~/cb-verify/build/`，补全 import 后缀，再由 `~/cb-verify/verify.mjs` 读
+`tests/cases/carbon-calc.json` 逐条比对（18 正向 / 5 封顶 / 边界 21-23 / 8 组定点抽查）。
+
+**实测输出**：`样本: 18 正向 / 5 封顶 / 6 边界 / 31 因子` → `PASS=34  FAIL=0`。
+
+⚠️ 这是**一致性回归**（脚本 import 的是被测代码 `CarbonCalc`），**不是独立复算**。
+真正的独立复算（不调用被测代码）由 t7 用 Python `Decimal` + `ROUND_HALF_UP` 另做。
 
 ## 7. 其他环境事实
 
