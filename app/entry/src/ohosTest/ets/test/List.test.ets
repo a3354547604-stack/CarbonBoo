@@ -12,6 +12,7 @@ import shopPurchase from './ShopPurchase.test';
 import backupRoundTrip from './BackupRoundTrip.test';
 import csvExport from './CsvExport.test';
 import lwwMerge from './LwwMerge.test';
+import shopPriceFallback from './ShopPriceFallback.test';
 
 export default function testsuite(): void {
   calcSamples();
@@ -22,4 +23,5 @@ export default function testsuite(): void {
   backupRoundTrip();
   csvExport();
   lwwMerge();
+  shopPriceFallback();
 }

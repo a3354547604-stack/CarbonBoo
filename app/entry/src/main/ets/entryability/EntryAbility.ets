@@ -18,6 +18,9 @@ import { RdbHelper, SchemaReport } from '../data/dao/RdbHelper';
 import { SeedRepository, SeedReport } from '../service/SeedRepository';
 import { FactorRepository } from '../service/FactorRepository';
 import { AppConstants } from '../util/AppConstants';
+import { ServiceHub } from '../viewmodel/ServiceHub';
+import { ShopPriceOutcome } from '../viewmodel/net/ShopPriceFetcher';
+import { AppResult } from '../model/Result';
 
 const DOMAIN: number = 0x0001;
 const TAG: string = 'CarbonBoo';
@@ -37,8 +40,9 @@ export default class EntryAbility extends UIAbility {
   }
 
   /**
-   * 数据地基启动：`RdbHelper.open`（建 19 张表）→ `SeedRepository.seedStatic`（写种子）。
-   * 两步都幂等，重复冷启动不会重复建表或产生重复种子行。
+   * 数据地基启动：`RdbHelper.open`（建 19 张表）→ `SeedRepository.seedStatic`（写种子）
+   * → **冷启动取价**（`ServiceHub.fetchShopPrices`，附录 B §5.4）。
+   * 各步都幂等，重复冷启动不会重复建表或产生重复种子行；取价失败只记日志，绝不中断启动。
    */
   private bootstrapDataFoundation(): void {
     RdbHelper.get()
@@ -60,6 +64,9 @@ export default class EntryAbility extends UIAbility {
           seeded.articles,
           seeded.factorVersion
         );
+        // 取价必须在**种子之后**：商品基线要先由 rawfile 播种进 `shop_item`，
+        // 后台目录只是对同 id 商品的价格/文案叠加（"从未拉到过 → 用内置默认价"由此成立）。
+        await this.bootstrapShopPrices();
       })
       .catch((err: BusinessError) => {
         hilog.error(
@@ -70,6 +77,35 @@ export default class EntryAbility extends UIAbility {
           err.message === undefined ? 'unknown' : err.message
         );
       });
+  }
+
+  /**
+   * 冷启动取价（附录 B §5.4，铁律 1 的例外之一）。
+   *
+   * 契约：「启动时有网 → 拉取并整份覆盖 `app_config['shop_items']`；失败或数据非法 →
+   * **整份丢弃**，继续用上一份有效配置；从未拉到过 → 用 `rawfile/shop/shop-items.json` 内置默认价。
+   * 后台改价**下次启动生效**。」
+   *
+   * 本方法**永不抛错**（`ServiceHub.fetchShopPrices` 内部已兜住所有异常）：
+   * 取价失败绝不阻塞启动，也绝不打断已完成的建表/播种。全程只记一行日志。
+   * 刻意 **不 await 到阻塞 UI**：`ServiceHub.init` 只打开数据库与端口（毫秒级），
+   * 取价本身带 3s 超时且失败即丢弃，不影响任何本地功能。
+   */
+  private async bootstrapShopPrices(): Promise<void> {
+    try {
+      const hub: ServiceHub = await ServiceHub.init(this.context, Date.now());
+      const res: AppResult<ShopPriceOutcome> = await hub.fetchShopPrices();
+      if (res.ok && res.data !== undefined && res.data.applied) {
+        hilog.info(DOMAIN, TAG, '商品取价成功：整份覆盖 app_config[shop_items]（version=%{public}s，%{public}d 条）',
+          res.data.version, res.data.count);
+      } else {
+        hilog.warn(DOMAIN, TAG, '商品取价未生效，保留本地价目表：%{public}s', res.message === undefined ? 'unknown' : res.message);
+      }
+    } catch (e) {
+      // 兜底：连 Hub 初始化都失败也不能影响启动（页面会走单机路径）
+      const msg: string = e instanceof Error ? e.message : `${e}`;
+      hilog.warn(DOMAIN, TAG, '商品取价链路异常已吞掉（不影响本地功能）：%{public}s', msg);
+    }
   }
 
   /**

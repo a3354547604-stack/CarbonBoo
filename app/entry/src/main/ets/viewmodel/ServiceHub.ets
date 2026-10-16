@@ -13,6 +13,7 @@
  * 之后全局 `ServiceHub.get()`。换服务端地址只重建 HTTP 端口，其余端口原样复用。
  */
 import { common } from '@kit.AbilityKit';
+import { AppResult, fail } from '../model/Result';
 import { RdbHelper } from '../data/dao/RdbHelper';
 import { PointBalance } from '../model/PointTypes';
 import { StorePort } from './store/StorePort';
@@ -37,6 +38,7 @@ import { AiAssistService, AiEngine, MockAiEngine } from './AiAssistService';
 import { DemoService } from './DemoService';
 import { ShareService } from './ShareService';
 import { HttpClient, HttpPort } from './net/HttpPort';
+import { ShopPriceFetcher, ShopPriceOutcome } from './net/ShopPriceFetcher';
 
 /** 可注入的端口（用例替换副作用边界）。 */
 export interface HubPorts {
@@ -73,6 +75,8 @@ export class ServiceHub {
   readonly reward: RewardService;
   readonly records: RecordService;
   readonly shop: ShopService;
+  /** 商品取价（冷启动拉一次并整份覆盖目录；铁律 1 的例外之一）。 */
+  readonly shopPrices: ShopPriceFetcher;
   readonly science: ScienceService;
   readonly include: IncludeService;
   readonly appearance: AppearanceService;
@@ -101,7 +105,8 @@ export class ServiceHub {
     this.reward = new RewardService(store, this.points, this.stats, state);
     const factors: FactorSource = new CachedFactors();
     this.records = new RecordService(store, state, this.points, this.reward, factors);
-    this.shop = new ShopService(store, state, this.points);
+    this.shop = new ShopService(store, state, this.points, cfg);
+    this.shopPrices = new ShopPriceFetcher(http, cfg);
     this.science = new ScienceService(store, state, resources);
     this.include = new IncludeService(store, state, this.points);
     this.appearance = new AppearanceService(store, state);
@@ -170,6 +175,24 @@ export class ServiceHub {
     const pbal: PointBalance = await this.points.balance(userId, now);
     const out: DevStats = { dbSizeBytes: size, recordCount: records, pointBalance: pbal.balance };
     return out;
+  }
+
+  /**
+   * 冷启动取价（附录 B §5.4）：拉一次 `GET /api/v1/shop/items`，成功则**整份覆盖**
+   * `app_config['shop_items']`，失败/非法/超时则**整份丢弃**、保留上一份有效目录。
+   *
+   * 为什么放在 Hub 上而不是直接调 `ShopPriceFetcher`：启动链路需要一个**永不抛错**的入口，
+   * 且日志要有一处统一的落点。本方法刻意再包一层 try/catch —— 即使 `ShopPriceFetcher`
+   * 将来引入了未捕获异常，也**绝不能**中断冷启动（铁律 1：取价失败不阻塞任何本地功能）。
+   * @returns 取价结果摘要；永不抛错
+   */
+  async fetchShopPrices(): Promise<AppResult<ShopPriceOutcome>> {
+    try {
+      return await this.shopPrices.fetchAndStore();
+    } catch (e) {
+      const msg: string = e instanceof Error ? e.message : `${e}`;
+      return fail<ShopPriceOutcome>('SHOP_FETCH_THREW', `取价异常已吞掉（不影响本地功能）：${msg}`);
+    }
   }
 
   /** 「保存强制抛错」开关（验收 C4/C5）；落 `app_config`，重启后保留但默认关。 */
