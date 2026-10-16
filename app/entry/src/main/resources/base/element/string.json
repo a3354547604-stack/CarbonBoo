@@ -1,6 +1,1018 @@
 {
   "string": [
     {
+      "name": "about_app_name",
+      "value": "应用信息"
+    },
+    {
+      "name": "about_dev_hint",
+      "value": "再点 %d 次进入开发者选项"
+    },
+    {
+      "name": "about_group_more",
+      "value": "协议与声明"
+    },
+    {
+      "name": "about_group_policy",
+      "value": "数据与因子"
+    },
+    {
+      "name": "about_platform_line",
+      "value": "基于 OpenHarmony · API 12 · 纯北向应用（本地优先；未登录即单机）"
+    },
+    {
+      "name": "about_sec_data_body",
+      "value": "数据默认只保存在本机（relationalStore 是唯一真相源）。只有在你主动登录后，才会把行为数据同步到你自己的账号；可随时在设置里退出登录或注销账号，停止一切上传。"
+    },
+    {
+      "name": "about_sec_data_title",
+      "value": "一、数据说明"
+    },
+    {
+      "name": "about_sec_disclaimer_body",
+      "value": "核算结果仅供参考，不作为任何履约或认证依据。"
+    },
+    {
+      "name": "about_sec_disclaimer_title",
+      "value": "七、免责声明"
+    },
+    {
+      "name": "about_sec_factor_body",
+      "value": "电力碳排放因子取自生态环境部《2024 年全国电力碳足迹因子》；低碳行为方法学参考上海市碳普惠相关方法学；部分对照类因子为按同类量级推算的参考值（provisional），界面上会标注「参考值」。"
+    },
+    {
+      "name": "about_sec_factor_title",
+      "value": "二、碳因子来源"
+    },
+    {
+      "name": "about_sec_mock_body",
+      "value": "碳普惠、碳币与权益兑换均为模拟演示，不对接任何真实平台，权益不可提现、不可退、不可转让。端侧识图在未接入模型时由本地启发式给出，界面会标注「模拟识别」，且不展示置信度数字或准确率。"
+    },
+    {
+      "name": "about_sec_mock_title",
+      "value": "三、模拟功能声明"
+    },
+    {
+      "name": "about_sec_oss_body",
+      "value": "基于 OpenHarmony ArkTS 与 ArkUI 构建；图表、Markdown 渲染与分享卡片均为自研，未引入任何第三方 UI / 图表库。碳因子与行为方法学口径见项目文档附录 A。"
+    },
+    {
+      "name": "about_sec_oss_title",
+      "value": "六、开源与致谢"
+    },
+    {
+      "name": "about_sec_privacy_body",
+      "value": "不采集通讯录、位置等敏感数据；识图所选图片只在内存中读取一次像素用于推断，不落盘、不上传。默认本地：未登录时不上传任何数据；登录后仅上传你本人的账本数据用于多设备同步与云端备份，可随时在设置中关闭或注销。"
+    },
+    {
+      "name": "about_sec_privacy_title",
+      "value": "四、隐私政策"
+    },
+    {
+      "name": "about_sec_terms_body",
+      "value": "你需要对自己录入的数据负责。账号由本应用自建（用户名 + 密码），不做第三方账号登录。积分与徽章是应用内的激励记录，不具备任何货币属性。"
+    },
+    {
+      "name": "about_sec_terms_title",
+      "value": "五、用户协议"
+    },
+    {
+      "name": "about_title",
+      "value": "关于与合规"
+    },
+    {
+      "name": "about_version_line",
+      "value": "碳小布 carbonboo v1.0.0"
+    },
+    {
+      "name": "ai_degraded",
+      "value": "识图不可用，请手动选择"
+    },
+    {
+      "name": "ai_entry",
+      "value": "识图录入"
+    },
+    {
+      "name": "ai_hint",
+      "value": "选一张照片，自动推断低碳行为"
+    },
+    {
+      "name": "ai_pick_hint",
+      "value": "请确认行为类型"
+    },
+    {
+      "name": "ai_pick_image",
+      "value": "选择图片"
+    },
+    {
+      "name": "ai_title",
+      "value": "识图录入"
+    },
+    {
+      "name": "ai_use",
+      "value": "使用此结果"
+    },
+    {
+      "name": "app_display_name",
+      "value": "碳小布"
+    },
+    {
+      "name": "appearance_avatars",
+      "value": "头像（8 个，全部免费）"
+    },
+    {
+      "name": "appearance_frame_none",
+      "value": "无"
+    },
+    {
+      "name": "appearance_frames",
+      "value": "头像框（碳小铺购买后可用）"
+    },
+    {
+      "name": "appearance_nickname_hint",
+      "value": "昵称（选填，最长 12 字）"
+    },
+    {
+      "name": "appearance_theme",
+      "value": "主题"
+    },
+    {
+      "name": "appearance_theme_default",
+      "value": "默认主题（免费）"
+    },
+    {
+      "name": "appearance_title",
+      "value": "更换外观"
+    },
+    {
+      "name": "auth_delete_account",
+      "value": "注销账号"
+    },
+    {
+      "name": "auth_delete_confirm",
+      "value": "云端数据将软删除并保留 30 天，本机数据一条不删。输入密码确认"
+    },
+    {
+      "name": "auth_delete_submit",
+      "value": "确认注销"
+    },
+    {
+      "name": "auth_login",
+      "value": "登录"
+    },
+    {
+      "name": "auth_logout",
+      "value": "退出登录"
+    },
+    {
+      "name": "auth_logout_hint",
+      "value": "退出后停止同步，本机数据不受影响"
+    },
+    {
+      "name": "auth_password",
+      "value": "密码"
+    },
+    {
+      "name": "auth_password2",
+      "value": "确认密码"
+    },
+    {
+      "name": "auth_password_rule",
+      "value": "密码 6–32 位"
+    },
+    {
+      "name": "auth_register",
+      "value": "注册"
+    },
+    {
+      "name": "auth_username_rule",
+      "value": "用户名 4–20 位字母、数字或下划线"
+    },
+    {
+      "name": "backup_clean_note",
+      "value": "已清理 %d 份旧备份，保留最近 3 份"
+    },
+    {
+      "name": "backup_cleanup",
+      "value": "清理旧备份"
+    },
+    {
+      "name": "backup_done_note",
+      "value": "备份成功，已保存到 %s（大小 %s）"
+    },
+    {
+      "name": "backup_list_title",
+      "value": "备份记录（保留最近 3 份）"
+    },
+    {
+      "name": "badge_honor_only",
+      "value": "本徽章为纯荣誉，不发放积分、不可消费"
+    },
+    {
+      "name": "badge_lockd",
+      "value": "未解锁（显示条件与进度）"
+    },
+    {
+      "name": "badge_title",
+      "value": "徽章墙"
+    },
+    {
+      "name": "badge_unlocked",
+      "value": "已解锁"
+    },
+    {
+      "name": "banner_ai_mock",
+      "value": "本期为模拟识别，结果由本地启发式给出，非已训练模型"
+    },
+    {
+      "name": "banner_demo_mode",
+      "value": "演示模式已开启 · 当前展示的是演示数据，关闭后回到你自己的数据"
+    },
+    {
+      "name": "banner_include",
+      "value": "本功能为碳普惠模拟演示，不对接真实平台，权益不可提现、不可退。"
+    },
+    {
+      "name": "common_cancel",
+      "value": "取消"
+    },
+    {
+      "name": "common_close",
+      "value": "关闭"
+    },
+    {
+      "name": "common_confirm",
+      "value": "确认"
+    },
+    {
+      "name": "common_delete",
+      "value": "删除"
+    },
+    {
+      "name": "common_edit",
+      "value": "编辑"
+    },
+    {
+      "name": "common_got_it",
+      "value": "知道了"
+    },
+    {
+      "name": "common_save",
+      "value": "保存"
+    },
+    {
+      "name": "common_search",
+      "value": "搜索"
+    },
+    {
+      "name": "dashboard_avg",
+      "value": "日均"
+    },
+    {
+      "name": "dashboard_bars",
+      "value": "各分类减排量"
+    },
+    {
+      "name": "dashboard_filter",
+      "value": "分类筛选"
+    },
+    {
+      "name": "dashboard_line",
+      "value": "本周期减排"
+    },
+    {
+      "name": "dashboard_peak",
+      "value": "最活跃"
+    },
+    {
+      "name": "dashboard_period",
+      "value": "周期统计"
+    },
+    {
+      "name": "dashboard_pie",
+      "value": "分类占比"
+    },
+    {
+      "name": "dashboard_records",
+      "value": "记录"
+    },
+    {
+      "name": "dashboard_total",
+      "value": "减排总量"
+    },
+    {
+      "name": "dev_break_off",
+      "value": "「保存强制抛错」已关闭"
+    },
+    {
+      "name": "dev_break_on",
+      "value": "「保存强制抛错」已开启"
+    },
+    {
+      "name": "dev_break_save",
+      "value": "保存强制抛错"
+    },
+    {
+      "name": "dev_break_save_hint",
+      "value": "开启后保存记录会在事务内主动抛异常，碳记录与积分流水都不写入（重启复位）"
+    },
+    {
+      "name": "dev_clear",
+      "value": "清除演示数据"
+    },
+    {
+      "name": "dev_counts",
+      "value": "记录数 / 积分数"
+    },
+    {
+      "name": "dev_db_size",
+      "value": "数据库体积"
+    },
+    {
+      "name": "dev_options_note",
+      "value": "开发者选项（仅调试用，不影响业务规则）"
+    },
+    {
+      "name": "dev_options_title",
+      "value": "开发者选项"
+    },
+    {
+      "name": "dev_rebuild",
+      "value": "重建 point_daily_stat"
+    },
+    {
+      "name": "dev_seed",
+      "value": "播种演示数据"
+    },
+    {
+      "name": "fab_record",
+      "value": "＋ 记一笔"
+    },
+    {
+      "name": "goal_settled",
+      "value": "✅ 已达成"
+    },
+    {
+      "name": "goal_title",
+      "value": "目标"
+    },
+    {
+      "name": "home_another",
+      "value": "换一条"
+    },
+    {
+      "name": "home_go_dashboard",
+      "value": "看板"
+    },
+    {
+      "name": "home_greeting",
+      "value": "你好，碳小布用户"
+    },
+    {
+      "name": "home_point_card",
+      "value": "碳积分小卡"
+    },
+    {
+      "name": "home_suggestion",
+      "value": "今日建议"
+    },
+    {
+      "name": "home_today_goal",
+      "value": "今日目标"
+    },
+    {
+      "name": "home_today_record",
+      "value": "今日记录"
+    },
+    {
+      "name": "home_total_reduction",
+      "value": "累计减排"
+    },
+    {
+      "name": "home_week_reduction",
+      "value": "近 7 天减排（kgCO₂e）"
+    },
+    {
+      "name": "include_benefits",
+      "value": "可兑换权益"
+    },
+    {
+      "name": "include_exchange",
+      "value": "积分换碳币"
+    },
+    {
+      "name": "include_exchange_now",
+      "value": "立即兑换"
+    },
+    {
+      "name": "include_records",
+      "value": "兑换记录"
+    },
+    {
+      "name": "include_title",
+      "value": "碳普惠"
+    },
+    {
+      "name": "login_action",
+      "value": "登录"
+    },
+    {
+      "name": "login_delete_ok",
+      "value": "账号已注销，云端数据将在 30 天后清除"
+    },
+    {
+      "name": "login_merge_note",
+      "value": "本机已有 %d 条记录，将并入该账号并开始同步"
+    },
+    {
+      "name": "login_register_ok",
+      "value": "注册成功，已登录"
+    },
+    {
+      "name": "mine_change_appearance",
+      "value": "更换外观"
+    },
+    {
+      "name": "mine_coin_balance",
+      "value": "可用碳币"
+    },
+    {
+      "name": "mine_goal_badge",
+      "value": "目标与徽章"
+    },
+    {
+      "name": "mine_include",
+      "value": "碳普惠（模拟）"
+    },
+    {
+      "name": "mine_point_balance",
+      "value": "积分余额"
+    },
+    {
+      "name": "mine_point_log",
+      "value": "积分明细"
+    },
+    {
+      "name": "mine_settings",
+      "value": "设置"
+    },
+    {
+      "name": "mine_shop",
+      "value": "碳小铺"
+    },
+    {
+      "name": "mine_sync",
+      "value": "设备协同"
+    },
+    {
+      "name": "mine_total_reduction",
+      "value": "累计减排"
+    },
+    {
+      "name": "point_log_title",
+      "value": "积分明细"
+    },
+    {
+      "name": "record_abnormal_hint",
+      "value": "数值超出常见范围，已记录并标记为异常"
+    },
+    {
+      "name": "record_amount_hint",
+      "value": "活动量"
+    },
+    {
+      "name": "record_created_at",
+      "value": "记录时间"
+    },
+    {
+      "name": "record_delete_confirm_msg",
+      "value": "删除后当日额度会释放，且不可恢复。确定删除这条记录？"
+    },
+    {
+      "name": "record_delete_confirm_title",
+      "value": "删除记录"
+    },
+    {
+      "name": "record_detail_title",
+      "value": "记录明细"
+    },
+    {
+      "name": "record_edit_title_edit",
+      "value": "编辑记录"
+    },
+    {
+      "name": "record_edit_title_new",
+      "value": "记一笔"
+    },
+    {
+      "name": "record_goal_not_capped",
+      "value": "目标奖励不受上限影响"
+    },
+    {
+      "name": "record_note",
+      "value": "备注"
+    },
+    {
+      "name": "record_note_hint",
+      "value": "选填"
+    },
+    {
+      "name": "record_occurred_at",
+      "value": "发生时间"
+    },
+    {
+      "name": "record_pick_one",
+      "value": "或 从下面选一个"
+    },
+    {
+      "name": "record_point_actual",
+      "value": "实入"
+    },
+    {
+      "name": "record_point_capped_hint",
+      "value": "今日记录积分已达上限，本笔实入 %d 分（应得 %d 分）"
+    },
+    {
+      "name": "record_point_card",
+      "value": "积分"
+    },
+    {
+      "name": "record_point_expected",
+      "value": "应得"
+    },
+    {
+      "name": "record_point_today",
+      "value": "今日已得"
+    },
+    {
+      "name": "record_preview",
+      "value": "减排预览"
+    },
+    {
+      "name": "record_preview_actual",
+      "value": "实入"
+    },
+    {
+      "name": "record_preview_expected",
+      "value": "本次应得"
+    },
+    {
+      "name": "record_preview_factor",
+      "value": "因子"
+    },
+    {
+      "name": "record_preview_reduction",
+      "value": "减排量"
+    },
+    {
+      "name": "record_preview_today",
+      "value": "今日已得"
+    },
+    {
+      "name": "record_search_hint",
+      "value": "关键词（备注、分类、子类）"
+    },
+    {
+      "name": "record_search_title",
+      "value": "记录搜索"
+    },
+    {
+      "name": "record_snapshot",
+      "value": "因子快照"
+    },
+    {
+      "name": "record_snapshot_confidence",
+      "value": "可信度"
+    },
+    {
+      "name": "record_snapshot_source",
+      "value": "数据来源"
+    },
+    {
+      "name": "record_snapshot_value",
+      "value": "因子值"
+    },
+    {
+      "name": "record_snapshot_version",
+      "value": "因子版本"
+    },
+    {
+      "name": "redeem_after",
+      "value": "扣后余额"
+    },
+    {
+      "name": "redeem_balance",
+      "value": "当前余额"
+    },
+    {
+      "name": "redeem_price",
+      "value": "价格"
+    },
+    {
+      "name": "science_favorite",
+      "value": "收藏"
+    },
+    {
+      "name": "science_favorited",
+      "value": "已收藏"
+    },
+    {
+      "name": "science_mark_read",
+      "value": "已读"
+    },
+    {
+      "name": "science_my_favorite",
+      "value": "我的收藏"
+    },
+    {
+      "name": "science_next",
+      "value": "下一篇"
+    },
+    {
+      "name": "science_prev",
+      "value": "上一篇"
+    },
+    {
+      "name": "science_read_tag",
+      "value": "已读 ✓"
+    },
+    {
+      "name": "science_search_hint",
+      "value": "搜索标题、标签"
+    },
+    {
+      "name": "science_title",
+      "value": "双碳科普"
+    },
+    {
+      "name": "set_about_link",
+      "value": "关于与合规"
+    },
+    {
+      "name": "set_ai_enabled",
+      "value": "端侧识图"
+    },
+    {
+      "name": "set_backup_list",
+      "value": "备份记录"
+    },
+    {
+      "name": "set_backup_local",
+      "value": "本地备份"
+    },
+    {
+      "name": "set_clear_all",
+      "value": "清空所有数据"
+    },
+    {
+      "name": "set_clear_confirm",
+      "value": "确认清空"
+    },
+    {
+      "name": "set_clear_note",
+      "value": "此操作不可恢复，请输入「删除」确认"
+    },
+    {
+      "name": "set_clear_ok",
+      "value": "已清空本机数据（%d 行）"
+    },
+    {
+      "name": "set_clear_placeholder",
+      "value": "请输入「删除」"
+    },
+    {
+      "name": "set_clear_title",
+      "value": "清空所有数据"
+    },
+    {
+      "name": "set_clear_wrong",
+      "value": "确认词不正确，请输入「删除」"
+    },
+    {
+      "name": "set_cloud_account",
+      "value": "已登录："
+    },
+    {
+      "name": "set_cloud_need_login",
+      "value": "登录后可用云端备份"
+    },
+    {
+      "name": "set_cloud_note",
+      "value": "云端备份只存快照、不做自动合并；恢复 = 覆盖，恢复前会自动生成本地快照。"
+    },
+    {
+      "name": "set_cloud_restore",
+      "value": "立即恢复"
+    },
+    {
+      "name": "set_cloud_restore_ok",
+      "value": "已从云端恢复（恢复前已生成本地快照）"
+    },
+    {
+      "name": "set_cloud_upload",
+      "value": "立即上传"
+    },
+    {
+      "name": "set_delete_account",
+      "value": "注销账号"
+    },
+    {
+      "name": "set_demo_mode",
+      "value": "演示模式"
+    },
+    {
+      "name": "set_export_csv",
+      "value": "导出 CSV 报表"
+    },
+    {
+      "name": "set_export_ok",
+      "value": "已导出 CSV（%d 行）"
+    },
+    {
+      "name": "set_group_about",
+      "value": "关于"
+    },
+    {
+      "name": "set_group_cloud",
+      "value": "云端备份（需登录）"
+    },
+    {
+      "name": "set_group_data",
+      "value": "数据"
+    },
+    {
+      "name": "set_group_general",
+      "value": "通用"
+    },
+    {
+      "name": "set_group_remind",
+      "value": "提醒"
+    },
+    {
+      "name": "set_logout",
+      "value": "退出登录"
+    },
+    {
+      "name": "set_remind_daily",
+      "value": "每日记录提醒"
+    },
+    {
+      "name": "set_remind_goal",
+      "value": "目标达成提醒"
+    },
+    {
+      "name": "set_remind_off",
+      "value": "已关闭每日记录提醒"
+    },
+    {
+      "name": "set_remind_on",
+      "value": "已开启每日记录提醒（20:00）"
+    },
+    {
+      "name": "set_remind_time",
+      "value": "提醒时间"
+    },
+    {
+      "name": "set_restore_local",
+      "value": "从备份恢复"
+    },
+    {
+      "name": "set_restore_none",
+      "value": "还没有本地备份"
+    },
+    {
+      "name": "set_restore_ok",
+      "value": "已从备份恢复（恢复前已生成快照）"
+    },
+    {
+      "name": "set_text_bad",
+      "value": "文本合规性检查命中：%s"
+    },
+    {
+      "name": "set_text_check",
+      "value": "文本合规性检查"
+    },
+    {
+      "name": "set_text_ok",
+      "value": "文本合规性检查通过：卡片不含姓名 / 学校 / 队名"
+    },
+    {
+      "name": "set_title",
+      "value": "设置"
+    },
+    {
+      "name": "set_upload_ok",
+      "value": "已上传云端快照"
+    },
+    {
+      "name": "share_save_album",
+      "value": "保存到相册"
+    },
+    {
+      "name": "share_system",
+      "value": "系统分享"
+    },
+    {
+      "name": "share_title",
+      "value": "生成减排分享卡片"
+    },
+    {
+      "name": "shop_free",
+      "value": "免费"
+    },
+    {
+      "name": "shop_in_use",
+      "value": "使用中"
+    },
+    {
+      "name": "shop_owned",
+      "value": "已拥有"
+    },
+    {
+      "name": "shop_redeem",
+      "value": "兑换"
+    },
+    {
+      "name": "shop_title",
+      "value": "碳小铺"
+    },
+    {
+      "name": "sync_account_section",
+      "value": "账号与云端同步"
+    },
+    {
+      "name": "sync_conflicts",
+      "value": "冲突记录"
+    },
+    {
+      "name": "sync_device_unit",
+      "value": " 台"
+    },
+    {
+      "name": "sync_devices",
+      "value": "设备"
+    },
+    {
+      "name": "sync_discover",
+      "value": "＋ 发现设备"
+    },
+    {
+      "name": "sync_done_note",
+      "value": "同步完成：接受 %d 条，冲突 %d 条"
+    },
+    {
+      "name": "sync_family_empty",
+      "value": "多台设备登录同一账号后，这里会汇总全家的减排与积分"
+    },
+    {
+      "name": "sync_family_member",
+      "value": "成员（设备）"
+    },
+    {
+      "name": "sync_family_need_login",
+      "value": "登录后可查看家庭合并视图"
+    },
+    {
+      "name": "sync_family_note",
+      "value": "同一账号下多设备只读汇总，不合并账本。"
+    },
+    {
+      "name": "sync_family_points",
+      "value": "积分合计"
+    },
+    {
+      "name": "sync_family_reduction",
+      "value": "减排合计"
+    },
+    {
+      "name": "sync_family_section",
+      "value": "家庭碳积分（只读）"
+    },
+    {
+      "name": "sync_last_seen",
+      "value": "最后可见 "
+    },
+    {
+      "name": "sync_last_time",
+      "value": "最后同步"
+    },
+    {
+      "name": "sync_logged_in",
+      "value": "已登录："
+    },
+    {
+      "name": "sync_logout",
+      "value": "退出登录"
+    },
+    {
+      "name": "sync_logout_done",
+      "value": "已退出登录，本机数据不受影响"
+    },
+    {
+      "name": "sync_logs_hide",
+      "value": "收起清单"
+    },
+    {
+      "name": "sync_logs_show",
+      "value": "查看清单 ›"
+    },
+    {
+      "name": "sync_near_action",
+      "value": "近场同步"
+    },
+    {
+      "name": "sync_near_note",
+      "value": "近场协同未登录也可用；本期为演示层，未配对时只展示状态。"
+    },
+    {
+      "name": "sync_near_section",
+      "value": "近场演示"
+    },
+    {
+      "name": "sync_need_login",
+      "value": "未登录为纯单机，登录后才会同步与备份"
+    },
+    {
+      "name": "sync_never",
+      "value": "从未同步"
+    },
+    {
+      "name": "sync_no_peer",
+      "value": "未发现已配对设备"
+    },
+    {
+      "name": "sync_not_logged_in",
+      "value": "未登录（纯单机）"
+    },
+    {
+      "name": "sync_now",
+      "value": "立即同步"
+    },
+    {
+      "name": "sync_other_devices",
+      "value": "其他设备 "
+    },
+    {
+      "name": "sync_over_cap_note",
+      "value": "同步后若某天记录积分超过 200，已发积分不追回。"
+    },
+    {
+      "name": "sync_pending",
+      "value": "待同步"
+    },
+    {
+      "name": "sync_pulled",
+      "value": "拉取"
+    },
+    {
+      "name": "sync_pushed",
+      "value": "上传"
+    },
+    {
+      "name": "sync_running",
+      "value": "同步中…"
+    },
+    {
+      "name": "sync_step_discovering",
+      "value": "① 发现设备"
+    },
+    {
+      "name": "sync_step_merging",
+      "value": "② 合并数据"
+    },
+    {
+      "name": "sync_step_writing",
+      "value": "③ 写回本机"
+    },
+    {
+      "name": "sync_this_device",
+      "value": "本机 "
+    },
+    {
+      "name": "sync_title",
+      "value": "设备协同"
+    },
+    {
+      "name": "tab_dashboard",
+      "value": "看板"
+    },
+    {
+      "name": "tab_home",
+      "value": "首页"
+    },
+    {
+      "name": "tab_mine",
+      "value": "我的"
+    },
+    {
+      "name": "tab_record",
+      "value": "记录"
+    },
+    {
+      "name": "tab_science",
+      "value": "科普"
+    },
+    {
       "name": "module_desc",
       "value": "碳小布主模块：本地碳账本数据地基与业务功能"
     },
@@ -19,6 +1031,10 @@
     {
       "name": "placeholder_index_note",
       "value": "数据地基切片（S1）尚未接入页面，本页为构建占位。"
+    },
+    {
+      "name": "record_point_capped_full",
+      "value": "今日记录积分已达每日上限 200，本笔不发放记录积分"
     }
   ]
 }

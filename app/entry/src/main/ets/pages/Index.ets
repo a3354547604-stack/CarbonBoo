@@ -1,81 +1,190 @@
 /**
- * 首页（S1 构建占位 · 同时承担「业务代码编译图接入点」职责）。
+ * Index —— 唯一的 @Entry 页面：导航壳 + 5 个 Tab（附录 C §2）。
  *
- * ⚠️ 两张身份，都必须明白：
+ * 结构：Navigation(NavPathStack) → Tabs(barPosition: End)
+ *   · 5 个 Tab 页（首页/看板/记录/科普/我的）常驻，切换保留各自状态；
+ *   · 13 个二级页是 `@Component`，由 `pageMap` 按路由名装配成 NavDestination 压栈；
+ *   · 页面参数走 `NavParams`（类型化单例），因此 pageMap 不需要 `as` 强转即可分派
+ *     —— ArkTS 禁 `as`，navDestination 的 param 是 Object，直接读字段必被禁。
  *
- * ① **这是占位页，不是 S1 的交付界面**。`module.json5` 的 `pages` 与
- *    `EntryAbility.loadContent('pages/Index')` 都要求它存在，否则 HAP 构建失败。
- *    真正的首页由 t4 按 `APPENDIX-C-ui-screens.md` §4 重写（首页建议、今日额度、快捷入口等）。
- *
- * ② **它同时是「编译图接入点」**——这是本文件当前更重要的职责：
- *    ArkTS 编译器**只编译从 entry 模块可达的模块**。S1 新增的 `service/` / `data/` /
- *    `model/` / `util/` 若没有任何入口 import 它们，就**根本不会进入编译图**，
- *    此时 `assembleHap` 的 BUILD SUCCESSFUL 是假象——往里注入语法错误也照样通过。
- *
- *    **本切片实测记录（三次对照，可复现）**：
- *    | 场景 | 结果 |
- *    |---|---|
- *    | 占位页不 import 业务模块 + `CarbonService.ets` 注入 `THIS_IS_UNDEFINED_ABC` | BUILD **SUCCESSFUL**（假象：没编译） |
- *    | 本页 import 后 + `CarbonService.ets` 注入同样错误 | BUILD **FAILED**（`Cannot find name 'THIS_IS_UNDEFINED_ABC'`） |
- *    | 本页 import 后 + `data/schema/ClientSchema.ets` 注入错误 | BUILD **FAILED**（同一类报错，两条同时报出） |
- *    → 故下面的 import 列表**就是**让 S1 业务代码真正被编译的机制，不是装饰。
- *
- * 约束（AGENTS.md §7.1，本页严格遵守）：
- *  - 页面层**禁止业务计算与数据库读写**。本页除 `hilog` 一条日志外**没有任何逻辑**：
- *    下面 24 条 import 只建立模块可达性，**不调用、不实例化、不读库、不乘因子**。
- *  - 「未使用的 import」是**刻意保留**的：ArkTS 的编译范围由 import 声明决定，
- *    删掉它们等于关掉 S1 业务代码的编译门禁。t4 重写首页时应改为**真实使用**
- *    这些模块（经 ViewModel），届时本注释与这批 import 一并重写。
- *  - 数据地基的真正启动在 `EntryAbility.bootstrapDataFoundation()`（开 19 张表 + 写种子）；
- *    界面数据一律经 ViewModel，本页不碰。
+ * 这里同时是该模块的编译图入口：所有页面、组件、ViewModel、数据层都由本文件可达
+ * （t2 实测证明：ArkTS 只编译 entry 可达模块，未 import 的业务代码不参与编译）。
  */
+import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { promptAction } from '@kit.ArkUI';
+import { ServiceHub } from '../viewmodel/ServiceHub';
+import { NavParams, RouteName } from '../viewmodel/RouteName';
+import { AppTheme } from '../util/AppTheme';
+import { HomePage } from './HomePage';
+import { DashboardPage } from './DashboardPage';
+import { RecordPage } from './RecordPage';
+import { SciencePage } from './SciencePage';
+import { MinePage } from './MinePage';
+import { RecordEditPage } from './RecordEditPage';
+import { RecordDetailPage } from './RecordDetailPage';
+import { RecordSearchPage } from './RecordSearchPage';
+import { GoalPage } from './GoalPage';
+import { BadgePage } from './BadgePage';
+import { ShopPage } from './ShopPage';
+import { PointLogPage } from './PointLogPage';
+import { ScienceDetailPage } from './ScienceDetailPage';
+import { SyncPage } from './SyncPage';
+import { IncludePage } from './IncludePage';
+import { AppearancePage } from './AppearancePage';
+import { SettingsPage } from './SettingsPage';
+import { AboutPage } from './AboutPage';
 
-// ---- service/：计算入口与数据地基启动链路 ----
-import { CarbonService } from '../service/CarbonService';
-import { CarbonCalc } from '../service/CarbonCalc';
-import { FactorLibrary } from '../service/FactorLibrary';
-import { FactorRepository } from '../service/FactorRepository';
-import { SeedRepository, SeedReport } from '../service/SeedRepository';
-// ---- data/：建表 DDL 与 Dao ----
-import { ClientSchema } from '../data/schema/ClientSchema';
-import { RdbHelper } from '../data/dao/RdbHelper';
-import { CarbonRecordDao } from '../data/dao/CarbonRecordDao';
-import { ResultSetMapper } from '../data/dao/ResultSetMapper';
-// ---- model/：领域类型 ----
-import { CarbonRecord, CalculatePreview, FactorItem } from '../model/CarbonTypes';
-import { PointBalance, PointRecord } from '../model/PointTypes';
-import { GoalDef, GoalProgress } from '../model/GoalTypes';
-import { BadgeDef, BadgeProgress } from '../model/BadgeTypes';
-import { ShopItem, Appearance } from '../model/ShopTypes';
-import { ScienceArticleMeta, ScienceProgress } from '../model/ScienceTypes';
-import { CarbonCoin, IncludeBenefit, CarbonIncludeRecord } from '../model/IncludeTypes';
-import { DevicePeer, SyncSessionState } from '../model/SyncTypes';
-import { AiRecognizeResult } from '../model/AiTypes';
-import { AppResult } from '../model/Result';
-// ---- util/：常量与纯函数工具 ----
-import { AppConstants } from '../util/AppConstants';
-import { DateUtil } from '../util/DateUtil';
-import { Dec } from '../util/DecimalUtil';
+const DOMAIN: number = 0x0001;
+const TAG: string = 'CarbonBoo';
 
 @Entry
 @Component
 struct Index {
-  build() {
-    Column({ space: 12 }) {
-      Text($r('app.string.placeholder_index_title'))
-        .fontSize(28)
-        .fontWeight(FontWeight.Bold)
-      Text($r('app.string.placeholder_index_note'))
-        .fontSize(14)
-        .textAlign(TextAlign.Center)
-        .padding({ left: 24, right: 24 })
+  @State tabKey: number = 0;
+  @State tick: number = 0;
+  @State booting: boolean = true;
+  @State bootError: string = '';
+  @Provide('navStack') navStack: NavPathStack = new NavPathStack();
+  private tabsController: TabsController = new TabsController();
+  private recordScroller: Scroller = new Scroller();
+
+  async aboutToAppear(): Promise<void> {
+    await this.boot();
+  }
+
+  /** 打开数据库、装好服务、刷新一次数据。 */
+  private async boot(): Promise<void> {
+    try {
+      const host: common.Context | undefined = this.getUIContext().getHostContext();
+      if (host === undefined) {
+        throw new Error('拿不到 Ability 上下文');
+      }
+      await ServiceHub.init(host, Date.now());
+      NavParams.attach(this.navStack);
+      await ServiceHub.get().state.touch(Date.now());
+      this.booting = false;
+      this.tick = this.tick + 1;
+      hilog.info(DOMAIN, TAG, 'ServiceHub 初始化完成');
+    } catch (err) {
+      this.booting = false;
+      this.bootError = `初始化失败：${err instanceof Error ? err.message : String(err)}`;
+      hilog.error(DOMAIN, TAG, 'ServiceHub 初始化失败 %{public}s', this.bootError);
+    }
+  }
+
+  /** 二级页装配表：名字 → 组件（参数由 NavParams 提供）。 */
+  @Builder
+  pageMap(name: string) {
+    if (name === RouteName.RECORD_EDIT) {
+      RecordEditPage()
+    } else if (name === RouteName.RECORD_DETAIL) {
+      RecordDetailPage()
+    } else if (name === RouteName.RECORD_SEARCH) {
+      RecordSearchPage()
+    } else if (name === RouteName.GOAL) {
+      GoalPage()
+    } else if (name === RouteName.BADGE) {
+      BadgePage()
+    } else if (name === RouteName.SHOP) {
+      ShopPage()
+    } else if (name === RouteName.POINT_LOG) {
+      PointLogPage()
+    } else if (name === RouteName.SCIENCE_DETAIL) {
+      ScienceDetailPage()
+    } else if (name === RouteName.SYNC) {
+      SyncPage()
+    } else if (name === RouteName.INCLUDE) {
+      IncludePage()
+    } else if (name === RouteName.APPEARANCE) {
+      AppearancePage()
+    } else if (name === RouteName.SETTINGS) {
+      SettingsPage()
+    } else if (name === RouteName.ABOUT) {
+      AboutPage()
+    }
+  }
+
+  @Builder
+  tabBar(index: number, label: ResourceStr, icon: string) {
+    Column({ space: 2 }) {
+      Text(icon).fontSize(AppTheme.ICON_SM)
+      Text(label)
+        .fontSize(AppTheme.FONT_CAPTION)
+        .fontColor(this.tabKey === index ? AppTheme.COLOR_PRIMARY : AppTheme.COLOR_TEXT_HINT)
     }
     .width('100%')
-    .height('100%')
+    .height(AppTheme.TAB_HEIGHT)
     .justifyContent(FlexAlign.Center)
-    .onAppear(() => {
-      hilog.info(0x0001, 'CarbonBoo', 'placeholder Index appeared');
-    })
+  }
+
+  build() {
+    Navigation(this.navStack) {
+      if (this.booting) {
+        Column({ space: 8 }) {
+          LoadingProgress().width(AppTheme.ICON_LG).height(AppTheme.ICON_LG).color(AppTheme.COLOR_PRIMARY)
+          Text('正在准备本地账本…').fontSize(AppTheme.FONT_BODY).fontColor(AppTheme.COLOR_TEXT_SECONDARY)
+        }
+        .width('100%')
+        .height('100%')
+        .justifyContent(FlexAlign.Center)
+      } else if (this.bootError.length > 0) {
+        Column({ space: 8 }) {
+          Text('😕').fontSize(AppTheme.ICON_LG)
+          Text(this.bootError)
+            .fontSize(AppTheme.FONT_BODY)
+            .fontColor(AppTheme.COLOR_DANGER)
+            .textAlign(TextAlign.Center)
+          Text('重试')
+            .fontSize(AppTheme.FONT_BODY)
+            .fontColor(AppTheme.COLOR_SURFACE)
+            .height(AppTheme.BTN_HEIGHT)
+            .padding({ left: 24, right: 24 })
+            .backgroundColor(AppTheme.COLOR_PRIMARY)
+            .borderRadius(AppTheme.BTN_RADIUS)
+            .onClick(() => {
+              this.booting = true;
+              this.bootError = '';
+              this.boot();
+            })
+        }
+        .width('100%')
+        .height('100%')
+        .justifyContent(FlexAlign.Center)
+      } else {
+        Tabs({ barPosition: BarPosition.End, index: this.tabKey, controller: this.tabsController }) {
+          TabContent() {
+            HomePage({ tick: this.tick })
+          }.tabBar(this.tabBar(0, $r('app.string.tab_home'), '🏠'))
+
+          TabContent() {
+            DashboardPage({ tick: this.tick })
+          }.tabBar(this.tabBar(1, $r('app.string.tab_dashboard'), '📊'))
+
+          TabContent() {
+            RecordPage({ tick: this.tick, scroller: this.recordScroller })
+          }.tabBar(this.tabBar(2, $r('app.string.tab_record'), '🧾'))
+
+          TabContent() {
+            SciencePage({ tick: this.tick })
+          }.tabBar(this.tabBar(3, $r('app.string.tab_science'), '📚'))
+
+          TabContent() {
+            MinePage({ tick: this.tick })
+          }.tabBar(this.tabBar(4, $r('app.string.tab_mine'), '👤'))
+        }
+        .barHeight(AppTheme.TAB_HEIGHT)
+        .barMode(BarMode.Fixed)
+        .backgroundColor(AppTheme.COLOR_BG)
+        .onChange((index: number) => {
+          this.tabKey = index;
+          this.tick = this.tick + 1;
+        })
+      }
+    }
+    .navDestination(this.pageMap)
+    .mode(NavigationMode.Stack)
+    .hideTitleBar(true)
+    .backgroundColor(AppTheme.COLOR_BG)
   }
 }
