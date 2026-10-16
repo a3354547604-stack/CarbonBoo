@@ -149,17 +149,17 @@ def seed_business_rows(db_session: Any, *, user_id: str = "u-t6-0001", username:
         text(
             "INSERT INTO point_record (id, user_id, type, flow_kind, points, source_type, source_id, title, "
             "remark, occurred_at, created_at, updated_at, is_deleted, device_id) "
-            "VALUES ('pr-t6-1', :uid, 'record', 'primary', 500, 'carbon_record', 'cr-1#0', '骑行', NULL, "
+            "VALUES (:id, :uid, 'record', 'primary', 500, 'carbon_record', :sid, '骑行', NULL, "
             ":ts, :ts, :ts, 0, 'dev-a')"
         ),
-        {"uid": user_id, "ts": stamp},
+        {"id": f"pr-{user_id}-1", "uid": user_id, "sid": f"cr-{user_id}-0#0", "ts": stamp},
     )
     db_session.execute(
         text(
             "INSERT INTO user_purchase (id, user_id, item_id, price_paid, purchased_at, created_at, updated_at, "
-            "is_deleted, device_id) VALUES ('up-t6-1', :uid, 'frame_01', 1500, :ts, :ts, :ts, 0, 'dev-a')"
+            "is_deleted, device_id) VALUES (:id, :uid, 'frame_01', 1500, :ts, :ts, :ts, 0, 'dev-a')"
         ),
-        {"uid": user_id, "ts": stamp},
+        {"id": f"up-{user_id}-1", "uid": user_id, "ts": stamp},
     )
     db_session.commit()
 
@@ -595,3 +595,216 @@ def test_static_assets_are_whitelisted(client: Any) -> None:
     assert js.status_code == 200 and "fetch(" in js.text
     assert client.get(f"{ADMIN}/static/../admin_web/config.py").status_code in (400, 404)
     assert client.get(f"{ADMIN}/static/templates").status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# ③ 用户列表（D10-4）/ ④ 数据总览（D10-4）/ ⑤ 订单记录（D10-4）
+# --------------------------------------------------------------------------- #
+def test_users_list_reports_account_devices_and_counts(
+    client: Any, admin_headers: dict[str, str], db_session: Any
+) -> None:
+    """③ 账号标识、首次接入、最后同步、记录数、设备列表（按 device_id 去重 + 各自最后同步）。"""
+    seed_business_rows(db_session)
+
+    data = client.get(f"{ADMIN}/users", headers=admin_headers).json()["data"]
+    assert data["total"] == 1 and data["page"] == 1
+    row = data["items"][0]
+    assert row["userId"] == "u-t6-0001"
+    assert row["username"] == "t6user0001"
+    assert row["isActive"] == 1
+    assert row["recordCount"] == 2
+    assert row["deviceCount"] == 2
+    assert {device["deviceId"] for device in row["devices"]} == {"dev-a", "dev-b"}
+    assert row["devices"][0]["lastSyncAt"] >= row["devices"][1]["lastSyncAt"], "设备按最后同步时间倒序"
+    assert row["rowCount"] == 4, "9 张同步表的未删除行：2 碳记录 + 1 积分流水 + 1 购买"
+    assert row["firstSeenAt"] == 1_760_000_000_000
+
+
+def test_users_list_paginates(client: Any, admin_headers: dict[str, str], db_session: Any) -> None:
+    """D10-4 的"可翻页"：pageSize 与 page 生效，total 是分页前的总数。"""
+    seed_business_rows(db_session, user_id="u-t6-0001", username="t6user0001")
+    seed_business_rows(db_session, user_id="u-t6-0002", username="t6user0002")
+    seed_business_rows(db_session, user_id="u-t6-0003", username="t6user0003")
+
+    first = client.get(f"{ADMIN}/users?page=1&pageSize=2", headers=admin_headers).json()["data"]
+    second = client.get(f"{ADMIN}/users?page=2&pageSize=2", headers=admin_headers).json()["data"]
+    assert first["total"] == second["total"] == 3
+    assert len(first["items"]) == 2 and len(second["items"]) == 1
+    assert {row["userId"] for row in first["items"]} & {row["userId"] for row in second["items"]} == set()
+
+    clamped = client.get(f"{ADMIN}/users?page=0&pageSize=99999", headers=admin_headers).json()["data"]
+    assert clamped["page"] == 1, "page 越界夹到 1，不报 400（后台是人用的）"
+    assert clamped["pageSize"] <= 200, "pageSize 有上限，避免一次拉全库"
+
+
+def test_overview_numbers_match_the_database(client: Any, admin_headers: dict[str, str], db_session: Any) -> None:
+    """④ 接入设备数 / 总记录数 / 今日新增 / 总减排量 / 总积分发放，逐项与库内一致。"""
+    seed_business_rows(db_session)
+
+    data = client.get(f"{ADMIN}/overview", headers=admin_headers).json()["data"]
+    assert data["accountCount"] == 1 and data["activeAccountCount"] == 1
+    assert data["deviceCount"] == 2
+    assert data["recordCount"] == 2
+    assert data["totalReductionKg"] == 5.0
+    assert data["reductionByCategory"] == {"travel": 5.0}
+    assert data["totalPointsIssued"] == 500
+    assert data["totalPointsSpent"] == 0
+    assert data["totalPointsBalance"] == 500
+    assert data["orderCount"] == 1
+    assert data["itemCount"] == 9 and data["onShelfItemCount"] == 9
+    assert data["shopVersion"] == "2026.02.01-1"
+    assert data["lastSyncAt"] == 1_760_000_000_001
+
+    # 今日新增按 created_at 落本地今天的行数（种子的时间戳是过去，故为 0）
+    assert data["todayRecordCount"] == 0
+    stamp = int(__import__("time").time() * 1000)
+    db_session.execute(text("UPDATE carbon_record SET created_at = :ts"), {"ts": stamp})
+    db_session.commit()
+    assert client.get(f"{ADMIN}/overview", headers=admin_headers).json()["data"]["todayRecordCount"] == 2
+
+
+def test_overview_page_is_server_rendered(client: Any, session_cookie: dict[str, str]) -> None:
+    """`/admin` 主页 = 数据总览页（服务端渲染，含五张 KPI 卡）。"""
+    page = client.get(ADMIN, headers={**session_cookie, **HTML_ACCEPT})
+    assert page.status_code == 200
+    for label in ("接入设备数", "总记录数", "总减排量", "总积分发放", "账号数"):
+        assert label in page.text, f"总览页缺少 KPI：{label}"
+    assert "4 位小数，与契约同精度" in page.text
+
+
+def test_orders_report_who_bought_what_for_how_much(
+    client: Any, admin_headers: dict[str, str], db_session: Any
+) -> None:
+    """⑤ 谁、什么时候、买了什么、花了多少分；成交价按下单价（不随后台改价变化）。"""
+    seed_business_rows(db_session)
+    client.patch(f"{ADMIN}/items/frame_01", headers=admin_headers, json={"price": 4321})
+
+    data = client.get(f"{ADMIN}/orders", headers=admin_headers).json()["data"]
+    assert data["total"] == 1
+    order = data["items"][0]
+    assert order["userId"] == "u-t6-0001"
+    assert order["username"] == "t6user0001"
+    assert order["itemId"] == "frame_01"
+    assert order["itemName"] == "嫩芽"
+    assert order["pricePaid"] == 1500, "成交价是下单时的价格，不随后台改价变化"
+    assert order["purchasedAt"] == 1_760_000_000_000
+
+
+def test_orders_page_is_server_rendered(client: Any, session_cookie: dict[str, str], db_session: Any) -> None:
+    seed_business_rows(db_session)
+    page = client.get(f"{ADMIN}/orders", headers={**session_cookie, **HTML_ACCEPT})
+    assert page.status_code == 200
+    assert "t6user0001" in page.text and "嫩芽" in page.text and "1,500" in page.text
+
+
+def test_users_page_is_server_rendered(client: Any, session_cookie: dict[str, str], db_session: Any) -> None:
+    seed_business_rows(db_session)
+    page = client.get(f"{ADMIN}/users", headers={**session_cookie, **HTML_ACCEPT})
+    assert page.status_code == 200
+    assert "t6user0001" in page.text and "dev-a" in page.text and "dev-b" in page.text
+
+
+# --------------------------------------------------------------------------- #
+# ⑥ 系统配置（D10-5）
+# --------------------------------------------------------------------------- #
+def test_config_get_reports_documented_defaults(client: Any, admin_headers: dict[str, str]) -> None:
+    """⑥ 目标奖励分值 / 每日封顶值 / 徽章开关；封顶值默认 200（PLAN §9.2）。"""
+    data = client.get(f"{ADMIN}/config", headers=admin_headers).json()["data"]
+    assert data["dailyCap"] == 200
+    assert data["badgesEnabled"] == 1
+    assert data["shopVersion"] == "2026.02.01-1"
+    rewards = {goal["id"]: goal["reward"] for goal in data["goalRewards"]}
+    assert len(rewards) == 11, "11 个目标（PLAN §10.1）"
+    assert (rewards["S1"], rewards["S2"], rewards["S3"]) == (20, 20, 15)
+
+
+def test_config_put_persists_and_audits(client: Any, admin_headers: dict[str, str], db_session: Any) -> None:
+    """PUT 只改传了的项：写 app_config / goal_def + 一条 update_config 审计（含改前 / 改后）。"""
+    response = client.put(
+        f"{ADMIN}/config",
+        headers=admin_headers,
+        json={"dailyCap": 300, "badgesEnabled": 0, "goalRewards": [{"id": "S3", "reward": 25}]},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["dailyCap"] == 300
+    assert data["badgesEnabled"] == 0
+    assert data["changed"] == ["dailyCap", "badgesEnabled", "goalRewards:S3"]
+
+    stored = dict(
+        db_session.execute(text("SELECT id, value FROM app_config WHERE id IN ('points_daily_cap', 'badges_enabled')")).all()
+    )
+    assert stored["points_daily_cap"] == "300"
+    assert stored["badges_enabled"] == "0"
+    assert db_session.execute(text("SELECT reward FROM goal_def WHERE id = 'S3'")).scalar_one() == 25
+
+    assert client.get(f"{ADMIN}/config", headers=admin_headers).json()["data"]["dailyCap"] == 300
+
+    logs = client.get(f"{ADMIN}/logs?action=update_config", headers=admin_headers).json()["data"]
+    assert logs["total"] == 1
+    detail = logs["items"][0]["detail"]
+    assert detail["points_daily_cap"] == {"before": 200, "after": 300}
+    assert detail["badges_enabled"] == {"before": 1, "after": 0}
+    assert detail["goal_def.reward"]["S3"] == {"before": 15, "after": 25}
+
+
+def test_config_put_rejects_unknown_goal_and_bad_values(client: Any, admin_headers: dict[str, str]) -> None:
+    unknown = client.put(
+        f"{ADMIN}/config", headers=admin_headers, json={"goalRewards": [{"id": "ZZ", "reward": 1}]}
+    )
+    assert unknown.status_code == 404 and unknown.json()["code"] == "NOT_FOUND"
+
+    negative = client.put(f"{ADMIN}/config", headers=admin_headers, json={"dailyCap": -1})
+    assert negative.status_code == 400 and negative.json()["code"] == "INVALID_REQUEST"
+
+    bad_switch = client.put(f"{ADMIN}/config", headers=admin_headers, json={"badgesEnabled": 7})
+    assert bad_switch.status_code == 400
+
+
+def test_config_page_is_server_rendered(client: Any, session_cookie: dict[str, str]) -> None:
+    page = client.get(f"{ADMIN}/config", headers={**session_cookie, **HTML_ACCEPT})
+    assert page.status_code == 200
+    assert "每日记录积分封顶值" in page.text and "徽章开关" in page.text and "光盘卫士" in page.text
+
+
+# --------------------------------------------------------------------------- #
+# ⑦ 操作日志（D10-6）
+# --------------------------------------------------------------------------- #
+def test_logs_are_newest_first_with_operator_and_action(client: Any, admin_headers: dict[str, str]) -> None:
+    """D10-6：做 3 次后台操作 → 日志按时间倒序列出操作人 / 动作 / 时间。"""
+    client.patch(f"{ADMIN}/items/frame_01", headers=admin_headers, json={"price": 1001})
+    client.patch(f"{ADMIN}/items/frame_02", headers=admin_headers, json={"onShelf": 0})
+    client.put(f"{ADMIN}/config", headers=admin_headers, json={"dailyCap": 210})
+
+    data = client.get(f"{ADMIN}/logs", headers=admin_headers).json()["data"]
+    assert data["total"] == 5, "3 次操作 + 引导创建 + 登录"
+    assert [row["action"] for row in data["items"]] == [
+        "update_config",
+        "toggle_shelf",
+        "change_price",
+        "login",
+        "bootstrap_admin",
+    ]
+    timestamps = [row["createdAt"] for row in data["items"]]
+    assert timestamps == sorted(timestamps, reverse=True), "必须按时间倒序"
+    assert all(row["adminUsername"] == ADMIN_USERNAME for row in data["items"])
+    assert data["items"][0]["ip"], "日志要记调用方 IP"
+
+
+def test_logs_page_is_server_rendered_and_filterable(client: Any, session_cookie: dict[str, str]) -> None:
+    client.patch(f"{ADMIN}/items/frame_01", headers=session_cookie, json={"price": 1313})
+    page = client.get(f"{ADMIN}/logs", headers={**session_cookie, **HTML_ACCEPT})
+    assert page.status_code == 200
+    assert "操作日志" in page.text and "改价" in page.text
+
+    filtered = client.get(f"{ADMIN}/logs?action=change_price", headers={**session_cookie, **HTML_ACCEPT})
+    assert filtered.status_code == 200
+    assert "筛选：改价" in filtered.text
+
+
+def test_logs_detail_never_contains_secrets(client: Any, admin_headers: dict[str, str], settings: Any) -> None:
+    """日志与页面都不得出现密钥 / 口令 / 哈希。"""
+    client.patch(f"{ADMIN}/items/frame_01", headers=admin_headers, json={"price": 777})
+    raw = client.get(f"{ADMIN}/logs", headers=admin_headers).text
+    for secret in (settings.admin_jwt_secret, settings.jwt_secret, ADMIN_PASSWORD, "$2b$"):
+        assert secret not in raw

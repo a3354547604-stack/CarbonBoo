@@ -120,7 +120,7 @@ def _sync_aggregates(db: Session) -> tuple[dict[str, dict[str, Any]], dict[str, 
     per_user: dict[str, dict[str, Any]] = {}
     for user_id, first_seen, last_sync, row_count in db.execute(
         text(
-            f"SELECT user_id, MIN(created_at) AS first_seen, MAX(updated_at) AS last_sync, COUNT(*) AS rows "
+            f"SELECT user_id, MIN(created_at) AS first_seen, MAX(updated_at) AS last_sync, COUNT(*) AS `rows` "
             f"FROM ({_SYNC_UNION}) AS s GROUP BY user_id"
         )
     ).all():
@@ -133,7 +133,7 @@ def _sync_aggregates(db: Session) -> tuple[dict[str, dict[str, Any]], dict[str, 
     per_device: dict[str, list[dict[str, Any]]] = {}
     for user_id, device_id, last_sync, row_count in db.execute(
         text(
-            f"SELECT user_id, device_id, MAX(updated_at) AS last_sync, COUNT(*) AS rows "
+            f"SELECT user_id, device_id, MAX(updated_at) AS last_sync, COUNT(*) AS `rows` "
             f"FROM ({_DEVICE_UNION}) AS s GROUP BY user_id, device_id ORDER BY last_sync DESC"
         )
     ).all():
