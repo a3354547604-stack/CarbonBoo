@@ -10,7 +10,7 @@
 
 ### 1.1 客户端 19 张表
 
-| # | 表名 | 中文名 | 参与分布式同步 |
+| # | 表名 | 中文名 | 参与同步（云端 + 近场） |
 |:--:|---|---|:--:|
 | 1 | `carbon_record` | 碳记录 | ✅ |
 | 2 | `carbon_factor_meta` | 因子元信息 | ❌ |
@@ -118,9 +118,10 @@ CREATE TABLE IF NOT EXISTS point_record (
   id           TEXT PRIMARY KEY,
   user_id      TEXT    NOT NULL,
   type         TEXT    NOT NULL,   -- record | record_capped | goal | purchase | carbon_include | reverse
+  flow_kind    TEXT    NOT NULL,   -- primary | reverse（B30/B31 修复：同一业务事实只允许一条 primary）
   points       INTEGER NOT NULL,   -- 正 = 收入，负 = 支出
-  source_type  TEXT    NOT NULL,   -- carbon_record | goal | shop_item | carbon_include | adjust
-  source_id    TEXT    NOT NULL,   -- 关联业务主键
+  source_type  TEXT    NOT NULL,   -- carbon_record | goal | shop_item | carbon_include（无 'adjust'：无产生方，见 §7.1）
+  source_id    TEXT    NOT NULL,   -- 关联业务主键；取值口径见下方注释
   title        TEXT    NOT NULL,   -- 展示用标题
   remark       TEXT,
   occurred_at  INTEGER NOT NULL,
@@ -130,9 +131,15 @@ CREATE TABLE IF NOT EXISTS point_record (
   device_id    TEXT,
   sync_state   TEXT    NOT NULL DEFAULT 'local'
 );
--- 幂等约束（v4.1）：记录类流水按 <carbon_record_id>#<revision> 唯一（每版本最多一条入账 + 一条 reverse）；
--- 目标按 goalId:periodKey、商品按 item_id 唯一，跨设备重复发放只入账一次
-CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_source ON point_record(source_type, source_id, type);
+-- 幂等约束（v4.1）：`source_id` 取值口径**必须写死**（`PointService` 是唯一产生方）：
+--   carbon_record  → '<carbon_record.id>#<revision>'   入账与冲正取同一值，靠 flow_kind 区分
+--   goal           → '<goalId>:<periodKey>'            如 'S1:D:2026-02-01'
+--   shop_item      → '<shop_item.id>'                   商品编码，如 'frame_01'
+--   carbon_include → '<carbon_include.id>'              兑换记录主键
+-- 唯一性：同一 source_type+source_id+flow_kind 只能有一条 → 同 revision 的 record / record_capped
+--   不可能并存（它们都是 flow_kind='primary'），而 reverse 可与 primary 并存（冲正必进 D，见 PLAN §9.2）。
+--   目标按 goalId:periodKey、商品按 item_id、记录按 <id>#<revision> 去重，跨设备重复发放只入账一次。
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pr_source ON point_record(source_type, source_id, flow_kind);
 CREATE INDEX IF NOT EXISTS idx_pr_user_time ON point_record(user_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pr_cap       ON point_record(user_id, occurred_at, source_type, is_deleted);
 CREATE INDEX IF NOT EXISTS idx_pr_updated   ON point_record(updated_at);
@@ -429,6 +436,11 @@ CREATE TABLE IF NOT EXISTS admin_op_log (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
+> **账号与设备的关系（B31 修复）**：`server_user` **不存 `device_id`**——设备粒度不落账号表。
+> 客户端 `deviceId` 只出现在 §5.3 的同步请求体与各业务行的 `device_id` 列里；
+> 后台 `/admin/users` 的「设备列表」口径 = 该用户已同步行按 `device_id` 去重 + 各自最后一次同步时间。
+> 因此 §5.2 的注册/登录请求体**不接收 `deviceId`**（设备标识只在同步时上行）。
+
 ---
 
 ## 4. TypeScript 模型（客户端）
@@ -510,14 +522,17 @@ export type PointType =
   | 'record' | 'record_capped' | 'goal'
   | 'purchase' | 'carbon_include' | 'reverse';
 
+export type FlowKind = 'primary' | 'reverse';
+
 export type PointSourceType =
-  | 'carbon_record' | 'goal' | 'shop_item' | 'carbon_include' | 'adjust';
+  | 'carbon_record' | 'goal' | 'shop_item' | 'carbon_include';
 
 export interface PointRecord extends BaseRow {
   type: PointType;
+  flowKind: FlowKind;        // primary | reverse；与 type 的派生关系见 §7.1
   points: number;            // 正 = 收入，负 = 支出
   sourceType: PointSourceType;
-  sourceId: string;
+  sourceId: string;          // 取值口径见 §2 建表 SQL 注释
   title: string;
   remark?: string;
   occurredAt: number;
@@ -710,8 +725,10 @@ export interface AppResult<T> {
 
 ## 5. REST 契约
 
-> **基础路径**：`/api/v1`；**管理接口**：`/admin/*` 用独立的 `adminToken`
-> 客户端接口的 `Authorization: Bearer <userToken>` 仅用于云备份演示，**取价接口无需 token**
+> **基础路径**：`/api/v1`；**管理接口**：`/admin/*` 用独立的 `adminToken`（两套独立 JWT 密钥，**客户端 token 访问 `/admin/*` 必须 403**）
+> 客户端接口的 `Authorization: Bearer <userToken>` 用于**账号（§5.2）与同步（§5.3）**——这是 ADR-0001 的主通路；
+> **只有取价接口 `/api/v1/shop/items` 无需 token**（未登录也能取价，失败即整份丢弃用内置默认价）。
+> **未登录时客户端不调用除取价外的任何接口**（铁律 1）。
 
 ### 5.1 health
 
@@ -726,18 +743,31 @@ export interface AppResult<T> {
 | POST | `/api/v1/auth/register` | 注册（用户名 + 密码） |
 | POST | `/api/v1/auth/login` | 登录，返回 JWT |
 | GET | `/api/v1/auth/me` | 当前用户信息 |
-| POST | `/api/v1/auth/logout` | 登出（服务端无状态，客户端清 token） |
-| DELETE | `/api/v1/auth/account` | 注销账号（二次确认后调用） |
+| POST | `/api/v1/auth/logout` | 登出：服务端无状态（只记 `last_login_at`），客户端清 token 并回未登录态；**本机业务数据一条不删** |
+| DELETE | `/api/v1/auth/account` | 注销账号（ADR-0001 决策 ③）：校验密码后把该账号云端数据**软删除并保留 30 天**，期间同一用户名+密码再次登录可恢复；**本机业务数据一条不删**，客户端回未登录态 |
 
 ```jsonc
 // POST /api/v1/auth/register
 // req
-{ "username": "harry_01", "password": "abc12345", "deviceId": "d-8f3a21" }
+{ "username": "harry_01", "password": "abc12345" }
 // res 201
 { "ok": true, "data": { "userToken": "eyJ...", "userId": "u-...", "username": "harry_01" } }
 // res 409
 { "ok": false, "code": "USERNAME_TAKEN", "message": "用户名已被占用" }
+
+// POST /api/v1/auth/login   req 与上同（不含 deviceId）
+// GET  /api/v1/auth/me      res { "ok": true, "data": { "userId": "u-...", "username": "harry_01" } }
+// DELETE /api/v1/auth/account
+// req
+{ "password": "abc12345" }          // 服务端校验密码后才执行注销
+// res 200
+{ "ok": true, "data": { "purgeAfter": 1764892000000 } }   // 软删除保留 30 天，到点物理清除
 ```
+
+> **首次登录的本机数据归属（ADR-0001 决策 ①）**：登录成功后由 `AuthService` 内的 `AccountMigrator`
+> 把本机 `user_id = 'local-guest'` 的历史数据**全部改挂账号 `userId`** 并置 `sync_state = 'pending'`，
+> 随后由 `CloudSyncService` 全量上传并入账号——即「首次登录时本机历史数据全部上传并入账号」，
+> **不是**"上传到云端另存一份"。注销/登出**不回滚**这一步（本机数据仍属该账号，只是停止同步）。
 
 **错误码表**
 
@@ -754,9 +784,12 @@ export interface AppResult<T> {
 | `RATE_LIMITED` | 429 | 触发限流 |
 | `SERVER_ERROR` | 500 | 服务端异常 |
 
-### 5.3 sync（**可选演示件**：云端备份 / 恢复）
+### 5.3 sync（**必做**：多设备增量同步 + 云端备份 / 恢复）
 
-> 多设备协同由**鸿蒙分布式数据服务**承担（见 §6）。本组接口只服务"云端备份"演示。
+> 这组接口是 **ADR-0001 里跨设备一致性的唯一真通路**：登录后由 `CloudSyncService` 按 §6 的 LWW 算法交换增量。
+> **鸿蒙分布式数据服务是近场演示层**（§6.6），只做同一 Wi-Fi 下的双机演示，**不承担跨设备一致性**。
+> **未登录时不调用本组接口**，客户端全部功能照常可用（铁律 1 的例外集只含登录/注册、多设备同步、商品取价、云端备份）。
+> 云端备份 = 全量快照上传 / 下载覆盖（不做自动合并，恢复前先生成本地快照，见 PLAN §7.8）。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -819,15 +852,21 @@ export interface AppResult<T> {
 
 ---
 
-## 6. 鸿蒙分布式协同协议（创新项 Ⅰ）
+## 6. 多设备同步协议与鸿蒙近场协同（创新项 Ⅰ）
+
+> **本节是 LWW 合并算法与同步状态机的唯一实现依据**（`PLAN.md` §12 只是设计摘要，两者不一致时以本节为准）。
+> 同一套算法被两条通路复用：
+> - **云端同步（必做，ADR-0001 主通路）**：经 §5.3 的 `/sync/pull|push`，是跨设备一致性的唯一真通路；
+> - **鸿蒙近场协同（近场演示层，创新项 Ⅰ）**：同一 Wi-Fi 下的双机演示，走 §6.6 的分布式 API。
 
 ### 6.1 使用的 API
 
 | API | 用途 |
 |---|---|
-| `@ohos.distributedDeviceManager` | 设备发现、配对、在线状态查询 |
-| `@ohos.distributedDataObject` | 会话级跨设备数据对象（`sessionId = userId`） |
-| `@ohos.distributedKVStore` | 跨设备 KV 落盘与合并 |
+| `@ohos.net.http` | **云端同步**：调 §5.3 的 `pull` / `push`（登录后走 HTTPS） |
+| `@ohos.distributedDeviceManager` | 近场演示：设备发现、配对、在线状态查询 |
+| `@ohos.distributedDataObject` | 近场演示：会话级跨设备数据对象（`sessionId = userId`） |
+| `@ohos.distributedKVStore` | 近场演示：跨设备 KV 落盘与合并 |
 | `@ohos.data.relationalStore` | **本机唯一真相源**（铁律 1） |
 
 ### 6.2 同步状态机
@@ -872,10 +911,12 @@ async function mergeTable<T extends BaseRow>(
       // 真冲突 = 两端自上次同步后都改过这一行
       if (l.updatedAt > lastSyncAt && r.updatedAt > lastSyncAt) conflicts++;
     } else if (rUpdated === l.updatedAt) {
-      // 平局：deviceId 字典序大者胜，两端结论一致
+      // 平局：deviceId 字典序大者胜；两端用同一规则，结论一致
       if ((r.deviceId ?? '') > (l.deviceId ?? '')) {
         toApply.push(r);
-        if (l.updatedAt > lastSyncAt) conflicts++;
+        // 与上面的「真冲突」定义保持同一条件：两端自上次同步后都改过才计数；
+        // deviceId 也相同的行视为同一版本，保留本机版本（不计数）
+        if (l.updatedAt > lastSyncAt && r.updatedAt > lastSyncAt) conflicts++;
       }
     }
     // 否则保留本机版本
@@ -883,9 +924,15 @@ async function mergeTable<T extends BaseRow>(
   return { toApply, conflicts, ignored };
 }
 
-// 账本表（point_record / carbon_include / user_purchase）写回时统一用 INSERT OR IGNORE：
-//   新 id → 正常插入；业务唯一键冲突（同目标同周期 / 同商品 / 同记录同版本）→ 该行被忽略，
-//   计入 ignored 与面板的「跨设备重复已去重」，两端账本因此收敛到同一份。
+// 写回（mergeTable 的两种 mode 都用同一句 SQL）：
+//   INSERT OR IGNORE INTO <table> (cols...) VALUES (...)
+//   ├ 主键冲突（同 id）                 → 该行被忽略，ignored++，accepted 不加
+//   ├ 业务唯一键冲突（uq_pr_source / uq_up / …）→ 该行被忽略，ignored++，面板计「跨设备重复已去重」
+//   └ 插入成功                          → accepted++
+// ⚠️ 账本表（point_record / carbon_include）**只增不删**（铁律 4）：只允许 INSERT OR IGNORE，
+//    不允许用 UPDATE 补救；user_purchase 属「有唯一键的 LWW」（§6.5），LWW 胜出的行同样走这句兜底。
+// 说明：appendOnly 分支只按 `id` 提前跳过，**业务唯一键的重复由写回这句 SQL 兜底**——两者合起来
+//    才是 §6.4-3 说的「`id` 与业务键双重幂等」，缺任何一个都会跨设备重复发放。
 ```
 
 ### 6.4 六条硬约束
@@ -903,14 +950,26 @@ async function mergeTable<T extends BaseRow>(
 |---|---|---|
 | 只增（账本） | `point_record`、`carbon_include` | 按 `id` 去重后并集；写入统一 `INSERT OR IGNORE`，由业务唯一键兜底——跨设备重复发放只入账一次 |
 | 可改可删 | `carbon_record`、`user_goal`、`user_badge`、`user_appearance`、`science_progress` | 完整 LWW |
-| 有唯一键的 LWW | `user_purchase` | 完整 LWW，但 `UNIQUE(user_id, item_id)` 保证同一商品只留一条购买（另一端那条被忽略，等于退回多扣的分） |
-| 单例行 | `user_profile` | 按 `updated_at` 取新 |
+| 有唯一键的 LWW | `user_purchase` | 完整 LWW；写回时 `UNIQUE(user_id, item_id)` 兜底，重复购买那条被忽略——记账上等价于**没有多扣一次分**（本项目不做退款流水，所以不是"退回多扣的分"） |
+| 单例行 | `user_profile` | 按 `updated_at` 取新；每个 `user_id` 恒一行（`uq_uprofile` 保证），`id` 仍是不变的新 UUID |
+
+### 6.6 近场演示层（鸿蒙分布式）
+
+| 项 | 口径 |
+|---|---|
+| 定位 | **演示层**：同一 Wi-Fi 下两台真机演示"数据互见"，不承担跨设备一致性 |
+| 前置 | 未登录也可用（`sessionId = userId`，未登录时取 `local-guest`）；需两机已配对 |
+| 范围 | 只同步 §6.5 的「可改可删」5 张 + 只增账本 2 张；`user_id` 不同的数据**绝不合并** |
+| 失败降级 | 无在线对端 / 未授权分布式权限 → 提示「未发现已配对设备」+ 写 `sync_log(failed)`，**不影响任何本地功能** |
+| 与云端的关系 | 云端同步是必做主通路；近场演示层可整体关闭（摘掉 `DistributedService` 后其余功能不受影响） |
+| 验收 | 只进 `APPENDIX-D` 的创新项演示条目，**不作为任何必做验收的前置** |
 
 ---
 
-## 7. Dao 接口清单（12 个）
+## 7. Dao 接口清单（12 个 · 表 Dao）
 
 > 落盘路径：`app/entry/src/main/ets/data/dao/`；**事务边界全在 Service 层**，Dao 只接受已开启的事务对象或使用默认连接。
+> 本清单只含**表 Dao**；账号态的持久化在 §7.1（走 `preferences`，不建表），故不计入这 12 个。
 
 | Dao | 关键方法 |
 |---|---|
@@ -927,6 +986,45 @@ async function mergeTable<T extends BaseRow>(
 | `SyncLogDao` | `insert` / `updateFinish` / `listRecent` |
 | `ConfigDao` | `getValue` / `setValue` / `getShopCatalog` / `saveShopCatalog` / `getJson` |
 
+### 7.1 账号抽象层 `AuthProvider`（ADR-0001 要求，唯一登录入口）
+
+> 落盘路径：`app/entry/src/main/ets/infra/auth/AuthProvider.ets`（接口 + 两个实现 + 选择器）
+> **上层（页面 / ViewModel / `AuthService` / `CloudSyncService`）只允许依赖本接口**：禁止直接调 `HttpClient`、禁止直接读写 token。
+> 本层**不是表 Dao**，故不计入上表 12 个；会话只落 `preferences`，**不建表**。
+
+```ts
+export type AuthProviderId = 'local' | 'server' | 'huaweiId';   // huaweiId 仅预留，v4.1 不实现
+
+export interface AuthSession {
+  userId: string;        // 账号态 = 服务端 userId；未登录 = 'local-guest'
+  token: string;         // JWT；local 实现恒为 ''
+  providerId: AuthProviderId;
+  username?: string;
+  expiresAt?: number;
+}
+
+export interface AuthProvider {
+  readonly id: AuthProviderId;
+  isAvailable(): Promise<boolean>;                      // server：/health 探活，3s 超时
+  register(username: string, password: string): Promise<AuthSession>;
+  login(username: string, password: string): Promise<AuthSession>;
+  logout(): Promise<void>;                              // 调 §5.2 logout 后清本机会话
+  currentSession(): Promise<AuthSession | null>;         // 只读 preferences，不发网络请求
+  deleteAccount(password: string): Promise<void>;         // 注销：云端软删除保留 30 天
+}
+```
+
+| 实现 | 行为 |
+|---|---|
+| `LocalAuthProvider`（默认） | 恒返回 `{ userId: 'local-guest', token: '', providerId: 'local' }`；**未登录 / 服务端不可达时的唯一态** |
+| `ServerAuthProvider` | 调 §5.2 的 `/auth/*`；token 与 userId 只经 `AuthDao` 存进 `preferences['auth.session']` |
+| `HuaweiAuthProvider` | **不实现**（API 12 无 Account Kit，ADR-0001 明确"不做华为账号"），仅保留枚举位 |
+
+- **会话持久化**：`AuthDao`（`infra/auth/AuthDao.ets`，走 `preferences`，不入任何业务表）：`saveSession` / `getSession` / `clearSession`。
+- **账号态不入表**：业务表只用 `user_id` 列表达归属；`userId` 与 `token` 一律不落 SQLite，唯一载体是 `preferences`。
+- **登录副作用**：只有 `AuthService` 能在登录成功后调 `AccountMigrator`（把 `user_id='local-guest'` 的历史数据改挂账号并置 `pending`，见 §5.2）；登出/注销**不改动**业务表的 `user_id`。
+- **`flow_kind` 派生规则（唯一定义）**：`PointService` 写流水时 `flow_kind = (type === 'reverse' ? 'reverse' : 'primary')`；`source_id` 取值见 §2 建表 SQL 注释。
+
 ---
 
 ## 8. 种子数据
@@ -934,6 +1032,8 @@ async function mergeTable<T extends BaseRow>(
 > 落盘路径：`app/entry/src/main/resources/rawfile/`
 
 ### 8.1 目标定义 `rawfile/goals/goal-defs.json`（11 条）
+
+> 数值（阈值 / 奖励 / 判定口径）的**唯一来源是 `PLAN.md` §10.1**；本文件只是它的落盘形态，改数值必须三处同改（PLAN §10.1 / 本文件 / `tests/cases/carbon-calc.json`）。
 
 ```json
 [
@@ -1031,7 +1131,9 @@ async function mergeTable<T extends BaseRow>(
 
 | 场景 | 做法 |
 |---|---|
-| 首次安装 | 建 19 张表 → 写入静态字典（目标 / 徽章 / 商品 / 头像 / 权益 / 科普索引）→ 写 `user_profile`（`user_id = 'local-guest'`） |
+| 首次安装 | 建 19 张表 → 写入静态字典（目标 / 徽章 / 商品 / 头像 / 权益 / 科普索引）→ 写 `user_profile`（`id` = 新生成 UUID v4，`user_id = 'local-guest'`，`register_day` = 当天；**每个 `user_id` 恒一行**，由 `uq_uprofile` 保证——不是"主键填 user_id"） |
+| 首次登录 | 本机 `user_id = 'local-guest'` 的历史数据**全部改挂账号 userId** 并置 `sync_state='pending'`，随后由 `CloudSyncService` 全量上传并入账号（ADR-0001 决策 ①，见 §5.2） |
+| 注销账号 | 服务端把该账号云端数据软删除并**保留 30 天**（期间可恢复）；客户端清 token 回未登录态，**本机数据一条不删**（ADR-0001 决策 ③） |
 | 版本升级 | `schemaVersion` 存 `app_config['schema_version']`；升版时**只做加表与加列**，不做破坏性改动 |
 | 加列 | `ALTER TABLE ... ADD COLUMN` 必须带默认值 |
 | 删列 / 改名 | **禁止**；改为新增列 + 数据迁移 + 旧列置空 |
@@ -1041,17 +1143,11 @@ async function mergeTable<T extends BaseRow>(
 
 ---
 
-## 10. v4.0 相对 v3 的变更摘要
+## 10. 变更记录
 
-| 变更 | 说明 |
-|---|---|
-| 表数 21 → **19** | 删除 `demo_marker`；新增 `carbon_include`、`share_record` |
-| 新增 `carbon_include` | 碳普惠模拟兑换（创新项 Ⅲ） |
-| 新增 `share_record` | 分享卡片记录（创新项 Ⅳ） |
-| 同步机制替换 | 云账号 pull / push → **鸿蒙分布式数据服务**（§6 全新） |
-| 参与同步 7 → **9 张** | 新增 `carbon_include`、`user_profile` |
-| 封顶判定换源 | 改为 `point_record` 实时聚合；`point_daily_stat` 降级为可重建的展示缓存 |
-| 流水类型扩充 | 新增 `carbon_include` |
-| `point_record` 幂等键 | `UNIQUE(source_type, source_id, type)` |
-| 服务端定位 | 由"必需"降为**可选演示件**（18 张同名表 + 3 张管理表 = 21 张） |
-| 后台规格并入 | 原附录 G 内容并入本附录 §5.4 与 PLAN 第 13 章，附录索引收敛为 A–F |
+> 本节全文（含"v4.0 相对 v3 的变更摘要"）已收敛到 **[CHANGELOG.md](./CHANGELOG.md)**——全仓库唯一的变更记录来源。
+> 数据层相关的 v4.0 变更在此只留索引：表数 21 → 19（删 `demo_marker`，新增 `carbon_include`、`share_record`）；
+> 参与同步 7 → 9 张；封顶判定改为 `point_record` 实时聚合（`point_daily_stat` 降为可重建缓存）；
+> `point_record` 幂等键 `UNIQUE(source_type, source_id, type)` → **`(source_type, source_id, flow_kind)`**（v4.1 修，见 §2）；
+> **服务端为必做件（账号 + 同步 + 取价 + 备份），唯一可选件是 Web 后台管理端**（v4.1 修，ADR-0001）；
+> 同步机制 = 服务端云端同步（主通路）+ 鸿蒙近场演示层（§6）；本轮 v4.1 全部改动见 `CHANGELOG.md`。
