@@ -24,3 +24,12 @@ _out/
 
 # AgentTeams 插件运行状态（不入库）
 .agent-teams/
+
+# 鸿蒙 / hvigor：依赖与构建产物不入库（由 ohpm install / hvigorw 生成）
+oh_modules/
+.hvigor/
+app/**/build/
+app/**/.cxx/
+local.properties
+*.hap
+*.har
