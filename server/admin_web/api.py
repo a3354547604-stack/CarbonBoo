@@ -109,6 +109,24 @@ def _item_data(item: dict[str, Any]) -> ShopItemData:
     return ShopItemData(**item)
 
 
+async def _read_json_body(request: Request, model: type[Any]) -> Any:
+    """读并校验 JSON 请求体；任何解析 / 校验失败统一成 400 `INVALID_REQUEST`。
+
+    为什么要这一步：为了让"同一路径既能收 JSON 又能收 urlencoded 表单"，本模块**手工**读 body，
+    于是就拿不到 FastAPI 的自动校验（那会把 `RequestValidationError` 翻成 400）。手工读就必须自己
+    把 `JSONDecodeError` / pydantic `ValidationError` 翻成同一个 400，否则坏 body 会变成 500 ——
+    与附录 B §5.2「参数不合法 → 400 INVALID_REQUEST」不符。
+    """
+    try:
+        payload = await request.json()
+    except ValueError as exc:  # json.JSONDecodeError 是 ValueError 子类
+        raise AppError(ErrorCode.INVALID_REQUEST, "请求体不是合法 JSON") from exc
+    try:
+        return model.model_validate(payload)
+    except ValueError as exc:  # pydantic ValidationError 也是 ValueError 子类
+        raise AppError(ErrorCode.INVALID_REQUEST, "请求体字段不合法（类型 / 长度 / 取值范围）") from exc
+
+
 async def _read_urlencoded_form(request: Request) -> dict[str, str]:
     """解析 `application/x-www-form-urlencoded` 表单体（**不依赖 python-multipart**）。
 
@@ -159,7 +177,7 @@ async def login(
         password = str(form.get("password") or "")
         target = safe_next(str(form.get("next") or ""), web)
     else:
-        payload = AdminLoginRequest.model_validate(await request.json())
+        payload = await _read_json_body(request, AdminLoginRequest)
         username = payload.username
         password = payload.password
         target = safe_next(request.query_params.get("next"), web)
@@ -305,7 +323,7 @@ async def upload_icon(
 ) -> OkEnvelope[ShopItemData]:
     content_type = (request.headers.get("content-type") or "").lower()
     if content_type.startswith("application/json"):
-        payload = IconUploadRequest.model_validate(await request.json())
+        payload = await _read_json_body(request, IconUploadRequest)
         raw = icons.decode_base64_payload(payload.dataBase64)
         original = payload.filename
     else:

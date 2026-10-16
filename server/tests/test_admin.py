@@ -1026,3 +1026,30 @@ def test_cli_create_admin_and_reset_password(client: Any, db_session: Any) -> No
         client.post(f"{ADMIN}/login", json={"username": "cli_admin", "password": ADMIN_NEW_PASSWORD}).status_code == 200
     )
     assert cli.main(["list-admins"]) == 0
+
+
+def test_malformed_json_body_is_400_not_500(client: Any, admin_headers: dict[str, str]) -> None:
+    """手工读 body 的代价要自己补回来：坏 JSON / 字段不合法必须是 400 INVALID_REQUEST（不是 500）。"""
+    broken = client.post(
+        f"{ADMIN}/login",
+        content=b"{not json",
+        headers={"Content-Type": "application/json"},
+    )
+    assert broken.status_code == 400, f"坏 JSON 应 400，实际 {broken.status_code}"
+    assert broken.json()["code"] == "INVALID_REQUEST"
+
+    empty = client.post(f"{ADMIN}/login", content=b"", headers={"Content-Type": "application/json"})
+    assert empty.status_code == 400
+
+    wrong_types = client.post(
+        f"{ADMIN}/login", headers={"Content-Type": "application/json"}, json={"username": 42, "password": ["x"]}
+    )
+    assert wrong_types.status_code == 400
+    assert wrong_types.json()["code"] == "INVALID_REQUEST"
+
+    patched = client.post(
+        f"{ADMIN}/items/frame_01/icon",
+        headers={**admin_headers, "Content-Type": "application/json"},
+        content=b"{oops",
+    )
+    assert patched.status_code == 400
