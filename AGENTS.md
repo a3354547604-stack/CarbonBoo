@@ -60,6 +60,8 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 - B41 同步契约七处对齐实现：§6.3 伪码 `appendOnly` 补业务唯一键判重（不再只按 `id`）、§5.3 补云端备份三端点（`POST/GET /sync/backup`、`POST /sync/backup/restore`）、push 请求体补 `clientNow` 与响应补 `ignored`/`rejected`/`offsetMs`、§6.4-3 明确 `ignored` 不计入 `conflicts`、§6.5 明确忽略远端购买行不产生流水且 `user_profile` 按 `user_id` 收敛一行、§5.2/§5.3 写明鉴权（Bearer，注销后 401）
 - B42 §6「未登录 = 纯单机」的例外集补齐为**四类**（登录/注册、多设备同步、商品取价、云端备份），与 §2 铁律 1 / §5 L2 / 附录 D §1.6 统一（B21 口径统一的漏网点）
 - B43 附录 C 落盘路径勘误：设计令牌唯一来源是 `app/entry/src/main/ets/util/AppTheme.ets`（**没有** `common/` 目录）；§25 自检第 2 条的例外不是 `LiteralConstants.ets` 文件，而是同一文件里的 `LiteralConstants` 类
+- B44 附录 D §9 演示数据四约束互斥 → 新增「§9.1 汇总口径」收敛为自洽规格：单条量级按「日均 ≈0.7 kg」缩放（与 `DemoService` 逐条一致），条数 261（表述「约 260 条」），累计减排 **61.7400 kgCO₂e**（落 60–90 区间、< 100 kg），记录类毛收益 ≈6,174 分由收尾兑换收敛到余额 **4,820–4,919**；§10.3 `summary.csv` 示例与 §9.1 逐字同源；附录 C §3.4 补「示意数字≠演示数据规格」
+- B45 AGENTS.md 头部状态行勘误：删掉「只做计划与开发文档，暂不编码」「`app/`、`server/` 尚未创建」，改为「S1–S6 已实现并落库（`app/` 19 张表 + 18 个页面；`server/` 21 张表 + 账号/同步/取价/备份 + L3 pytest），S7 与 `/admin` 收尾中」，规划版本 v4.1 → v4.2
 
 **已清零（2026-11-06 · v4.1 文档契约冻结）**
 

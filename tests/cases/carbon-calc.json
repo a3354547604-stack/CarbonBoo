@@ -962,6 +962,14 @@
       "bad": "文档写的落盘路径 `app/entry/src/main/ets/common/AppTheme.ets` 在仓库里不存在（`app/entry/src/main/ets/` 下没有 `common/` 目录）；§25 自检第 2 条提到的例外文件 `LiteralConstants.ets` 也不存在——真实情况是设计令牌唯一来源在 `util/AppTheme.ets`，且 `LiteralConstants` 是**同一个文件里的类**（同文件 `export class AppTheme` / `export class LiteralConstants`）",
       "correct": "【已闭环·2026-11-06 队长实测 + find 复核】§3 落盘路径改为 `app/entry/src/main/ets/util/AppTheme.ets`（并加一行 v4.2 勘误，点名旧路径不存在、无 `common/` 目录）；§25 自检第 2 条改为「例外集中在 `util/AppTheme.ets` 里的 `LiteralConstants` 类，没有 `LiteralConstants.ets` 这个文件」。复核命令：`find app/entry/src/main/ets -name 'AppTheme.ets'` → `app/entry/src/main/ets/util/AppTheme.ets`；`ls app/entry/src/main/ets/` → components/dao/data/entryability/infra/model/pages/service/util/viewmodel（无 common）",
       "status": "closed"
+    },
+    {
+      "id": "B44",
+      "file": "docs/APPENDIX-D-acceptance.md + docs/APPENDIX-C-ui-screens.md",
+      "locator": "APPENDIX-D:441-463（§9 演示数据规格表与分布要求 3/4）、:524-539（§10.3 summary.csv 示例）；APPENDIX-C:148-152（§3.4 数字格式）",
+      "bad": "§9 的四个约束互斥：「约 260 条 / 90 天」×「出行 0.8 条/天 ≈72 条」×「典型值 骑行 5 km = 0.9600」已经是 69.12 kg ≈ 6,912 分，再加水电/回收/光盘会到 300 kg 以上，与 §9 第 3 条「累计减排约 60–90 kgCO₂e」和第 4 条「积分余额约 4000–6000 分」不可能同时成立；§10.3 的 `summary.csv` 示例（总减排 76.3800 = 出行 32.4000 + 水电燃气 28.6000 + 旧物回收 14.9800 + 光盘 0.4000，光盘只有 0.4 kg ≈ 1 餐）与 §9 表也不同源，同一份演示数据出现两个总减排；附录 C §3.4/§9 示意图的 12.4800 kg 与 4,820 分容易被当成演示数据规格",
+      "correct": "【已闭环·择一为准·2026-11-06】以 §9 为唯一求和来源并新增「§9.1 汇总口径」把四者算通：单条量级改为按「日均新增减排 ≈0.7 kg」缩放后的每条约值（出行 ≈0.30 / 水电燃气 ≈0.13 / 旧物回收 ≈0.30 / 光盘 0.35 kg，与 DemoService 的 dayPlan 逐条一致）；条数 72+108+45+36 = 261（规格仍表述「约 260 条」）；累计减排 **61.7400 kgCO₂e**（= 21.6000+14.0400+13.5000+12.6000，落 60–90 区间且 < 100 kg 硬上限）；记录类毛收益 ≈6,174 分（日均 68.6 < 200 封顶不生效），**最终余额由收尾兑换收敛到 4,820–4,919**（`TARGET_BALANCE = 4820`，仍在 4,000–6,000 区间内）；§10.3 的 `summary.csv` 示例全部改为与 §9.1 逐字一致（总减排 61.7400、四类 21.6000/14.0400/13.5000/12.6000、记录数 260、积分 4,820、徽章 6）；附录 C §3.4 补一行说明「表内 12.4800 / 4,820 / 48 是格式示例，不是演示数据规格，规格唯一来源是附录 D §9/§9.1」。数值仍是文档级规格值，`tests/cases/carbon-calc.json` 的 constants/factors/samples 无对应字段、未改动（本次只登记本条目）",
+      "status": "closed"
     }
   ]
 }
