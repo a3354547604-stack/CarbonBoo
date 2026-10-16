@@ -808,3 +808,221 @@ def test_logs_detail_never_contains_secrets(client: Any, admin_headers: dict[str
     raw = client.get(f"{ADMIN}/logs", headers=admin_headers).text
     for secret in (settings.admin_jwt_secret, settings.jwt_secret, ADMIN_PASSWORD, "$2b$"):
         assert secret not in raw
+
+
+# --------------------------------------------------------------------------- #
+# 管理侧独立 JWT 隔离（D10-7 / A13 / AGENTS §7.2）
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("path", ADMIN_PATHS)
+def test_client_token_on_every_admin_path_is_forbidden(client: Any, path: str) -> None:
+    """**客户端 token 访问任何 `/admin/*` 必须 403**（附录 B §5.4 / D10-7 / 验收 A13）。"""
+    account = register_user(client)
+    response = client.get(path, headers=auth_header(account["token"]), follow_redirects=False)
+    assert response.status_code == 403, f"{path} 应 403，实际 {response.status_code}"
+    body = response.json()
+    assert body["ok"] is False and body["code"] == "FORBIDDEN" and body["message"]
+
+
+def test_client_token_forbidden_on_admin_write_methods(client: Any) -> None:
+    """写方法同样 403（不是只挡 GET）—— 中间件在进路由之前判定。"""
+    account = register_user(client)
+    headers = auth_header(account["token"])
+    assert client.post(f"{ADMIN}/login", headers=headers, json={"username": "x", "password": "y"}).status_code == 403
+    assert client.post(f"{ADMIN}/items", headers=headers, json={}).status_code == 403
+    assert client.patch(f"{ADMIN}/items/frame_01", headers=headers, json={}).status_code == 403
+    assert client.put(f"{ADMIN}/config", headers=headers, json={}).status_code == 403
+    assert client.post(f"{ADMIN}/items/frame_01/icon", headers=headers, content=b"x").status_code == 403
+    assert client.delete(f"{ADMIN}/items/frame_01", headers=headers).status_code == 403
+
+
+def test_admin_token_is_not_accepted_by_the_client_api(client: Any, admin_headers: dict[str, str]) -> None:
+    """反方向也隔离：管理端令牌打客户端接口 → 401 TOKEN_INVALID（两套 audience + 两把密钥）。"""
+    response = client.get(f"{AUTH}/me", headers=admin_headers)
+    assert response.status_code == 401
+    assert response.json()["code"] == "TOKEN_INVALID"
+
+
+def test_two_token_families_use_different_keys_and_audiences(client: Any, admin: dict[str, Any], settings: Any) -> None:
+    """管理端令牌只能用管理侧密钥 + 管理侧 audience 校验（客户端密钥验不过）。"""
+    from app.core.errors import AppError
+    from app.core.security import decode_admin_token, decode_user_token
+
+    aud_admin = Settings.model_fields["jwt_admin_audience"].default
+    assert aud_admin == "carbonboo-admin"
+    assert settings.jwt_secret != settings.admin_jwt_secret
+
+    claims = jwt.decode(
+        admin["token"],
+        settings.admin_jwt_secret,
+        algorithms=[settings.jwt_algorithm],
+        audience=aud_admin,
+        issuer=settings.jwt_issuer,
+    )
+    assert claims["aud"] == aud_admin
+
+    with pytest.raises(AppError):
+        decode_user_token(admin["token"], settings)
+    # 客户端 token 交给管理端解码器也必须失败
+    account = register_user(client)
+    with pytest.raises(AppError):
+        decode_admin_token(account["token"], settings)
+
+
+def test_missing_or_garbage_token_is_not_403(client: Any) -> None:
+    """403 专指"拿着客户端令牌闯管理端"；无令牌 / 坏令牌按 401 / 303 / 404 处理。"""
+    assert client.get(f"{ADMIN}/items").status_code == 401
+    assert client.get(f"{ADMIN}/items", headers=auth_header("not-a-jwt")).status_code == 401
+    assert client.get(f"{ADMIN}/__probe_not_registered__").status_code == 404
+    assert client.get(f"{ADMIN}/__probe_not_registered__", headers=auth_header("not-a-jwt")).status_code == 404
+
+
+def test_admin_routes_do_not_touch_the_client_api_surface(client: Any) -> None:
+    """后台只是挂载进来（可选件）：客户端 API 路径与鉴权行为一条不变。"""
+    assert client.get("/api/v1/health").status_code == 200
+    assert client.get(SHOP).status_code == 200, "取价仍无需令牌（唯一免令牌接口）"
+    assert client.get(f"{AUTH}/me").status_code == 401
+
+
+# --------------------------------------------------------------------------- #
+# 强口令 + 登录限流（AGENTS §6）
+# --------------------------------------------------------------------------- #
+def test_admin_login_rate_limited_returns_429(client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """登录限流：超限 → 429 RATE_LIMITED；且与客户端登录计数互不干扰。"""
+    from app.core.config import reset_settings_cache
+    from app.core.ratelimit import reset_login_limit
+
+    monkeypatch.setenv("LOGIN_RATE_LIMIT_PER_MINUTE", "2")
+    reset_settings_cache()
+    reset_login_limit()
+    try:
+        payload = {"username": ADMIN_USERNAME, "password": "wrong-password"}
+        assert client.post(f"{ADMIN}/login", json=payload).status_code == 401
+        assert client.post(f"{ADMIN}/login", json=payload).status_code == 401
+        limited = client.post(f"{ADMIN}/login", json=payload)
+        assert limited.status_code == 429
+        assert limited.json()["code"] == "RATE_LIMITED"
+
+        # 客户端登录是另一把键（ip|username），不受管理端计数影响
+        account = register_user(client)
+        assert (
+            client.post(
+                f"{AUTH}/login", json={"username": account["username"], "password": account["password"]}
+            ).status_code
+            == 200
+        )
+    finally:
+        reset_login_limit()
+        reset_settings_cache()
+
+
+def test_password_policy_module_is_the_single_source() -> None:
+    """强口令策略只有一个定义处（security.password_policy_problems），引导 / 改密 / CLI 共用。"""
+    from admin_web import security
+    from admin_web.cli import cmd_create_admin
+
+    assert security.ADMIN_PASSWORD_MIN_LENGTH >= 12
+    assert security.password_policy_problems("CarbonBoo#2026admin") == []
+    assert security.password_policy_problems("short") != []
+    assert cmd_create_admin is not None
+
+
+# --------------------------------------------------------------------------- #
+# 结构与约定（PLAN §13.3 / AGENTS §7.1）
+# --------------------------------------------------------------------------- #
+def test_no_frontend_framework_and_no_build_chain() -> None:
+    """页面是 Jinja2 服务端渲染 + 少量原生 JS：无前端框架、无构建链、无第三方包。"""
+    from admin_web.config import ADMIN_WEB_DIR
+
+    files = [path for path in ADMIN_WEB_DIR.rglob("*") if path.is_file() and "__pycache__" not in path.parts]
+    names = {path.name for path in files}
+    assert "package.json" not in names and "webpack.config.js" not in names and "vite.config.js" not in names
+    assert not (ADMIN_WEB_DIR / "node_modules").exists()
+
+    assert [path.name for path in files if path.suffix == ".js"] == ["admin.js"], "只有一个原生 JS 文件"
+    assert [path.name for path in files if path.suffix == ".css"] == ["admin.css"], "只有一个 CSS 文件"
+
+    forbidden = ("react.", "vue.js", "jquery", "getbootstrap", "bootstrap.min", "tailwind", "cdn.jsdelivr", "unpkg.com")
+    for path in files:
+        if path.suffix in (".html", ".js", ".css"):
+            lowered = path.read_text(encoding="utf-8").lower()
+            for token in forbidden:
+                assert token not in lowered, f"{path.name} 出现了前端框架/ CDN 痕迹：{token}"
+
+
+def test_pages_are_rendered_server_side_not_left_as_placeholders(client: Any, session_cookie: dict[str, str]) -> None:
+    """模板真的被渲染过（没有残留 `{{ }}` / `{% %}`），且数据来自库（种子商品名出现在 HTML 里）。"""
+    for path in (ADMIN, f"{ADMIN}/items", f"{ADMIN}/users", f"{ADMIN}/orders", f"{ADMIN}/config", f"{ADMIN}/logs"):
+        page = client.get(path, headers={**session_cookie, **HTML_ACCEPT})
+        assert page.status_code == 200, f"{path} 应 200（HTML 会话路径），实际 {page.status_code}"
+        assert page.headers["content-type"].startswith("text/html")
+        assert "{{" not in page.text and "{%" not in page.text, f"{path} 有未渲染的模板标记"
+    items_page = client.get(f"{ADMIN}/items", headers={**session_cookie, **HTML_ACCEPT})
+    assert "嫩芽" in items_page.text, "页面数据必须来自数据库（服务端渲染，而不是前端再拉一次）"
+
+
+def test_admin_web_does_not_need_python_multipart(client: Any) -> None:
+    """后台不依赖 python-multipart：源码里没有 request.form()/UploadFile，表单体自己解析。"""
+    from admin_web.config import ADMIN_WEB_DIR
+
+    for path in ADMIN_WEB_DIR.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "await request.form(" not in source, f"{path.name} 调用了 request.form()（需要 python-multipart）"
+        assert "UploadFile" not in source, f"{path.name} 用了 UploadFile（需要 python-multipart）"
+        assert "python_multipart" not in source, f"{path.name} 直接引用了 python_multipart"
+    assert client.get(f"{ADMIN}/login").status_code == 200
+
+
+def test_mount_admin_is_idempotent_and_only_adds_admin_routes() -> None:
+    """`mount_admin` 幂等；挂载只增不改：不覆盖服务端切片的 AppError 处理器。"""
+    from fastapi import FastAPI
+
+    from admin_web.mount import STATE_KEY, mount_admin
+
+    def count_routes(app: Any) -> int:
+        def walk(routes: Any) -> int:
+            total = 0
+            for route in routes:
+                total += 1
+                total += walk(getattr(route, "routes", []) or [])
+            return total
+
+        return walk(app.routes)
+
+    bare = FastAPI()
+    single, double = FastAPI(), FastAPI()
+    mount_admin(single)
+    mount_admin(double)
+    mount_admin(double)  # 第二次必须是空操作
+    assert count_routes(single) == count_routes(double), "重复挂载不得重复注册路由"
+    assert count_routes(single) > count_routes(bare), "挂载确实加了路由（不是空挂）"
+    assert getattr(double.state, STATE_KEY) is True
+
+    from app.core.errors import AppError
+
+    from app.main import create_app
+
+    app = create_app()
+    assert AppError in app.exception_handlers
+    assert app.exception_handlers[AppError].__module__ == "app.main", "不得覆盖服务端切片的错误信封处理器"
+    assert app.router is not None
+
+
+def test_cli_create_admin_and_reset_password(client: Any, db_session: Any) -> None:
+    """命令行创建 / 重置管理员（忘记口令的正规找回路径）；口令同样过强口令策略。"""
+    from admin_web import cli
+
+    assert cli.main(["create-admin", "--username", "cli_admin", "--password", ADMIN_PASSWORD]) == 0
+    row = db_session.execute(text("SELECT id, password_hash FROM admin_user WHERE username = 'cli_admin'")).one()
+    assert row.password_hash.startswith("$2b$")
+    assert client.post(f"{ADMIN}/login", json={"username": "cli_admin", "password": ADMIN_PASSWORD}).status_code == 200
+
+    # 已存在且没 --reset → 明确失败而不是静默改名
+    assert cli.main(["create-admin", "--username", "cli_admin", "--password", ADMIN_PASSWORD]) == 1
+
+    assert cli.main(["create-admin", "--username", "cli_admin", "--password", "weakpass1111", "--reset"]) == 1
+    assert cli.main(["create-admin", "--username", "cli_admin", "--password", ADMIN_NEW_PASSWORD, "--reset"]) == 0
+    assert client.post(f"{ADMIN}/login", json={"username": "cli_admin", "password": ADMIN_PASSWORD}).status_code == 401
+    assert (
+        client.post(f"{ADMIN}/login", json={"username": "cli_admin", "password": ADMIN_NEW_PASSWORD}).status_code == 200
+    )
+    assert cli.main(["list-admins"]) == 0
