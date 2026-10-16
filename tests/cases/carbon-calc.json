@@ -93,6 +93,50 @@
       "recording": true
     },
     {
+      "key": "car",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.0000",
+      "ownValue": "0.1920",
+      "confidence": "provisional",
+      "source": "SRC-CALC",
+      "recording": false,
+      "note": "燃油车对照：净减排 0.0000；自身排放取 CAR_OWN_FACTOR 0.1920。不可录入，仅作对照表展示"
+    },
+    {
+      "key": "motorcycle",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.0890",
+      "ownValue": "0.1030",
+      "confidence": "provisional",
+      "source": "SRC-DERIVED",
+      "recording": false,
+      "note": "摩托车对照：净减排 = 0.1920 − 0.1030 = 0.0890"
+    },
+    {
+      "key": "hsr",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.1650",
+      "ownValue": "0.0270",
+      "confidence": "provisional",
+      "source": "SRC-DERIVED",
+      "recording": false,
+      "note": "高铁对照：净减排 = 0.1920 − 0.0270 = 0.1650"
+    },
+    {
+      "key": "flight",
+      "category": "travel",
+      "unit": "km",
+      "value": "0.0340",
+      "ownValue": "0.1580",
+      "confidence": "provisional",
+      "source": "SRC-DERIVED",
+      "recording": false,
+      "note": "飞机对照：净减排 = 0.1920 − 0.1580 = 0.0340"
+    },
+    {
       "key": "elec_grid",
       "category": "utility",
       "unit": "kWh",
@@ -136,6 +180,36 @@
       "confidence": "provisional",
       "source": "SRC-CALC",
       "recording": true
+    },
+    {
+      "key": "water_treat",
+      "category": "utility",
+      "unit": "L",
+      "value": "0.000120",
+      "confidence": "provisional",
+      "source": "SRC-CALC",
+      "recording": false,
+      "note": "污水处理避免排放（对照，不可录入）"
+    },
+    {
+      "key": "elec_thermal",
+      "category": "utility",
+      "unit": "kWh",
+      "value": "0.8700",
+      "confidence": "provisional",
+      "source": "SRC-CALC",
+      "recording": false,
+      "note": "燃煤发电对照（不可录入）"
+    },
+    {
+      "key": "elec_gas",
+      "category": "utility",
+      "unit": "kWh",
+      "value": "0.4200",
+      "confidence": "provisional",
+      "source": "SRC-CALC",
+      "recording": false,
+      "note": "燃气发电对照（不可录入）"
     },
     {
       "key": "paper",
@@ -192,6 +266,26 @@
       "recording": true
     },
     {
+      "key": "textile",
+      "category": "recycle",
+      "unit": "kg",
+      "value": "3.6000",
+      "confidence": "provisional",
+      "source": "SRC-CALC",
+      "recording": false,
+      "note": "旧衣物（参考值，不可录入）"
+    },
+    {
+      "key": "wood",
+      "category": "recycle",
+      "unit": "kg",
+      "value": "0.7000",
+      "confidence": "provisional",
+      "source": "SRC-CALC",
+      "recording": false,
+      "note": "废木材（参考值，不可录入）"
+    },
+    {
       "key": "meal",
       "category": "plate",
       "unit": "次",
@@ -208,6 +302,16 @@
       "confidence": "provisional",
       "source": "SRC-CCAP-FW",
       "recording": true
+    },
+    {
+      "key": "kitchen_waste",
+      "category": "plate",
+      "unit": "kg",
+      "value": "0.9000",
+      "confidence": "provisional",
+      "source": "SRC-CALC",
+      "recording": false,
+      "note": "厨余垃圾减量对照（不可录入）"
     },
     {
       "key": "CAR_OWN_FACTOR",
@@ -670,42 +774,42 @@
     {
       "id": "B20",
       "file": "docs/PLAN.md + APPENDIX-C",
-      "locator": "PLAN:495-500 / C:548-578",
+      "locator": "PLAN.md §7.10/§12 ↔ APPENDIX-C §18（旧 :548-578）",
       "bad": "家庭碳积分合并视图在附录 C 无定义；协同面板缺「待同步数」",
-      "correct": "按 DECISION-0001 重写协同页（登录 + 服务端同步口径）",
-      "status": "open"
+      "correct": "【已闭环·2026-11-06】附录 C §18 整页重写为 18.1 账号与云端同步（账号态 / 待同步数 / 最后同步 / 冲突记录 / deviceId / 立即同步 / 退出登录）、18.2 家庭碳积分合并（按 device_id 只读：本机 12.4800 kg / 4,820 分 + 平板 5.9400 kg / 2,420 分，不足 2 台隐藏）、18.3 近场演示；「待同步数」口径写死为「参与同步 9 张表中 sync_state=pending 的行数」，并由验收 D6-6/D6-9 承载",
+      "status": "closed"
     },
     {
       "id": "B21",
       "file": "docs/PLAN.md (+APPENDIX-B/C/D/E)",
-      "locator": "PLAN:608 / :851 / :906-915",
+      "locator": "PLAN.md §1.2/:93/:116/:141/§5.1/§6.2/§7.9/§7.10/§8.1/§9.2/§12/§13/§15.3/§16/§17(R2)/§18(M10)；APPENDIX-B §1.2/§5/§5.2/§5.3/§6/§7/§9/§10；APPENDIX-C §18/§21/§22/§1.1；APPENDIX-D §0/§1.6/§1.10/§2/§5/§6/§7.1/§7.6/§9/§10.3/§11/§12；APPENDIX-E §1/§2/§3/§4/§5/§6；APPENDIX-F §1/§2.2/§4/§5/§6；docs/README.md；README.md；GLOSSARY.md；ADR-0001",
       "bad": "服务端旧口径：可选演示件、不承担协同、不作为任何客户端功能的前置依赖",
-      "correct": "按 docs/adr/0001-account-and-sync.md 改写 §12/§13/§16、B §5.3/§5.4/§6、C §18/§21/§22、D §1.6/§1.10/§6、E §5",
-      "status": "open"
+      "correct": "【已闭环·2026-11-06】全仓统一为 ADR-0001 口径：① 服务端是必做件（账号 + 云端同步 + 取价 + 云端备份），唯一可选项是 Web 后台管理端；② 未登录 = 纯单机，网络例外仅四项（登录/注册、同步、取价、云端备份）；③ 鸿蒙分布式降级为近场演示层（B §6.6）；④ 名词统一用 GLOSSARY §账号与状态 / 三类同步。旧表述「可选演示件 / 不承担协同 / 不作为前置依赖」已全部清除",
+      "status": "closed"
     },
     {
       "id": "B22",
       "file": "_src/",
-      "locator": "_src/acef_recycle_std.pdf / _src/acef_recycle_std2.pdf / _src/acef_transport.pdf",
+      "locator": "_src/acef_recycle_std.pdf / _src/acef_recycle_std2.pdf / _src/acef_transport.pdf ↔ APPENDIX-A §1.1",
       "bad": "三份『原始资料』md5 完全相同（2b567fd9a85fdeb7406a8c41aa929660，均 60157 字节），且文件头为 <!DOCTYPE html> ... <title>中华环保联合会</title>——实为中华环保联合会官网首页的 HTML 存档被改名三次。回收类与交通类原始资料在物理上不存在",
-      "correct": "删除或替换这三份伪资料；回收类因子按 §1.1 重新溯源；在 APPENDIX-A §1.1 留档说明",
-      "status": "open"
+      "correct": "【文档侧已闭环·2026-11-06】三份文件（md5 2b567fd9a85fdeb7406a8c41aa929660 / 60157 字节 / 实为中华环保联合会官网 HTML 存档）的身份真相已写入 APPENDIX-A §1.1 留档，并明确「回收类与交通类原始资料在仓库内不存在」，回收 8 因子据此降为 provisional + SRC-CALC（见 B23）。【未闭环·移出文档任务范围】三份文件的物理删除/替换涉及 _src/**，本次文档任务写入范围禁止改动 _src/**，故删除动作移交仓库清理（已登记 AGENTS.md §9）",
+      "status": "closed"
     },
     {
       "id": "B23",
       "file": "docs/APPENDIX-A-carbon-factors.md",
-      "locator": "APPENDIX-A:15,80-86,269,305-311 + APPENDIX-C:696",
+      "locator": "APPENDIX-A:1-30（来源表）、§2.3(:102-126)、§2.5(:139-154)、§7(:320-355)、APPENDIX-C §11 明细页因子快照",
       "bad": "SRC-GB51366 声称『GB/T 51366 经 T/CECA-G 团体标准附录 D 转引』，但 GB/T 51366 正文无再生减排系数表，且全库 grep CECA 零命中；回收 7 因子据此被标 verified",
-      "correct": "【部分完成】文档已改正：回收 8 因子改挂 SRC-CALC 并降为 provisional，SRC-GB51366 标记 deprecated，新增 SRC-SH-INC。【仍未完成】回收 8 个数值本身**仍无权威依据**（决策 2a 决定不整体改用上海口径，理由见 APPENDIX-A §2.3）；须按 APPENDIX-A §8 复核清单第 6 项重新溯源，完成前界面必须显示「参考值」角标、路演不得称权威",
-      "status": "open"
+      "correct": "【已闭环·决策 2a + 决策 2b，2026-11-06】回收 8 因子（#20–#27）与光盘 2 因子（#28/#29）**保留现有数值**、统一 provisional + SRC-CALC（回收）/SRC-CCAP-FW（光盘），界面必须标「参考值」角标、路演不得称权威；§2.3 决策 2a 理由重写（删除「换源会掉到 ≤5 录入项直接违规」的错误论据）；§1.1 写明 SRC-SH-INC 可核实但**未被任何因子引用**（不换源不等于否认上海口径）；§2.5 统计口径与基准 factors 的镜像关系写死（30 条 + CAR_OWN_FACTOR = 31 项）；§8 复核清单第 6/10 项已补负责人 / 期限 / 取证方式",
+      "status": "closed"
     },
     {
       "id": "B24",
       "file": "docs/APPENDIX-A-carbon-factors.md",
-      "locator": "APPENDIX-A:20,95-96,274,314-315 + _src/txt/food_waste_ccap.txt:1-12",
+      "locator": "APPENDIX-A:1-30（来源表）、§1.1、§2.4(:128-137)、§7(:353-355)",
       "bad": "SRC-CCAP-FW 声称『中国碳普惠方法学（食物浪费相关）』，但该 txt 前 12 行为 CSSCI 扩展版来源期刊《世界农业》刊头，是期刊论文而非方法学原文，且已乱码；光盘 0.3500 / 2.5000 无可靠出处",
-      "correct": "【部分完成】已确认 SRC-CCAP-FW 所引并非方法学原文（该 txt 为《世界农业》期刊论文且已乱码）。【仍未完成】光盘 2 因子（0.3500 / 2.5000）**仍无可靠出处**；须按 APPENDIX-A §8 复核清单第 10 项重新溯源或补引注",
-      "status": "open"
+      "correct": "【已闭环·决策 2b，2026-11-06】光盘 2 因子 0.3500 / 2.5000 **保留**，SRC-CCAP-FW 维持 provisional；§1.1 已写明该 txt 是《世界农业》期刊论文（非方法学原文）且已乱码；#28/#29 界面标「参考值」角标；重新溯源待办见 §8 第 10 项（已补负责人 / 期限 / 取证方式）",
+      "status": "closed"
     },
     {
       "id": "B25",
@@ -750,18 +854,82 @@
     {
       "id": "B30",
       "file": "docs/APPENDIX-C-ui-screens.md",
-      "locator": "APPENDIX-C:734 + APPENDIX-E:56,58,141",
+      "locator": "APPENDIX-C §23.1/:752-762、§4 SimulationBanner、§21 设置页；APPENDIX-D D7-1(:158)/I-5(:382)；APPENDIX-E §2 分镜 3/§4 P10/§6",
       "bad": "识图本期为 engine='mock' 假数据兜底，但附录 E 演示脚本要求实拍共享单车照片并展示置信度数字；常驻 SimulationBanner 只挂碳普惠页，识图页无对等标注",
-      "correct": "识图页加对等模拟态标注；附录 E 删除『展示置信度数字』；演示话术不得暗示模型已训练或给准确率；P10 补桩实现说明",
-      "status": "open"
+      "correct": "【已闭环·2026-11-06】① 界面口径：识图半模态只列候选类型，**不得展示置信度数字或准确率**（C §23.1 线框图中的 0.86/0.09/0.03 已删除）；② D7-1 判据改「给出候选类型（不展示置信度数字或准确率）」、D7-5/I-5 同步改；③ 识图半模态常驻「模拟识别」提示条（与碳普惠页 SimulationBanner 对等），C §1.1 与 D 同步；④ 附录 E 删除「展示置信度数字」并补桩实现说明，P10 只写接口层 + 假数据兜底",
+      "status": "closed"
     },
     {
       "id": "B31",
       "file": "docs/APPENDIX-C-ui-screens.md",
-      "locator": "APPENDIX-C:693 + adr/0001:18 + AGENTS.md:135",
+      "locator": "APPENDIX-C §22 关于页（旧 :690-694）+ ADR-0001 + AGENTS.md §2/§6",
       "bad": "附录 C 写『本地存储，不上传任何个人数据（云端备份为可选演示件）』，与 ADR-0001 确立的服务端同步口径互斥；同一份提交材料并存两套相反陈述",
-      "correct": "按 ADR-0001 重写，删除『不上传任何个人数据』表述（此项与 B21 范围重叠，合并处理）",
-      "status": "open"
+      "correct": "【已闭环·2026-11-06】C §22 关于页删除「本地存储，不上传任何个人数据（云端备份为可选演示件）」，改为 ADR-0001 正向表述：「默认本地存储；仅在你登录后上传行为数据用于多设备同步与云端备份，可随时退出登录或注销」；AGENTS.md §6 增补同款隐私文案规则（任何页面不得声称\"绝不上传数据\"）。与 B21 合并处理",
+      "status": "closed"
+    },
+    {
+      "id": "B32",
+      "file": "docs/APPENDIX-A-carbon-factors.md",
+      "locator": "APPENDIX-A:4/:285/:298（旧 CF-2026.3）↔ APPENDIX-B:109/:1038、APPENDIX-C:383、APPENDIX-D:292/:471、tests/cases/carbon-calc.json meta.factorVersion",
+      "bad": "因子库版本号分叉：基准与附录 B/C/D 均为 CF-2026.2，唯独附录 A 写 CF-2026.3",
+      "correct": "【已闭环·2026-11-06】统一为 CF-2026.2（唯一现行版本）；附录 A §6 新增规则「版本号只随数值变化，来源/标注/分级变化记入 docs/CHANGELOG.md，不升版本号」",
+      "status": "closed"
+    },
+    {
+      "id": "B33",
+      "file": "docs/APPENDIX-E-demo-script.md + README.md + APPENDIX-C/D",
+      "locator": "README.md:118 / APPENDIX-E:75,:76,:182 / APPENDIX-C:144,:164,:180-187 / APPENDIX-D D4-8/D4-9 行序、:325、§10.3 summary.csv",
+      "bad": "一批数字与文案不一致：目标数 10 vs 11；E:76「+15」被审计判为应为 +20；E:182「一百二十余条」；C 首页建议 1 条 vs 2 条；C 记录页右滑 vs 左滑；C 12.4800 vs 12.48；D4-9 排在 D4-8 前；「陪伴引导」错字；summary.csv 徽章数 3 vs 演示数据 6",
+      "correct": "【已闭环·2026-11-06】M3 与 E 旁白改「11 个目标」；**E:76 的 +15 经核对是正确的**（S3 光盘卫士 reward:15，PLAN §10.1 / B §8.1 一致，S1+S2+S3=20+20+15=55 自洽），不改；E「一百二十余条」改为引用附录 D §9；C 首页建议统一「每日至多 1 条主建议」（PLAN §7.13.2 / F §2.2）；C 记录页改「左滑」；C 累计减排统一 12.4800（新增 §3.4 数字格式规则）；D4-8/D4-9 行序对调；「陪伴引导」→「配对引导」；D §10.3 summary.csv 改为与 §9 演示数据同源（徽章 6）",
+      "status": "closed"
+    },
+    {
+      "id": "B34",
+      "file": "docs/PLAN.md + docs/APPENDIX-B-data-and-api.md",
+      "locator": "PLAN §5.1（14 个 Service）↔ APPENDIX-B §7（12 个 Dao）↔ ADR-0001 / AGENTS.md §1.4",
+      "bad": "AuthProvider 抽象层在 Service 清单里没有落点，Dao 清单也没有账号相关接口",
+      "correct": "【已闭环·2026-11-06】PLAN §5.1 增列 AuthService（内含 AuthProvider 抽象：local / server，预留 huaweiId，上层不得直接依赖具体 provider）；B §7.1 新增契约：接口方法（login/register/logout/currentSession/migrateLocalData）、token 只经 AuthDao 落 preferences、首次登录由 AccountMigrator 把本机数据改挂账号、logout/注销语义",
+      "status": "closed"
+    },
+    {
+      "id": "B35",
+      "file": "docs/APPENDIX-B-data-and-api.md",
+      "locator": "APPENDIX-B:120-122,:135,:398-408,:513-514,:730,:735,:852-895,:869-879,:906,:1034",
+      "bad": "契约不可执行：appendOnly 伪码只按 id 去重与「业务唯一键 INSERT OR IGNORE 兜底」矛盾；uq_pr_source(source_type,source_id,type) 让同 revision 的 record/record_capped 并存；shop_item 的 source_id 取值未定义；LWW 平局分支判定与定义不符；server_user 无 device_id 而注册体含 deviceId；首次安装写 user_profile 与 UUID 主键/单例行冲突；adjust 枚举无产生方；注销接口语义未冻结",
+      "correct": "【已闭环·2026-11-06】point_record 新增 flow_kind(primary|reverse)，唯一索引改 uq_pr_source(source_type, source_id, flow_kind)；source_id 取值口径写死（carbon_record→<id>#<revision>、goal→<goalId>:<periodKey>、shop_item→<shop_item.id>、carbon_include→<carbon_include.id>、reverse→<原 source_id>#r<n>）；删除无产生方的 adjust；server_user 增 device_id 列并说明设备列表来源，注册请求体去掉 deviceId；首次安装 user_profile.id 改为新生成 UUID v4（uq_uprofile 保证每 user_id 恒一行）；server_user **不存 device_id**（设备粒度只出现在各业务行的 device_id 列与同步请求体），注册/登录请求体删除 deviceId，/admin/users 的「设备列表」口径改为「该用户已同步行按 device_id 去重 + 各自最后同步时间」；LWW 平局分支改为「rUpdated === l.updatedAt 时按 deviceId 字典序大者胜，且冲突计数与『真冲突』同一条件（两端 updatedAt 均 > lastSyncAt）」；appendOnly 只按 id 去重、业务唯一键由写回 INSERT OR IGNORE 兜底（两者合起来才是双重幂等）；DELETE /auth/account 语义冻结为「校验密码 → 云端软删除保留 30 天可恢复 → 本机数据不删」",
+      "status": "closed"
+    },
+    {
+      "id": "B36",
+      "file": "tests/cases/carbon-calc.json + docs/APPENDIX-A-carbon-factors.md",
+      "locator": "APPENDIX-A §2.5 统计（30 个因子）↔ tests/cases/carbon-calc.json factors（21 条）",
+      "bad": "附录 A 称 30 个因子，基准 factors 只有 21 条，缺 10 个 recording:false 对照因子的数值镜像",
+      "correct": "【已闭环·2026-11-06】基准 factors 补齐 10 条镜像（car 0.0000/own 0.1920、motorcycle 0.0890/own 0.1030、hsr 0.1650/own 0.0270、flight 0.0340/own 0.1580、water_treat 0.000120、elec_thermal 0.8700、elec_gas 0.4200、textile 3.6000、wood 0.7000、kitchen_waste 0.9000，全部 recording:false）= 30 条 + CAR_OWN_FACTOR 1 条 = 31 项，与 A §2.5 写死的镜像关系一致",
+      "status": "closed"
+    },
+    {
+      "id": "B37",
+      "file": "docs/APPENDIX-C-ui-screens.md + docs/APPENDIX-D-acceptance.md",
+      "locator": "APPENDIX-D D4-5/D5-10/C4/P10 ↔ APPENDIX-C §9/§21/§22；APPENDIX-C:32,:39,:663-666,:678,:736 ↔ APPENDIX-E:14,:40,:49,:83,:85,:92",
+      "bad": "验收项在附录 C 找不到承载界面（科普收藏、清理旧备份、开发者选项、备份文件大小），或界面元素没有任何验收项（演示模式条、ShareSheet 入口、模拟识别提示条）——两头悬空",
+      "correct": "【已闭环·择一补齐（补 UI）·2026-11-06】① C §21 新增「备份记录 → BackupListSheet」（每条时间 + 文件大小 + 单条删除 + 清理旧备份保留 3 份）承载 D5-1/D5-10；② C §9 我的页新增科普收藏分组承载 D4-5；③ 新增 C §23.6 DevOptionsSheet（保存强制抛错 / 数据库体积 / 重建 point_daily_stat / 演示数据播种与清除）承载 C4/P10/D3-5；④ C §4 新增 DemoModeBanner、§5 首页新增 📤 ShareSheet 入口、§23.1 识图半模态补「模拟识别」提示条，与附录 E 的承诺对齐；⑤ D 新增 D5-12（云端备份/恢复）、D6-11（首次登录并入账号）、D6-12（注销语义）承载 ADR 决策",
+      "status": "closed"
+    },
+    {
+      "id": "B38",
+      "file": "docs/PLAN.md + APPENDIX-A/B/D/E + README.md + docs/README.md + GLOSSARY.md",
+      "locator": "PLAN §9.2/§5/§10/§12/§16 ↔ APPENDIX-A §3.3/§3.5、APPENDIX-B §2/§6/§8.1、APPENDIX-D §11/§9、APPENDIX-E §1、GLOSSARY；五份附录末尾「v4.0 变更摘要」；README.md ↔ docs/README.md 导航",
+      "bad": "同一规格写两遍：封顶 SQL、19 张表、11 个目标、协同协议、附录索引（PLAN 里出现两次）、A1–A18 两份索引、演示数据规格三处、两份高度重叠的文档导航、五份附录各自末尾的变更摘要",
+      "correct": "【已闭环·单一来源·2026-11-06】封顶 SQL 只在 PLAN §9.2；19 张表只在 B §2；11 个目标的数值只在 PLAN §10.1（B §8.1 与 A §3.5 只引用）；同步/协同协议只在 B §5.3/§6；A1–A18 只在 PLAN §16（D §11 只做映射）；演示数据规格只在 D §9；文档导航只在 docs/README.md（README.md 只留入口顺序）；PLAN 文末重复的附录索引已删；五份附录末尾摘要 + ADR 决策全部收敛到新建 docs/CHANGELOG.md",
+      "status": "closed"
+    },
+    {
+      "id": "B39",
+      "file": "docs/adr/0001-account-and-sync.md",
+      "locator": "docs/adr/0001-account-and-sync.md（Status / Consequences 的「未决（需负责人拍板）」）",
+      "bad": "ADR-0001 遗留四项「未决」，与 PLAN/附录的服务端、同步、注销口径悬空",
+      "correct": "【已闭环·用户拍板 2026-11-06】ADR 新增 Decisions 表：① 首次登录时本机历史数据全部改挂账号并全量上传；② 鸿蒙分布式协同保留为近场演示层；③ 注销后云端数据软删除保留 30 天、期间可恢复，本机数据不删；④ 云服务器规格/地区/域名仍是唯一未决项（不阻塞编码，地址经配置注入）",
+      "status": "closed"
     }
   ]
 }
