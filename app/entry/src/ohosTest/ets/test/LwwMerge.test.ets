@@ -705,7 +705,7 @@ export default function lwwMergeTest(): void {
       // 备份/恢复**不动** lastSyncAt（§5.3:807「不用 lastSyncAt」）
       expect(await hub.cfg.stamp(ConfigKeys.LAST_SYNC_AT)).assertEqual(424242);
       // 恢复前原状已落盘（调用方负责，服务端不建表）
-      const pre: string | undefined = await hub.cfg.get(ConfigKeys.CLOUD_PRE_RESTORE);
+      const pre: string | undefined = await hub.cfg.get('cloud_pre_restore');   // 键名与 SyncService 私有 KEY_PRE_RESTORE 一致
       expect(pre !== undefined).assertTrue();
       expect((pre === undefined ? '' : pre).indexOf('555') >= 0).assertTrue();
     });

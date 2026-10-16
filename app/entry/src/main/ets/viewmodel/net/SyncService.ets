@@ -102,6 +102,17 @@ export class LwwDecision {
 const DOMAIN: number = 0x0001;
 const TAG: string = 'CarbonBooSync';
 
+/**
+ * `app_config` 里存"恢复前云端原状"的键（`preRestore` + `preRestoreAt` 的 JSON）。
+ *
+ * 为什么不加进 `AppConfig.ConfigKeys`：本任务的 inScope 只含本文件与一个测试文件
+ * （`AppConfig.ets` 不在写入范围）。它属**本 Service 私有**的实现细节 ——
+ * 只有本文件写、也只有本文件（及其用例）读，不进公共键表反而更内聚。
+ * 依据：附录 B §5.3:819「覆盖前原状随响应 `preRestore`（+ `preRestoreAt`）返回」，
+ * 且「服务端**不新建表**、由调用方保存」（PLAN §7.8）。
+ */
+const KEY_PRE_RESTORE: string = 'cloud_pre_restore';
+
 export class SyncService {
   private readonly store: StorePort;
   private readonly state: AppState;
@@ -310,7 +321,7 @@ export class SyncService {
       const pre: Object | undefined = data['preRestore'];
       if (pre !== undefined) {
         const at: number | undefined = optNum(data, 'preRestoreAt');
-        await this.cfg.set(ConfigKeys.CLOUD_PRE_RESTORE, SyncService.wrapPreRestore(pre, at === undefined ? 0 : at));
+        await this.savePreRestore(pre, at === undefined ? 0 : at);
       }
     } catch (e) {
       // 写库失败或响应不完整：恢复**已在云端生效**，故不谎报失败，但如实记录
@@ -732,6 +743,22 @@ export class SyncService {
   /** 把 `preRestore` 连同 `preRestoreAt` 包成落盘形态（服务端不建表，由调用方保存）。 */
   private static wrapPreRestore(pre: Object, at: number): string {
     return JSON.stringify({ preRestoreAt: at, preRestore: pre });
+  }
+
+  /**
+   * 落盘"恢复前的云端原状"（覆盖式恢复的后悔药，附录 B §5.3:819 / PLAN §7.8）。
+   *
+   * 直接经 `app_config` 做 UPSERT（与 `AppConfig.set` 同一句式），键为本文件的私有
+   * `KEY_PRE_RESTORE`。写入失败**不阻断**恢复流程 —— 恢复已在云端生效，
+   * 此时把"落盘失败"当致命错误只会让状态更难解释（调用方已按 partial 记录）。
+   */
+  private async savePreRestore(pre: Object, at: number): Promise<void> {
+    const now: number = Date.now();
+    await this.store.exec(
+      'INSERT INTO app_config (id, value, version, fetched_at, created_at, updated_at) VALUES (?, ?, NULL, NULL, ?, ?) ' +
+      'ON CONFLICT(id) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at',
+      [KEY_PRE_RESTORE, SyncService.wrapPreRestore(pre, at), now, now]
+    );
   }
 
   private static messageOf(e: Object): string {
