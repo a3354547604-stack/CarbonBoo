@@ -89,12 +89,13 @@ python3 tests/tools/check_l0.py --strict
 | `test_authz.py` | 客户端 token 访问 `/admin/*` 必须 403；两套密钥互不通用 |
 | `test_shop.py` | 取价接口契约；非法数据整份丢弃 |
 | `test_sync.py` | push/pull 幂等；LWW 结果与服务端一致；冲突计数正确 |
-| `test_admin.py` | **Web 后台管理端（`/admin`，t6）**：模块头写明覆盖 PLAN §13.2 的 **7 项功能 + 管理侧独立 JWT 隔离**，按附录 D §1.10（D10-1…D10-8）逐条可执行化。已见两组——① 管理员引导/登录/改密码（D10-1：`adminToken` 与 bcrypt 落库、`admin_op_log` 审计、错口令 401 不泄漏密钥/哈希/明文、不区分"用户不存在"与"口令错"、强口令在引导路径也生效、无引导凭据时给可执行提示、表单登录 303 + HttpOnly/SameSite Cookie、`next` 开放重定向防护、SSR 登录页与改密码页、未登录时 JSON→401 / HTML→303 分流）；② 商品管理（D10-2/D10-3：价目表与客户端取价同源、改价写通到 `/api/v1/shop/items` 并记前后值、PATCH 只改传入字段、上下架、新增与重复编码 400、空改动幂等不写日志、图标上传三种路径 + 大小上限 + 路径穿越与伪装图片防线、静态资源白名单）。跑真实 MySQL 8 + `TestClient`，**无 mock、不 skip** |
+| `test_admin.py` | **Web 后台管理端（`/admin`，t6）**：模块头写明覆盖 PLAN §13.2 的 **7 项功能 + 管理侧独立 JWT 隔离**，把附录 D §1.10（D10-1…D10-8）逐条可执行化（56 个用例，真实 MySQL 8 + `TestClient`，**无 mock、不 skip**）。按 D10 分组：① 登录/引导/改密码（D10-1：`adminToken` 与 bcrypt 落库、`admin_op_log` 审计、错口令 401 不泄漏密钥/哈希/明文、不区分"用户不存在"与"口令错"、强口令在引导路径也生效、表单登录 303 + HttpOnly/SameSite Cookie、`next` 开放重定向防护、未登录时 JSON→401 / HTML→303 分流）② 商品管理（D10-2/D10-3：价目表与客户端取价同源、改价写通到 `/api/v1/shop/items` 并记前后值、PATCH 只改传入字段、上下架、新增与重复编码 400、空改动幂等不写日志、图标上传三路径 + 大小上限 + 路径穿越与伪装图片防线、静态资源白名单）③④⑤ 用户列表/数据总览/订单（D10-4）⑥ 系统配置（D10-5）⑦ 操作日志（D10-6）；另有鉴权隔离组（客户端 token 在 `/admin/*` 全部路径与写方法上 403、管理 token 不被客户端 API 接受、两套密钥与受众不同、登录限流 429、日志详情不落密钥）、工程约束组（SSR 页面不是占位、无前端框架/无构建链、挂载幂等只加 `/admin` 路由）与 `admin_web.cli create-admin` |
 
 > **清单与仓库一致（2026-11-06 复核）**：上表为 **5 个用例文件**，与 `ls server/tests/*.py` 实测一致
 > （同一目录下的 `conftest.py` 是 **pytest 夹具**——`mysql_conn`/`clean_database`/`settings`/`db_session`/`app`/`client`
 > 与 `register_user`/`auth_header`/`unique_username` 等辅助函数，**不是用例文件**，不计入上表）。
 > 复核命令：`ls server/tests/*.py`（应输出 `conftest.py` + 上表 5 个 `test_*.py`）。
+> 上表的锚点用**分组名 / D10 编号 / 用例名**（t6 还在续写 `test_admin.py`，行号会移动，故不写行号）。
 > 新增用例文件时同步本表；`pytest server/tests` 需要真实 MySQL 8（连接参数见 `server/tests/conftest.py` 的 `.env` 发现逻辑）。
 
 ---
