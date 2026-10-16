@@ -63,15 +63,19 @@ python3 tests/tools/check_l0.py --strict
 ### L1 · ArkTS（hypium）— `app/entry/src/ohosTest/ets/test/`
 | 文件 | 用例 |
 |---|---|
-| `CalcSamples.test.ets` | 18 组正向样例：断言 `reductionKg`（4 位小数）与应得 C |
-| `PointCap.test.ets` | 5 组封顶样例：断言实入 A、`capped` 标记、`<0.005 kg` 不生成流水 |
+| `CalcSamples.test.ets` | 18 组正向样例：断言 `reductionKg`（4 位小数）与应得 C；**并含 5 组封顶样例**：断言实入 A、`capped` 标记、`<0.005 kg` 不生成流水 |
+| ~~`PointCap.test.ets`~~ | **已并入 `CalcSamples.test.ets`**（同上行，5 组封顶样例），不再单独建文件 |
 | `GoalIdempotent.test.ets` | 同一 `(goalId, periodKey)` 重复触发只发一次；跨周期重置；11 个目标判定 |
 | `BadgeIdempotent.test.ets` | 8 枚徽章幂等、不发积分、删除记录后不撤销 |
 | `ShopPurchase.test.ets` | 购买事务原子性、重复购买被拒、余额不足不可买 |
 | `BackupRoundTrip.test.ets` | 备份 → 清空 → 恢复：记录/积分/徽章/已购/科普进度五项一致；`schemaVersion` 不符则拒绝 |
 | `CsvExport.test.ets` | UTF-8 BOM、`\r\n`、中文列头、无"修正系数"列 |
-| `LwwMerge.test.ets` | 新者胜、平局按 `deviceId`、软删除传播、时钟偏移、幂等（同 id 不重复） |
+| `LwwMerge.test.ets` | 新者胜、平局、软删除传播、幂等（同 id 不重复）；**时钟偏移与 `deviceId` 平局裁决当前无断言**（实现未做，见该文件头 `STOP` 记录） |
 | `NotLoggedIn.test.ets` | 未登录态：不发起任何上传请求（可注入假 HttpClient 计数） |
+
+> **清单与仓库一致（2026-11-06 核对）**：上表去重后为 **8 个** `.test.ets` 文件，与
+> `ls app/entry/src/ohosTest/ets/test/*.test.ets` 实测一致（`List.test.ets` 是套件汇总入口，不计入用例文件）。
+> 新增用例文件必须同时在 `List.test.ets` 里 `import` 并调用，否则不会被收集。
 
 ### L3 · pytest — `server/tests/`
 | 文件 | 用例 |
