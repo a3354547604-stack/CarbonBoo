@@ -283,8 +283,8 @@ def test_upper_layer_only_depends_on_abstraction(client, app, settings, db_sessi
         "logout",
         "delete_account",  # DELETE /auth/account
     ]
-    # 关键证据：全程没有任何一次调用绕过抽象（假提供方没有数据库、没有密钥）
-    assert all(name != "is_available" for name, _ in calls) or True
+    # 关键证据：假提供方没有数据库、没有密钥，六个接口却全部返回了预期结果
+    assert len(calls) == 6
 
 
 def test_reserved_provider_is_refused_not_silently_downgraded(settings):
@@ -432,15 +432,13 @@ def test_message_body_has_no_secret_leak(client, settings):
     assert "token_urlsafe" not in text
 
 
-def test_no_admin_router_or_template_dirs_created_yet():
-    """本任务（t3）不实现管理端：`server/app/admin`、`templates`、`static` 与 t5 的 sync/shop/backup 都不存在。
+def test_auth_provider_module_is_the_only_identity_implementation():
+    """本切片的身份实现只有 `app/services/auth_provider.py` 一个入口（切片自检，不含跨切片断言）。
 
-    这条断言的用处：确保 t3 没有越界抢做 t5/t6 的范围（范围互斥，AGENTS §8）。
+    注意：**不要**在这里断言 "sync.py/shop.py/backup.py/admin_web 不存在" —— t5/t6 会创建它们，
+    那样等于给下游切片埋雷（他们的 verify 会被本用例打红）。
     """
-    assert not (SERVER_DIR / "app" / "admin").exists()
-    assert not (SERVER_DIR / "templates").exists()
-    assert not (SERVER_DIR / "static").exists()
-    for name in ("sync.py", "shop.py", "backup.py"):
-        assert not (SERVER_DIR / "app" / "api" / "v1" / name).exists(), f"{name} 属于 t5 范围"
-    assert (SERVER_DIR / "admin_web").joinpath("mount.py").exists() is False  # t6 才建
-    assert Path(SERVER_DIR / "app" / "services" / "auth_provider.py").exists()
+    provider_module = SERVER_DIR / "app" / "services" / "auth_provider.py"
+    assert provider_module.exists()
+    assert "class AuthProvider" in provider_module.read_text(encoding="utf-8")
+
