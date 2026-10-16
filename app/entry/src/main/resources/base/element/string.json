@@ -1035,6 +1035,22 @@
     {
       "name": "record_point_capped_full",
       "value": "今日记录积分已达每日上限 200，本笔不发放记录积分"
+    },
+    {
+      "name": "reason_internet",
+      "value": "在你登录后，用于账号登录/注册、多设备同步、商品取价与云端备份；未登录时应用不发起任何网络请求。"
+    },
+    {
+      "name": "reason_write_imagevideo",
+      "value": "用于把生成的减排分享卡片保存到你的相册。图片只在本机处理，不上传。"
+    },
+    {
+      "name": "reason_distributed_datasync",
+      "value": "用于近场协同演示：在已配对的设备之间搬运账本数据。本机始终是唯一真相源，云端与近场只做搬运、不参与计算。"
+    },
+    {
+      "name": "reason_publish_agent_reminder",
+      "value": "用于按你设置的时间（默认 20:00）发送记录提醒。提醒只在本机产生，可随时在设置中关闭。"
     }
   ]
 }

@@ -32,6 +32,73 @@
         ]
       }
     ],
+
+    /**
+     * 权限声明（**与 PLAN §15.3 的冻结口径逐条对齐**，不自行增减）。
+     *
+     * PLAN §15.3 原文：「`ohos.permission.DISTRIBUTED_DATASYNC`（鸿蒙近场协同，**必需**）、
+     * `ohos.permission.INTERNET`（登录/注册、多设备同步、商品取价、云端备份；未登录时全应用不发起任何请求）、
+     * `ohos.permission.PUBLISH_AGENT_REMINDER`（定时提醒）。**不申请**位置、通讯录、麦克风；
+     * 相机权限仅在启用识图拍照时申请（仅选图则不需要）；保存分享卡片到相册需
+     * `ohos.permission.WRITE_IMAGEVIDEO`（用 photoAccessHelper 的保存控件时按需申请）。」
+     *
+     * 因此这里**只声明上述四项**：
+     *  - 不加 `ohos.permission.CAMERA`：本工程识图走「仅选图 + 图标网格降级」，不用相机；
+     *  - 不加位置/通讯录/麦克风：文档明文不申请；
+     *  - 也不多写用不到的权限——权限清单是隐私面，多一条都要有理由。
+     *
+     * 声明方式：四项都是 **system_grant**（安装即授予，无需运行期弹窗申请），
+     * `usedScene` 写清"哪些组件用、何时用"，便于上架审核与后续自查。
+     */
+    "requestPermissions": [
+      {
+        // 客户端登录/注册、多设备同步、商品取价、云端备份（铁律 1 的四项网络例外）。
+        // 未登录 = 纯单机，全应用不发起任何请求；服务端地址经配置注入、带 3s 超时与失败降级。
+        "name": "ohos.permission.INTERNET",
+        "reason": "$string:reason_internet",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      {
+        // 分享卡片「保存到相册」：用 photoAccessHelper 的保存控件（附录 C L815 / AGENTS §1.4 B16）。
+        // 不用 @ohos.file.picker 保存，也不接任何第三方社交 SDK（分享走系统分享面板）。
+        "name": "ohos.permission.WRITE_IMAGEVIDEO",
+        "reason": "$string:reason_write_imagevideo",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      {
+        // 鸿蒙近场协同（PLAN §15.3 标注「必需」）：附录 B §6.6 的近场演示层，非同步主通路。
+        // 同步主通路是服务端云端同步（ADR-0001）；近场层仅在演示场景使用。
+        "name": "ohos.permission.DISTRIBUTED_DATASYNC",
+        "reason": "$string:reason_distributed_datasync",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      {
+        // 定时提醒（AGENTS §1.4 B12/B13：提醒时间 20:00，权限名 PUBLISH_AGENT_REMINDER）。
+        "name": "ohos.permission.PUBLISH_AGENT_REMINDER",
+        "reason": "$string:reason_publish_agent_reminder",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      }
+    ],
     "testRunner": {
       "name": "OpenHarmonyTestRunner",
       "srcPath": "./ets/testability/OpenHarmonyTestRunner.ets"
