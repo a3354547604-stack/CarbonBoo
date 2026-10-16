@@ -43,6 +43,13 @@
 - **附录 C §3.4** 补一行：「`12.4800` / `4,820` / `48` 是**格式示例**，示意图数字不代表演示数据规格；规格唯一来源是附录 D §9/§9.1」。
 - 数值仍是**文档级规格值**：`tests/cases/carbon-calc.json` 的 `constants/factors/samples` 没有演示数据字段，本次只登记 B44 条目、不改基准数值。
 
+### 4. 登记与决策留档（B45）
+
+- `AGENTS.md §1.4` 新增 B40–B45 六条（`status` 全 `closed`）、`§9` 的区间由 B1–B39 更新为 **B1–B45**、`§10` 本表新增 v4.2 一行（`AGENTS.md §10` 要求「修改本文件必须更新本表」）。
+- `AGENTS.md` 头部状态行 + `docs/README.md`「当前阶段」改为写实进度（B45）。
+- 新建 [`DECISION-0002-doc-contract-errata.md`](./DECISION-0002-doc-contract-errata.md)，记录 D1–D5 五条取舍（`AGENTS.md §10` ① 要求的决策留档），并在 `docs/README.md` 文档清单补第 10 行导航。
+- 门禁：`python3 tests/tools/check_l0.py --strict` → `L0-1 错误 0 / L0-2 命中 0 / L0-3 open 0 / 结论 PASS`，退出码 0；`docConflicts` 共 45 条、`open` 0 条。
+
 
 
 **触发**：两轮独立交叉审计（31 条 + 8 条不一致）+ 负责人对 ADR-0001 四项未决项的拍板。
