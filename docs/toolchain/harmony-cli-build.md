@@ -11,7 +11,7 @@
 source ~/harmony-toolchain/env.sh
 ```
 
-它导出 `JAVA_HOME` / `DEVECO_SDK_HOME` / `OHOS_BASE_SDK_HOME` / `PATH`（含工具链自带 node）。
+它导出 `JAVA_HOME` / `DEVECO_SDK_HOME` / `OHOS_BASE_SDK_HOME` / `PATH`（含工具链自带 node），以及 **`LD_LIBRARY_PATH`**（Previewer 缺库垫片，见 §7.1）。
 
 ## 1. 装了什么
 
@@ -167,22 +167,49 @@ BUILD FAILED
 恢复后 `BUILD SUCCESSFUL`。**所以 `assembleHap` 是一条真实的静态类型门禁**，能抓出 ArkTS 类型错误、
 `any`/`as` 之类的违规要靠后续审查（编译器不一定拦）。
 
+> ⚠️ **门禁只覆盖「进入编译图」的文件**（2026-10-16 实测补充，血的教训）。
+> `assembleHap` 从 entry 的入口页（`pages/Index.ets`）与 `EntryAbility` 出发做可达性分析，
+> **没被任何入口 import 的模块根本不参与编译**。实测：
+> - `pages/Index.ets` 是占位页、不 import 业务代码时：给 `service/CarbonService.ets`
+>   注入 `const X: number = THIS_IS_UNDEFINED_ABC;` → 仍 **BUILD SUCCESSFUL**（没编译它）；
+>   同样的错误注入 `pages/Index.ets` → **BUILD FAILED**。
+> - 后果：整个 `service/`、`data/` 写错了编译器也一声不吭，「BUILD SUCCESSFUL」是**假绿**。
+> - 实测抓到的真错误：`data/dao/CarbonRecordDao.ets` 用了 API 12 不存在的
+>   `rs.getColumnNames()`（应为 `rs.getColumnName(0)`），报
+>   `Property 'getColumnNames' does not exist on type 'ResultSet'. Did you mean 'getColumnName'?`
+>   —— 在未入图状态下这句话永远不会出现。
+> - **做法**：让入口页/Ability 真实 import 并引用主要业务模块后再编译；用「注入未定义常量 →
+>   必须 BUILD FAILED」自证该链路有效。**未入图的 BUILD SUCCESSFUL 不算通过。**
+
 ## 6. 目前**不能**做的事（务必如实报告，不要声称通过）
 
-- **不能跑 hypium 测试**：`hvigorw` 只有 `assembleHap` 这类构建任务；真跑测试要
-  把测试 HAP 装到**真机/模拟器**上，靠 `hdc` + `aa test` 触发。
-  - 本机 `hdc list targets` => `Connect server failed`，**没有任何设备**。
-  - CLT 里**没有模拟器**；Windows 侧也没装 DevEco/模拟器。
-  - `/dev/kvm` 存在但当前用户**不可写**（`ls -l` 是 `crw-rw---- root kvm`），docker 挂载后可见；
-    真跑模拟器这条路未打通。
+- **不能跑 hypium 测试**。注意 `hvigorw` **确实有** `test` 任务，但它不是设备测试：
+  - `hvigorw test --mode module -p module=entry@default -p buildMode=test` 是 **localTest**，
+    被测代码必须放 `entry/src/test/`（不是 `entry/src/ohosTest/`）并默认导出 `function testsuite()`。
+    任务链到 `UnitTestArkTS` 完成后，由 `hvigor-ohos-plugin/src/tasks/unitTest/generate-unit-test-result.js`
+    → `@ohos/coverage/lib/src/commandLine/localTest/previewer.js` 的 `executeCoverageTest()`
+    **spawn SDK 里的 `Previewer` 二进制**（参数含 `-j <abcDir>`、`-f phoneSettingConfig_*.json`、
+    `-url ../../../.test/testability/pages/Index`、`-lws <port>`），**不用 hdc、不用真机**。
+  - 本机这条路走不通：Previewer 启动后崩在 **glibc 断言**
+    （`Fatal glibc error: pthread_mutex_lock.c:426: __pthread_mutex_lock_full: Assertion 'e != ESRCH || !robust' failed`），
+    `hvigorw test` 表现为长时间无输出直至超时（EXIT=124）。
+  - 走真机/模拟器也不行：`hdc list targets` => `Connect server failed`，**没有任何设备**；
+    CLT 里**没有模拟器**；Windows 侧也没装 DevEco/模拟器；`/dev/kvm` 存在但当前用户**不可写**
+    （`ls -l` 是 `crw-rw---- root kvm`），docker 挂载后可见，真跑模拟器这条路未打通。
 - 因此 **L1「真实运行」= 未运行**。可用的替代证据（必须明确标注为「静态/离线」）：
-  - `assembleHap` 编译通过（真实静态类型门禁）
+  - `assembleHap` 编译通过（真实静态类型门禁，但**仅限已入图的文件**，见 §5 的警告）
   - 把纯逻辑（`CarbonService` 计算部分，不 import ArkTS 运行时 API）用 esbuild 转成 ESM 后用
     Node 跑，与 `tests/cases/carbon-calc.json` 的 18+5+6 组样例比对。
-    实测可行：`npm i --no-save esbuild` → `esbuild x.ts --outfile=x.mjs --format=esm --platform=node` → `node x.mjs`。
+    实测可行：`esbuild x.ets --loader:.ets=ts --outfile=x.mjs --format=esm --platform=node` → `node x.mjs`。
   - 注意：系统 `/usr/bin/node` 是 v22.22.1，**编译时没带 TypeScript 支持**
     （`ERR_NO_TYPESCRIPT: Node.js is not compiled with TypeScript support`），
     `--experimental-strip-types` 用不了，所以必须走 esbuild。
+  - **坑：`npm i esbuild` 会 404**。`~/.npmrc` 被 hvigor 引导 pnpm 时写成了华为源
+    （`registry=https://repo.harmonyos.com/npm/`），该源没有 esbuild。已装好的副本在
+    `/tmp/t2verify/node_modules/esbuild/bin/esbuild`（`/tmp` 是 tmpfs，重启即失，
+    丢了就用 `--registry=https://registry.npmjs.org/` 重装）。
+  - 转出来的 `.mjs` 里 `import '../util/DecimalUtil'` 这类**无后缀相对路径** Node 解析不了，
+    需手工改成本地 `./DecimalUtil.mjs`（或用 esbuild `--bundle`）。
 
 ## 7. 其他环境事实
 
@@ -192,3 +219,19 @@ BUILD FAILED
   `https://mirrors.aliyun.com/pypi/simple/`。
 - 推送只能走 Windows git：
   `/mnt/c/Program Files/Git/cmd/git.exe -C "C:/Users/Administrator/Desktop/CarbonBoo" push origin main`
+
+### 7.1 Previewer 缺库垫片（`env.sh` 里的 `LD_LIBRARY_PATH`）
+
+CLT 里的 `Previewer` 直接运行会缺四个共享库：`libshared_libz.so`、`libhilog.so`、
+`libbrotli_shared.so`、`libc_ares.so`。已建垫片目录 `~/harmony-toolchain/previewer-libs/`（4 个软链）：
+
+| 垫片 | 指向 |
+|---|---|
+| `libshared_libz.so` | `$CLT/sdk/12/ets/build-tools/ets-loader/bin/ark/build/bin/libshared_libz.so` |
+| `libhilog.so` | `$CLT/sdk/12/previewer/common/bin/libhilog_linux.so` |
+| `libbrotli_shared.so` | `/usr/lib/x86_64-linux-gnu/libbrotlidec.so.1`（**必须用 dec**，用 common 会报 `undefined symbol: BrotliDecoderCreateInstance`） |
+| `libc_ares.so` | `/usr/lib/x86_64-linux-gnu/libcares.so.2` |
+
+`env.sh` 会把它拼进 `LD_LIBRARY_PATH`，此后 `ldd -r Previewer` 未解析符号为 0、缺库为 0。
+**但这只解决加载问题**——Previewer 起来之后仍会崩在 glibc 断言（见 §6），
+所以 **localTest 在本机依然不可用**，垫片不是「L1 能跑了」的证据。
