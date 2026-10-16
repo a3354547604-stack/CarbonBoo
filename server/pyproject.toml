@@ -1,0 +1,33 @@
+# CarbonBoo 服务端工程定义
+# 依据：docs/APPENDIX-B-data-and-api.md（表与接口）、docs/adr/0001-account-and-sync.md（账号口径）、
+#       AGENTS.md §6/§7.2（服务端与账号规则、服务端工程规范）
+#
+# 运行（开发）：
+#   cd server && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
+# 测试（L3）：
+#   cd server && .venv/bin/python -m pytest tests/ -q
+
+[project]
+name = "carbonboo-server"
+version = "CF-2026.2"          # 与因子库/文档版本号同源（APPENDIX-A §2.5：只有数值变化才升版本）
+description = "CarbonBoo 个人碳账本服务端：账号 + 同步 + 取价 + 云端备份（ADR-0001 服务端必做）"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.143.2",
+    "uvicorn[standard]==0.54.0",
+    "SQLAlchemy==2.1.4",
+    "PyMySQL==1.2.3",
+    "pydantic==2.14.1",
+    "pydantic-settings==2.16.0",
+    "python-jose[cryptography]==3.5.0",
+    "passlib==1.7.4",
+    "bcrypt==4.0.1",
+]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1", "httpx==0.28.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = ["ignore::DeprecationWarning:passlib.*"]

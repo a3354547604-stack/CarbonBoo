@@ -1,0 +1,6 @@
+# 本目录专属忽略（AGENTS §7.3：禁止提交 .env / 密钥 / 产物）
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

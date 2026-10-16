@@ -1,0 +1,29 @@
+# CarbonBoo 服务端依赖（Python 3.11+ / FastAPI + SQLAlchemy 2.x 同步 + MySQL 8）
+#
+# 安装（本机 pypi.org 不可达，统一走阿里云镜像）：
+#   python3.11 -m venv .venv
+#   .venv/bin/pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
+#
+# 版本为 2026-11-06 实测通过的锁定版本（server/.venv）。
+
+# --- Web 框架 ---
+fastapi==0.143.2
+uvicorn[standard]==0.54.0
+
+# --- 数据库（同步 ORM，见 AGENTS §7.2）---
+SQLAlchemy==2.1.4
+PyMySQL==1.2.3
+
+# --- 配置与校验 ---
+pydantic==2.14.1
+pydantic-settings==2.16.0
+
+# --- 鉴权：JWT + bcrypt ---
+python-jose[cryptography]==3.5.0
+passlib==1.7.4
+# 必须锁 <4.1：passlib 1.7.4 要读 bcrypt.__about__.__version__，bcrypt 4.1+ 已移除该属性
+bcrypt==4.0.1
+
+# --- L3 测试 ---
+pytest==9.1.1
+httpx==0.28.1
