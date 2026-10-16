@@ -1,0 +1,31 @@
+[Unit]
+Description=CarbonBoo 服务端 API（FastAPI + uvicorn）
+Documentation=https://github.com/<org>/carbonboo
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=carbonboo
+Group=carbonboo
+WorkingDirectory=/opt/carbonboo/server
+# 密钥只从 server/.env（600）读；这里不写任何密钥（EnvironmentFile 只给非机密项）
+EnvironmentFile=-/opt/carbonboo/server/deploy/carbonboo.env
+# --workers 2 与 pool_size=5 / max_overflow=5 是配套口径（2×(5+5)=20 < MySQL max_connections=30）
+ExecStart=/opt/carbonboo/server/.venv/bin/uvicorn app.main:app \
+  --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=127.0.0.1
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=3
+# 只让 nginx 能连（后端不对外）
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/carbonboo/server
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=carbonboo-server
+
+[Install]
+WantedBy=multi-user.target

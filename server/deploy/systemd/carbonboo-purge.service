@@ -1,0 +1,16 @@
+# CarbonBoo · 超期账号物理清除（ADR-0001 决策③：注销后云端软删除保留 30 天，逾期物理清除）
+#
+# 复用 app/services/auth_provider.py 的运维入口 purge_expired_accounts()（t3 提供，t5 未改其语义）。
+[Unit]
+Description=CarbonBoo 超期账号物理清除（注销满 30 天）
+After=network-online.target mysql.service
+
+[Service]
+Type=oneshot
+User=carbonboo
+Group=carbonboo
+WorkingDirectory=/opt/carbonboo/server
+ExecStart=/opt/carbonboo/server/.venv/bin/python -m app.services.auth_provider
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=carbonboo-purge

@@ -1,0 +1,11 @@
+[Unit]
+Description=每天跑一次 CarbonBoo 超期账号物理清除
+
+[Timer]
+OnCalendar=*-*-* 04:23:00
+RandomizedDelaySec=600
+Persistent=true
+Unit=carbonboo-purge.service
+
+[Install]
+WantedBy=timers.target

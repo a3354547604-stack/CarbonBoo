@@ -1,7 +1,17 @@
 """API v1 路由聚合 + 健康检查。
 
-`/api/v1/health` 用于部署探活（不含业务，属本切片自检用）；账号接口在 `app/api/v1/auth.py`。
-t5 会在此追加 sync / shop / backup 路由（本切片**不**创建那些文件）。
+    GET  /api/v1/health               存活检查（§5.1，扁平响应）
+    POST /api/v1/auth/*               账号：register / login / me / logout / account（§5.2）
+    POST /api/v1/sync/push            推送增量（LWW 合并，§5.3）
+    GET  /api/v1/sync/pull            拉取增量（§5.3）
+    GET  /api/v1/sync/status          云端统计（§5.3）
+    POST /api/v1/sync/backup          上传云端备份快照（§5.3 的「云端备份 / 恢复」；不做自动合并）
+    GET  /api/v1/sync/backup          下载云端快照（恢复即覆盖的数据源）
+    POST /api/v1/sync/backup/restore  用快照覆盖云端副本（恢复前先生成快照）
+    GET  /api/v1/shop/items           商品目录与价格（§5.4，**无需 token**）
+
+`/admin/*` 的 Web 后台管理端**不在这里**：它是可选件，由 t6 在 `server/admin_web/` 实现，
+经 `app/main.py` 的 `_mount_optional_admin` 挂载（ADR-0001）。
 """
 
 from __future__ import annotations
@@ -9,7 +19,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from app.api.v1 import auth
+from app.api.v1 import auth, backup, shop, sync
 from app.core.config import get_settings
 from app.core.security import now_ms
 
@@ -43,5 +53,14 @@ def health() -> HealthData:
 
 # 账号接口（AGENTS §4 · S6 第一段）
 router.include_router(auth.router, prefix="/auth", tags=["账号"])
+
+# 多设备同步（S6 主通路，ADR-0001）：跨设备一致性只由这组接口承担
+router.include_router(sync.router, prefix="/sync", tags=["同步"])
+
+# 云端备份 / 恢复（同一份云端副本的快照语义：只存快照、不做自动合并、恢复即覆盖）
+router.include_router(backup.router, prefix="/sync", tags=["云端备份"])
+
+# 商品取价（唯一无需令牌的接口；失败时客户端整份丢弃 → 内置默认价）
+router.include_router(shop.router, prefix="/shop", tags=["碳小铺"])
 
 __all__ = ["HealthData", "router"]

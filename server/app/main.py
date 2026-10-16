@@ -120,6 +120,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.exception("HTTP %s %s %s", http_status, request.method, request.url.path)
         return JSONResponse(status_code=http_status, content={"ok": False, "code": code.value, "message": message})
 
+    @app.exception_handler(Exception)
+    async def _unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+        """未预期异常也走统一信封（附录 B §5.2：失败响应一律 `{ok:false, code, message}`）。
+
+        为什么需要它（t5 取价切片）：客户端对 `/api/v1/shop/items` 的规则是「非 200 或数据非法 →
+        **整份丢弃** → 回落内置默认价」。取价查库异常时若返回 Starlette 的纯文本 500，
+        客户端解析不出 `code` 也就无法区分「服务端说的是 SERVER_ERROR」与「网关吐了一页 HTML」。
+        这里只回错误码，**不回显异常文本**（不回显口令/DSN/密钥，AGENTS §6）。
+        """
+        logger.exception("未处理异常 %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "code": ErrorCode.SERVER_ERROR.value, "message": ErrorCode.SERVER_ERROR.value},
+        )
+
     # ---------- 管理端隔离中间件 ----------
     @app.middleware("http")
     async def _isolate_admin_scope(request: Request, call_next):  # type: ignore[no-untyped-def]
