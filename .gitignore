@@ -21,3 +21,6 @@ desktop.ini
 *.log
 _build/
 _out/
+
+# AgentTeams 插件运行状态（不入库）
+.agent-teams/
