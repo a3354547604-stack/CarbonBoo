@@ -27,11 +27,11 @@ class CarbonRecord(Base):
     user_id: Mapped[str] = mapped_column(String(36), nullable=False)
     category: Mapped[str] = mapped_column(String(32), nullable=False)
     sub_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    amount: Mapped[float] = mapped_column(DOUBLE, nullable=False)
+    amount: Mapped[float] = mapped_column(DOUBLE(asdecimal=False), nullable=False)
     unit: Mapped[str] = mapped_column(String(16), nullable=False)
     occurred_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    reduction_kg: Mapped[float] = mapped_column(DOUBLE, nullable=False)
-    factor_value: Mapped[float] = mapped_column(DOUBLE, nullable=False)
+    reduction_kg: Mapped[float] = mapped_column(DOUBLE(asdecimal=False), nullable=False)
+    factor_value: Mapped[float] = mapped_column(DOUBLE(asdecimal=False), nullable=False)
     factor_version: Mapped[str] = mapped_column(String(32), nullable=False)
     factor_source: Mapped[str] = mapped_column(String(64), nullable=False)
     confidence: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -64,7 +64,10 @@ class PointRecord(Base):
 
     __tablename__ = "point_record"
     __table_args__ = (
-        UniqueConstraint("source_type", "source_id", "flow_kind", name="uq_pr_source"),
+        # 业务唯一键；**含 user_id** —— 服务端多账号共库，而 source_id 取值口径不含账号
+        # （附录 B §2:135-138），少了 user_id 会让两个账号的同名目标互相顶掉。
+        # 附录 B §2:142 需同步修正；迁移见 sql/migrations/001_uq_pr_source_user_id.sql。
+        UniqueConstraint("user_id", "source_type", "source_id", "flow_kind", name="uq_pr_source"),
         Index("idx_pr_user_time", "user_id", text("occurred_at DESC")),
         Index("idx_pr_cap", "user_id", "occurred_at", "source_type", "is_deleted"),
         Index("idx_pr_updated", "updated_at"),
@@ -111,7 +114,7 @@ class ShareRecord(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(36), nullable=False)
     card_size: Mapped[str] = mapped_column(String(32), nullable=False)
-    reduction_kg: Mapped[float] = mapped_column(DOUBLE, nullable=False)
+    reduction_kg: Mapped[float] = mapped_column(DOUBLE(asdecimal=False), nullable=False)
     badge_count: Mapped[int] = mapped_column(Integer, nullable=False)
     saved_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     shared_to: Mapped[str | None] = mapped_column(String(128), nullable=True)

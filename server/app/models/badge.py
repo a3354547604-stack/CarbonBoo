@@ -23,7 +23,7 @@ class BadgeDef(Base):
     tier: Mapped[str] = mapped_column(String(16), nullable=False)
     icon: Mapped[str] = mapped_column(String(255), nullable=False)
     metric: Mapped[str] = mapped_column(String(32), nullable=False)
-    threshold: Mapped[float] = mapped_column(DOUBLE, nullable=False)
+    threshold: Mapped[float] = mapped_column(DOUBLE(asdecimal=False), nullable=False)
     order: Mapped[int] = mapped_column(Integer, nullable=False)  # MySQL 保留字
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -43,7 +43,7 @@ class UserBadge(Base):
     badge_id: Mapped[str] = mapped_column(String(64), nullable=False)
     unlocked: Mapped[int] = mapped_column(TINYINT, nullable=False, server_default=text("0"))
     unlocked_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    progress: Mapped[float] = mapped_column(DOUBLE, nullable=False, server_default=text("0"))
+    progress: Mapped[float] = mapped_column(DOUBLE(asdecimal=False), nullable=False, server_default=text("0"))
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     is_deleted: Mapped[int] = mapped_column(TINYINT, nullable=False, server_default=text("0"))

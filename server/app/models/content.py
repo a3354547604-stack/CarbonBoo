@@ -24,7 +24,7 @@ class ScienceProgress(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(36), nullable=False)
     article_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    progress: Mapped[float] = mapped_column(DOUBLE, nullable=False, server_default=text("0"))
+    progress: Mapped[float] = mapped_column(DOUBLE(asdecimal=False), nullable=False, server_default=text("0"))
     is_favorite: Mapped[int] = mapped_column(TINYINT, nullable=False, server_default=text("0"))
     last_read_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)

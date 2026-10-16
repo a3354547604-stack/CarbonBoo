@@ -29,6 +29,8 @@ SERVER_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SERVER_DIR.parent
 SCHEMA_SQL = SERVER_DIR / "sql" / "schema.sql"
 SEED_SQL = SERVER_DIR / "sql" / "seed.sql"
+#: 增量迁移目录（t5 起：schema.sql 是基线，这里是在已有库上的增量，必须幂等）
+MIGRATIONS_DIR = SERVER_DIR / "sql" / "migrations"
 ENV_FILE = SERVER_DIR / ".env"
 
 #: 让 `import app.*` 在任何工作目录下都成立
@@ -252,6 +254,10 @@ def mysql_conn() -> Iterator[dict[str, Any]]:
     try:
         tables = _exec_script(connection, SCHEMA_SQL, skip_db_statements=True)
         seeds = _exec_script(connection, SEED_SQL, skip_db_statements=True)
+        # 增量迁移（t5 起）：schema.sql 是基线，sql/migrations/*.sql 是库上的增量。
+        # 每次会话**按序执行一遍**，让「基线 + 迁移」这条真实部署路径也被 L3 覆盖；
+        # 迁移脚本自身要求幂等，所以这里再执行一次也不该出错（第二条断言在 test_sync.py）。
+        migrations = _apply_migrations(connection)
         cursor = connection.cursor()
         cursor.execute(
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = %s", (db_name,)
@@ -270,7 +276,23 @@ def mysql_conn() -> Iterator[dict[str, Any]]:
         "schema_statements": tables,
         "seed_statements": seeds,
         "table_count": table_count,
+        "migrations": migrations,
     }
+
+
+def migration_files() -> list[Path]:
+    """按序号升序返回 `sql/migrations/*.sql`（不存在目录时返回空列表）。"""
+    if not MIGRATIONS_DIR.exists():
+        return []
+    return sorted(path for path in MIGRATIONS_DIR.glob("*.sql") if path.name[:3].isdigit())
+
+
+def _apply_migrations(connection: Any) -> dict[str, int]:
+    """执行全部迁移脚本，返回 `{文件名: 语句数}`（幂等脚本，可重复执行）。"""
+    applied: dict[str, int] = {}
+    for path in migration_files():
+        applied[path.name] = _exec_script(connection, path, skip_db_statements=True)
+    return applied
 
 
 def _all_tables(connection: Any, db_name: str) -> list[str]:
@@ -385,6 +407,7 @@ def auth_header(token: str) -> dict[str, str]:
 
 
 __all__ = [
+    "MIGRATIONS_DIR",
     "REPO_ROOT",
     "SCHEMA_SQL",
     "SEED_SQL",
@@ -392,6 +415,7 @@ __all__ = [
     "TEST_DB_NAME",
     "TEST_PASSWORD",
     "auth_header",
+    "migration_files",
     "register_user",
     "unique_username",
 ]

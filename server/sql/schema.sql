@@ -12,6 +12,10 @@
 --   * 客户端 CREATE INDEX 折进建表语句的 KEY 子句：MySQL 8 没有 CREATE INDEX IF NOT EXISTS，
 --     折进去才能保证本脚本可重复执行（幂等）。
 --   * 执行：mysql -h127.0.0.1 -uroot -p < sql/schema.sql
+--   * **一处有意偏离附录 B 原文**：point_record 的 uq_pr_source 加了 user_id
+--     （原文 §2:142 是 (source_type, source_id, flow_kind)）—— 服务端多账号共库，
+--     少 user_id 会让两个账号的同名目标互相顶掉；增量迁移见 sql/migrations/001_*.sql，
+--     文档侧待修正项见 server/README.md「附录 B 需同步修正的行号清单」。
 -- ============================================================================
 
 SET NAMES utf8mb4;
@@ -75,7 +79,11 @@ CREATE TABLE IF NOT EXISTS `point_record` (
   updated_at       BIGINT       NOT NULL,
   is_deleted       TINYINT      NOT NULL DEFAULT 0,
   device_id        VARCHAR(64),
-  UNIQUE KEY uq_pr_source (source_type, source_id, flow_kind),
+  -- B35 契约的 uq_pr_source **加入 user_id**（服务端多账号共库的唯一正确形态）：
+  --   附录 B §2:142 现文是 (source_type, source_id, flow_kind)，但 source_id 取值口径（§2:135-138）
+  --   不含账号维度，两个账号同一天达成同名目标会得到同一组键值 → 后入账者被索引挡下（丢积分）。
+  --   见 sql/migrations/001_uq_pr_source_user_id.sql 与 t5 报告「附录 B 需同步修正的行号清单」。
+  UNIQUE KEY uq_pr_source (user_id, source_type, source_id, flow_kind),
   KEY idx_pr_user_time (user_id, occurred_at DESC),
   KEY idx_pr_cap (user_id, occurred_at, source_type, is_deleted),
   KEY idx_pr_updated (updated_at)
