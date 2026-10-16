@@ -338,3 +338,260 @@ def test_password_page_renders_when_logged_in(client: Any, session_cookie: dict[
     page = client.get(f"{ADMIN}/password", headers={**session_cookie, **HTML_ACCEPT})
     assert page.status_code == 200
     assert "修改管理员密码" in page.text
+
+
+# --------------------------------------------------------------------------- #
+# ② 商品管理（D10-2、D10-3）
+# --------------------------------------------------------------------------- #
+def test_items_json_is_the_same_shape_as_the_client_catalog(
+    client: Any, admin_headers: dict[str, str]
+) -> None:
+    """后台看到的价目表与客户端取价**同一实现、同一结构**（不多一条、不少一条）。"""
+    admin_payload = client.get(f"{ADMIN}/items", headers=admin_headers).json()["data"]
+    client_payload = client.get(SHOP).json()["data"]
+    assert admin_payload == client_payload
+    assert len(admin_payload["items"]) == 9
+    assert admin_payload["version"] == "2026.02.01-1"
+
+
+def test_items_page_is_server_rendered(client: Any, session_cookie: dict[str, str]) -> None:
+    """商品管理页由服务端渲染出真实数据（种子商品的名称与价格必须出现在 HTML 里）。"""
+    page = client.get(f"{ADMIN}/items", headers={**session_cookie, **HTML_ACCEPT})
+    assert page.status_code == 200
+    assert "嫩芽" in page.text and "1500" in page.text and "frame_01" in page.text
+    assert "2026.02.01-1" in page.text
+    # 需要登录才有会话；未登录走的是 303（上面已单测），这里确认渲染确实发生了
+    assert '<table class="table table-form">' in page.text
+
+
+def test_price_change_writes_through_and_reaches_the_client_endpoint(
+    client: Any, admin_headers: dict[str, str], db_session: Any
+) -> None:
+    """D10-3 改价生效链路：`PATCH /admin/items/{id}` → 库 → `GET /api/v1/shop/items` 报新价 + 新版本号。"""
+    before = client.get(SHOP).json()["data"]
+
+    response = client.patch(f"{ADMIN}/items/frame_01", headers=admin_headers, json={"price": 999})
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["price"] == 999
+
+    stored = db_session.execute(text("SELECT price FROM shop_item WHERE id = 'frame_01'")).scalar_one()
+    assert stored == 999
+
+    after = client.get(SHOP).json()["data"]
+    by_id = {item["id"]: item for item in after["items"]}
+    assert by_id["frame_01"]["price"] == 999, "客户端启动取价必须拿到新价（附录 B §5.4）"
+    assert after["version"] != before["version"], "改价必须 bump 商品目录版本号"
+    assert len(after["items"]) == len(before["items"])
+
+    version_row = db_session.execute(
+        text("SELECT value FROM app_config WHERE id = 'shop_items_version'")
+    ).scalar_one()
+    assert version_row == after["version"]
+
+
+def test_price_change_is_audited_with_before_and_after(
+    client: Any, admin_headers: dict[str, str]
+) -> None:
+    """操作日志记录「谁改了价格、什么时候改的」（附录 D10-6 / PLAN §13.2 ⑦）。"""
+    client.patch(f"{ADMIN}/items/frame_01", headers=admin_headers, json={"price": 1234})
+
+    logs = client.get(f"{ADMIN}/logs?action=change_price", headers=admin_headers).json()["data"]
+    assert logs["total"] == 1
+    entry = logs["items"][0]
+    assert entry["action"] == "change_price"
+    assert entry["targetType"] == "item"
+    assert entry["targetId"] == "frame_01"
+    assert entry["adminUsername"] == ADMIN_USERNAME
+    assert entry["createdAt"] > 0
+    assert entry["detail"]["price"] == {"before": 1500, "after": 1234}
+
+
+def test_patch_only_touches_the_fields_sent(
+    client: Any, admin_headers: dict[str, str], db_session: Any
+) -> None:
+    """PATCH 语义：改描述不动价格；改排序不动在架状态（D10-2 的"改描述 / 排序"）。"""
+    response = client.patch(
+        f"{ADMIN}/items/frame_02", headers=admin_headers, json={"description": "复核过的描述"}
+    )
+    assert response.status_code == 200
+    item = response.json()["data"]
+    assert item["description"] == "复核过的描述"
+    assert item["price"] == 2500 and item["onShelf"] == 1
+
+    response = client.patch(f"{ADMIN}/items/frame_02", headers=admin_headers, json={"order": 42})
+    assert response.json()["data"]["order"] == 42
+    assert response.json()["data"]["description"] == "复核过的描述"
+
+    row = db_session.execute(
+        text("SELECT price, description, `order`, on_shelf FROM shop_item WHERE id = 'frame_02'")
+    ).one()
+    assert (row.price, row.description, row.order, row.on_shelf) == (2500, "复核过的描述", 42, 1)
+
+
+def test_toggle_shelf_is_audited_and_client_sees_flag(client: Any, admin_headers: dict[str, str]) -> None:
+    """上下架：库内 on_shelf 变化 + 客户端目录带 onShelf=0（客户端据此显示"该商品已下架"）。"""
+    response = client.patch(f"{ADMIN}/items/frame_08", headers=admin_headers, json={"onShelf": 0})
+    assert response.status_code == 200
+    assert response.json()["data"]["onShelf"] == 0
+
+    by_id = {item["id"]: item for item in client.get(SHOP).json()["data"]["items"]}
+    assert by_id["frame_08"]["onShelf"] == 0
+
+    logs = client.get(f"{ADMIN}/logs?action=toggle_shelf", headers=admin_headers).json()["data"]
+    assert logs["total"] == 1
+    assert logs["items"][0]["detail"]["onShelf"] == {"before": 1, "after": 0}
+    assert logs["items"][0]["detail"]["shelfLabel"] == {"before": "在架", "after": "已下架"}
+
+
+def test_noop_patch_writes_no_log_and_does_not_bump_version(
+    client: Any, admin_headers: dict[str, str]
+) -> None:
+    """空改动是幂等成功：不写日志、不 bump 版本号（避免"改了价"的假记录）。"""
+    before_version = client.get(SHOP).json()["data"]["version"]
+    response = client.patch(f"{ADMIN}/items/frame_01", headers=admin_headers, json={"price": 1500})
+    assert response.status_code == 200
+    assert client.get(SHOP).json()["data"]["version"] == before_version
+    # 登录本身会写 bootstrap_admin / login 两条日志，所以这里只断言"没有改价日志"
+    assert client.get(f"{ADMIN}/logs?action=change_price", headers=admin_headers).json()["data"]["total"] == 0
+    assert client.get(f"{ADMIN}/logs?action=update_item", headers=admin_headers).json()["data"]["total"] == 0
+
+
+def test_create_item_and_reject_duplicate_id(client: Any, admin_headers: dict[str, str]) -> None:
+    """新增商品（D10-2）；编码重复 → 400（错误码表里没有通用冲突码，按码表口径给 INVALID_REQUEST）。"""
+    response = client.post(
+        f"{ADMIN}/items",
+        headers=admin_headers,
+        json={"id": "frame_09", "section": "frame", "name": "春风", "price": 1200, "order": 9},
+    )
+    assert response.status_code == 201, response.text
+    item = response.json()["data"]
+    assert item["icon"] == "res://frame_09", "缺省 icon 与内置商品同形"
+    assert item["onShelf"] == 1 and item["isDefaultFree"] == 0
+
+    by_id = {row["id"]: row for row in client.get(SHOP).json()["data"]["items"]}
+    assert by_id["frame_09"]["price"] == 1200 and len(by_id) == 10
+
+    duplicate = client.post(
+        f"{ADMIN}/items",
+        headers=admin_headers,
+        json={"id": "frame_09", "section": "frame", "name": "重复", "price": 1},
+    )
+    assert duplicate.status_code == 400
+    assert duplicate.json()["code"] == "INVALID_REQUEST"
+
+    bad_section = client.post(
+        f"{ADMIN}/items",
+        headers=admin_headers,
+        json={"id": "frame_10", "section": "avatar", "name": "非法分区", "price": 1},
+    )
+    assert bad_section.status_code == 400
+
+    logs = client.get(f"{ADMIN}/logs?action=create_item", headers=admin_headers).json()["data"]
+    assert logs["total"] == 1 and logs["items"][0]["targetId"] == "frame_09"
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    ["AB", "frame 09", "frame/09", "frame-09", "", "x" * 40],
+)
+def test_create_item_rejects_bad_ids(client: Any, admin_headers: dict[str, str], bad_id: str) -> None:
+    response = client.post(
+        f"{ADMIN}/items",
+        headers=admin_headers,
+        json={"id": bad_id, "section": "frame", "name": "非法", "price": 1},
+    )
+    assert response.status_code in (400, 422), f"{bad_id!r} 应被拒，实际 {response.status_code}"
+
+
+def test_patch_unknown_item_is_404(client: Any, admin_headers: dict[str, str]) -> None:
+    response = client.patch(f"{ADMIN}/items/no_such_item", headers=admin_headers, json={"price": 1})
+    assert response.status_code == 404
+    assert response.json()["code"] == "NOT_FOUND"
+
+
+def test_icon_upload_raw_bytes_and_serving(client: Any, admin_headers: dict[str, str], db_session: Any) -> None:
+    """传图标（D10-2）：`Content-Type: image/png` + 原始字节 → 落盘 + 写回 icon + 可回读。"""
+    response = client.post(
+        f"{ADMIN}/items/frame_03/icon",
+        headers={**admin_headers, "Content-Type": "image/png"},
+        content=PNG_1PX,
+    )
+    assert response.status_code == 200, response.text
+    icon_url = response.json()["data"]["icon"]
+    assert icon_url.startswith("/admin/icons/")
+    assert icon_url.endswith(".png")
+
+    stored = db_session.execute(text("SELECT icon FROM shop_item WHERE id = 'frame_03'")).scalar_one()
+    assert stored == icon_url
+
+    filename = icon_url.rsplit("/", 1)[-1]
+    fetched = client.get(f"{ADMIN}/icons/{filename}", headers=admin_headers)
+    assert fetched.status_code == 200
+    assert fetched.content == PNG_1PX
+    assert fetched.headers["content-type"] == "image/png"
+
+    logs = client.get(f"{ADMIN}/logs?action=upload_icon", headers=admin_headers).json()["data"]
+    assert logs["total"] == 1 and logs["items"][0]["targetId"] == "frame_03"
+
+
+def test_icon_upload_json_base64_path(client: Any, admin_headers: dict[str, str]) -> None:
+    """浏览器表单路径：`{filename, dataBase64}`（不引入 python-multipart）。"""
+    response = client.post(
+        f"{ADMIN}/items/frame_04/icon",
+        headers=admin_headers,
+        json={"filename": "my icon.png", "dataBase64": base64.b64encode(PNG_1PX).decode()},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["icon"].startswith("/admin/icons/frame_04-")
+
+
+def test_icon_upload_rejects_non_image_and_bad_base64(client: Any, admin_headers: dict[str, str]) -> None:
+    """按文件内容识别类型（不看扩展名／Content-Type）：伪造 png 的木马字节必须拒。"""
+    not_an_image = client.post(
+        f"{ADMIN}/items/frame_01/icon",
+        headers={**admin_headers, "Content-Type": "image/png"},
+        content=b"#!/bin/sh\necho pwned\n",
+    )
+    assert not_an_image.status_code == 400
+    assert not_an_image.json()["code"] == "INVALID_REQUEST"
+
+    bad_base64 = client.post(
+        f"{ADMIN}/items/frame_01/icon",
+        headers=admin_headers,
+        json={"filename": "x.png", "dataBase64": "!!!not-base64!!!"},
+    )
+    assert bad_base64.status_code == 400
+
+    empty = client.post(
+        f"{ADMIN}/items/frame_01/icon",
+        headers={**admin_headers, "Content-Type": "image/png"},
+        content=b"",
+    )
+    assert empty.status_code == 400
+
+
+def test_icon_upload_enforces_size_limit(client: Any, admin_headers: dict[str, str]) -> None:
+    oversized = PNG_1PX + b"\x00" * (512 * 1024)
+    response = client.post(
+        f"{ADMIN}/items/frame_01/icon",
+        headers={**admin_headers, "Content-Type": "image/png"},
+        content=oversized,
+    )
+    assert response.status_code == 400
+    assert "上限" in response.json()["message"]
+
+
+def test_icon_path_traversal_is_rejected(client: Any, admin_headers: dict[str, str]) -> None:
+    """路径穿越：`/admin/icons/..%2F..%2Fetc%2Fpasswd` 必须 404，不能读到仓库外的文件。"""
+    for candidate in ("..%2F..%2Fetc%2Fpasswd", "..%2Fstore.py", "%2Fetc%2Fpasswd", ".hidden"):
+        response = client.get(f"{ADMIN}/icons/{candidate}", headers=admin_headers)
+        assert response.status_code == 404, f"{candidate} 应 404，实际 {response.status_code}"
+
+
+def test_static_assets_are_whitelisted(client: Any) -> None:
+    """后台静态资源只放行 admin.css / admin.js（无需令牌，且不含任何业务数据）。"""
+    assert client.get(f"{ADMIN}/static/admin.css").status_code == 200
+    js = client.get(f"{ADMIN}/static/admin.js")
+    assert js.status_code == 200 and "fetch(" in js.text
+    assert client.get(f"{ADMIN}/static/../admin_web/config.py").status_code in (400, 404)
+    assert client.get(f"{ADMIN}/static/templates").status_code == 404
