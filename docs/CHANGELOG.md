@@ -50,7 +50,17 @@
 - 新建 [`DECISION-0002-doc-contract-errata.md`](./DECISION-0002-doc-contract-errata.md)，记录 D1–D5 五条取舍（`AGENTS.md §10` ① 要求的决策留档），并在 `docs/README.md` 文档清单补第 10 行导航。
 - 门禁：`python3 tests/tools/check_l0.py --strict` → `L0-1 错误 0 / L0-2 命中 0 / L0-3 open 0 / 结论 PASS`，退出码 0；`docConflicts` 共 45 条、`open` 0 条。
 
+### 5. `offsetMs` 同名双视角消歧（文档明文，防符号写反）
 
+- **问题**：`offsetMs` 这一个名字在文档里被两端各自复用（「本机 − 对端」），却没有写出客户端那一次**取反**。客户端从 §5.3 响应拿到的是**服务端视角**（服务端 − 客户端），而 §6.3 的合并伪码要的是**客户端视角**（客户端 − 服务端）。照伪码字面把响应值直接相加，在服务端快 60 秒时会把对端时间戳算**新** 60 秒 → 对端更旧的行反而覆盖本机，得到与 §6.4-6 **相反**的收敛结论（双机演示才暴露，极难定位）。
+- **§5.3「响应字段口径」**：补明文——响应里的 `offsetMs` 是服务端视角，客户端必须 `const clientOffsetMs = -respOffsetMs;`（等价写法 `const rUpdated = r.updatedAt - respOffsetMs;`），并给出**自证判据**（`respOffsetMs = +60000` ⇒ 服务端 `updatedAt = T` 的行换算到客户端必须是 **`T − 60000`**，即显得更旧）；同时写明服务端侧不需要取反（它与自己的基准同向，直接相加）。
+- **§6.3 伪码**：参数由 `offsetMs` **更名 `clientOffsetMs`**，并在头部注释写明「它**不是** §5.3 响应里的 `offsetMs`（互为相反数），客户端必须取反」，用于换算的那一行同时给出等价写法。
+- **§6.4-6**：保留「两端互为相反数」语义不变，把客户端那一次取反写成明文（`clientOffsetMs = −respOffsetMs`），并注明「漏掉取反会得到与本条相反的结论」。
+- 口径与实现一致：`server/app/services/sync_service.py` 的 `outcome.offset_ms = started_at - client_now` 是**服务端视角**（与响应字段同向）；客户端 t13 已按 `-respOffset` 取反实现（`app/entry/src/main/ets/viewmodel/net/SyncService.ets`）。本次**只改文档**、未动任何实现与测试。
+
+---
+
+## v4.1（2026-11-06）· 文档契约冻结
 
 **触发**：两轮独立交叉审计（31 条 + 8 条不一致）+ 负责人对 ADR-0001 四项未决项的拍板。
 **门禁**：`python3 tests/tools/check_l0.py --strict` → `L0-1 错误 0 / L0-2 命中 0 / L0-3 open 0 / 结论 PASS`，退出码 0。

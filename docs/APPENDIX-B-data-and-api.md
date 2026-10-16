@@ -840,8 +840,23 @@ export interface AppResult<T> {
 > 两者是同一个数，两个名字都回带，避免下游各按一种名字对接）；`ignored` = 跨设备重复已去重（`id` 或业务唯一键命中已有行），
 > **不计入 `conflicts`**；`rejected` = 未采纳且保留服务端版本的行（已随 `merged` 回写，含非法行 / 越权行）；
 > `conflicts` = 真冲突（定义见 §6.3 / §6.4-3）。
-> `offsetMs = 服务端时钟 − 客户端时钟`（即服务端视角的"本机 − 对端"，见 §6.4-6）；`clientNow` 缺失时为 `0`（未校正，不猜值）；
+> `offsetMs = 服务端时钟 − 客户端时钟`（即**服务端视角**的"本机 − 对端"，见 §6.4-6）；`clientNow` 缺失时为 `0`（未校正，不猜值）；
 > 超 ±5 分钟容差时 `clockWarning` 给出提示但**继续合并**。
+>
+> ⚠️ **客户端使用该值时必须取反一次**（v4.2 消歧，防止符号写反）：本节响应里的 `offsetMs` **是服务端视角**，
+> 而 §6.3 合并伪码里的参数是**客户端视角**的 `clientOffsetMs = 客户端时钟 − 服务端时钟`，**二者互为相反数**。
+> 契约原文（照抄即可）：
+> ```ts
+> const respOffsetMs = data.offsetMs;            // 服务端视角：服务端 − 客户端
+> const clientOffsetMs = -respOffsetMs;          // 客户端视角：客户端 − 服务端（喂给 §6.3）
+> ```
+> 等价写法（不新增变量，直接把 §6.3 的加法改成减法）：`const rUpdated = r.updatedAt - respOffsetMs;`。
+> 服务端侧不需要这一步：它拿到的 `offset_ms = 服务端 − 客户端` 与自己的基准同向，**直接相加**即可（§6.4-6）。
+> 另外注意：`offsetMs` **只在 `POST /sync/push` 的响应里回带**（`GET /sync/pull` 的响应字段只有 `serverTime` / `since` / `tables`，
+> 没有 `offsetMs`）——所以没有经过 push 握手的路径（如只走 `pull` 的恢复）拿不到偏移，只能按 `0`（未校正）处理。
+> **自证判据（照着算一遍就能确认没写反）**：设 `respOffsetMs = +60000`（服务端时钟比客户端快 60 秒），
+> 服务端一条 `updatedAt = T` 的行换算到客户端基准必须是 **`T − 60000`**——即相对本机**显得更旧**。
+> 若算成 `T + 60000`（"更旧的行反而更新"），就会出现对端更旧的行覆盖本机，得到与 §6.4-6 **相反**的收敛结论。
 
 ### 5.4 shop + admin
 
@@ -920,13 +935,18 @@ done          —— 写 sync_log(success)；更新 device_info.last_sync_at
 
 ```ts
 // lastSyncAt：上次成功同步的时间（device_info.last_sync_at），用于区分「真冲突」与「普通覆盖」
+// clientOffsetMs：**客户端视角**的时钟偏移 = 客户端时钟 − 服务端时钟（§6.4-6）。
+//   ⚠️ 它**不是** §5.3 响应里的 `offsetMs`（那是**服务端视角** = 服务端时钟 − 客户端时钟，两者互为相反数）：
+//   客户端从响应拿到 `respOffsetMs` 后**必须取反**：`const clientOffsetMs = -respOffsetMs;`
+//   （等价写法：比较时直接写 `r.updatedAt - respOffsetMs`；判据见 §5.3「响应字段口径」）。本文件此处的名字
+//   一律用 `clientOffsetMs`，**不要**再叫 `offsetMs`，以免与响应字段同名反向。
 // mode：'lww'（可改可删）| 'appendOnly'（账本表：同 id **或**同业务唯一键已存在即跳过）
 // businessKeyOf(row)：业务唯一键（§6.5 的 (user_id, 业务键) 组合）；
 //   账本表 = uq_pr_source 的 (user_id, source_type, source_id, flow_kind)；
 //   没有业务键的表（carbon_record / carbon_include / user_appearance / user_profile 除主键外）返回 null
 async function mergeTable<T extends BaseRow>(
   table: string, local: T[], remote: T[],
-  offsetMs: number, lastSyncAt: number, mode: 'lww' | 'appendOnly'
+  clientOffsetMs: number, lastSyncAt: number, mode: 'lww' | 'appendOnly'
 ): Promise<{ toApply: T[]; conflicts: number; ignored: number }> {
   const toApply: T[] = [];
   let conflicts = 0, ignored = 0;
@@ -952,7 +972,8 @@ async function mergeTable<T extends BaseRow>(
     }
     if (!l) { toApply.push(r); continue; }         // 本机没有 → 直接接纳
 
-    const rUpdated = r.updatedAt + offsetMs;       // 对端时间 → 本机时间基准
+    const rUpdated = r.updatedAt + clientOffsetMs; // 对端(服务端)时间 → 本机(客户端)时间基准
+                                                   // 等价写法：r.updatedAt - respOffsetMs（respOffsetMs 是 §5.3 响应字段）
     if (rUpdated > l.updatedAt) {
       toApply.push(r);
       // 真冲突 = 两端自上次同步后都改过这一行
@@ -991,7 +1012,8 @@ async function mergeTable<T extends BaseRow>(
    **`ignored` 不计入 `conflicts`**：`conflicts` 只按 §6.3 的「真冲突」条件计数（`l.updatedAt > lastSyncAt && r.updatedAt > lastSyncAt`，即"两端自上次同步后都改过这一行"）；去重丢弃的行是"同一事实的重复"，**不是冲突**，页面口径是「跨设备重复已去重」。
 4. **封顶与重复发放（决策「甲2」）**：记录分以**本机已知流水**判定封顶，合并后若某天总量超 200，**不追回**已发分，只计冲突 +1；而**目标奖励与商品购买属「同一事实」**，跨设备重复发放 / 重复扣费**只入账一次**（业务唯一键 + `INSERT OR IGNORE`），两端收敛到同一账本。
 5. **静态字典不参与合并**：`goal_def` / `badge_def` / `shop_item` / `science_article` / `carbon_factor_meta` 随 App 版本走。
-6. **时钟偏移校正**：握手时测得 `offsetMs = 本机时钟 − 对端时钟`（两端互为相反数）：**客户端侧**取 `客户端时钟 − 服务端时钟`，**服务端侧**取 `服务端时钟 − 客户端时钟`（§5.3 请求体里可选的 `clientNow` 就是给服务端测这个用的；`clientNow` 缺失时 `offsetMs = 0`，按"无偏移"处理，不猜值）。比较前统一把对端时间戳换算到本机基准；容差 ±5 分钟，超容差记 `sync_log.error_msg`（响应里的 `clockWarning`）但仍继续。
+6. **时钟偏移校正**：握手时测得 `offsetMs = 本机时钟 − 对端时钟`（**两端互为相反数**）：**客户端侧**取 `客户端时钟 − 服务端时钟`（即 §6.3 伪码的参数 `clientOffsetMs`），**服务端侧**取 `服务端时钟 − 客户端时钟`（即 §5.3 响应里的 `offsetMs` 字段，服务端代码里叫 `outcome.offset_ms`）。
+   **客户端从响应取到的那个值是服务端视角的，必须取反一次才是自己这一侧的 `clientOffsetMs`**：`clientOffsetMs = −respOffsetMs`（等价写法：比较时写 `rUpdated = r.updatedAt − respOffsetMs`）；漏掉这一次取反会让对端时间戳朝相反方向偏移，得到与本条**相反**的收敛结论（判据与自证算例见 §5.3「响应字段口径」）。§5.3 请求体里可选的 `clientNow` 就是给服务端测这个用的；`clientNow` 缺失时两端一律 `offsetMs = 0`，按"无偏移"处理，不猜值。比较前统一把对端时间戳换算到本机基准；容差 ±5 分钟，超容差记 `sync_log.error_msg`（响应里的 `clockWarning`）但仍继续。
 
 ### 6.5 表分组与合并策略
 
