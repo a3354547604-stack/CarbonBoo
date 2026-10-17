@@ -6,7 +6,7 @@
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **v4.2** | 2026-11-06 | **文档契约勘误（对齐已实现并验证的口径）**：`uq_pr_source` 补 `user_id`、同步契约七处收紧（备份三端点 / `clientNow` / `ignored` 与 `conflicts` 分离 / 鉴权）、附录 C 落盘路径与附录 D §9 演示数据口径；**后续（2026-11-07 追加）**：`offsetMs` 同名双视角消歧 + `lastSyncAt` 基准单一化、冻结免鉴权 `GET /api/v1/config` 配置下发通道（B46 / B47，见 §6） |
+| **v4.2** | 2026-11-06 | **文档契约勘误（对齐已实现并验证的口径）**：`uq_pr_source` 补 `user_id`、同步契约七处收紧（备份三端点 / `clientNow` / `ignored` 与 `conflicts` 分离 / 鉴权）、附录 C 落盘路径与附录 D §9 演示数据口径；**后续（2026-11-07 追加）**：`offsetMs` 同名双视角消歧 + `lastSyncAt` 基准单一化、冻结免鉴权 `GET /api/v1/config` 配置下发通道（B46 / B47，见 §6）；**收尾回写（2026-11-07，见 §7）**：测试清单计数对齐仓库实测（L1 **10** 个用例文件 + `List.test.ets`、L3 **6** 个）、`LwwMerge` 行的失效 STOP 反转、`admin_web/README` 的 STOP-1 改记「已闭环」、附录 B §5.5 版本 bump 条件消歧 |
 | **v4.1** | 2026-11-06 | **文档契约冻结**：统一账号与同步口径、补齐可执行契约、验收与界面双向承载、因子基准收敛 |
 | v4.0 | 2026-10-15 | 规划定稿：9 项官方要求全做、出行类净减排口径、因子 30 个、19 张表、11 个目标、8 枚徽章 |
 
@@ -68,6 +68,18 @@
 - **D10-5 补可执行口径**：App 冷启动后本机 `app_config['server_config']` 内 `pointsDailyCap` / `badgesEnabled` / `goalRewards` 三项**与后台一致**即为通过，并指向 §5.5 新端点。
 - **登记与留档**：`AGENTS.md §1.4` 新增 **B46 / B47**（`status` 全 `closed`）、`§9` 区间更新为 **B1–B47**、`§10` 补一行（`AGENTS.md §10` 要求「修改本文件必须更新本表」）；`tests/cases/carbon-calc.json → docConflicts` 追加两条（**共 47 条、`open` 0 条**）；决策留档见 [`DECISION-0003-runtime-config-and-sync-anchor.md`](./DECISION-0003-runtime-config-and-sync-anchor.md)（`AGENTS.md §10` ① 要求），并在 `docs/README.md` 文档清单补第 11 行导航。
 - **门禁**：`python3 tests/tools/check_l0.py --strict` → `L0-1 错误 0 / L0-2 命中 0 / L0-3 open 0 / 结论 PASS`，退出码 0。
+
+### 7. 收尾回写：清单计数与闭环状态（t20，2026-11-07）
+
+> 本节与 §5/§6 同属 v4.2 勘误批次，处理的是那两批改动**改完之后没回头同步**的残留 —— L0 检查器只查数值与已知条目，查不出「清单条数写成旧值」「闭环了却仍登记为 STOP」这类空白。**只改文档，不动任何实现与测试。**
+
+- **`tests/README.md` L1 清单与仓库实测对齐**：计数由「9 个」改为 **10 个** `.test.ets` 用例文件（复核命令 `ls app/entry/src/ohosTest/ets/test/*.test.ets | wc -l` 实测 **11 条** = 10 个用例文件 + `List.test.ets` 汇总入口）；补 `ServerConfigFallback.test.ets` 一行 —— t18 落地的配置下发用例（8 个 `it`：整份生效 / 任一字段非法整份丢弃 / 未知 `goalId` 整条忽略 / 同 `version` 跳过写入 / 5xx 与网络异常静默降级 / `badgesEnabled` 开关）。
+- **`LwwMerge.test.ets` 行的失效 STOP 反转**：该行原写「平局按 `deviceId` 裁决与时钟偏移校正在实现里都未做」，而 **t13 已按附录 B §6.3/§6.4-6 补齐实现**、用例 ③/⑥ 也已（如该文件头所述）反转为**按文档口径的回归断言** —— 原表述与仓库现状相反，现改为「两处均已在 t13 落地（`viewmodel/net/SyncService.ets` 的 `applyRow()`），原 STOP 保留在文件头『历史记录』段」。
+- **`tests/README.md` L3 清单同步补行**：t17 新增的 `test_config.py`（免鉴权 `GET /api/v1/config` 的接口契约）未登记 —— 计数由「5 个」改为 **6 个**用例文件（`ls server/tests/test_*.py` = `test_auth` / `test_authz` / `test_shop` / `test_sync` / `test_admin` / `test_config`）。
+- **`server/admin_web/README.md §7` 的 STOP-1 改记「已闭环」**：B47 的缺口已由 t17（服务端免鉴权端点，`0f320c2`）+ t18（客户端消费，`18db1db`）+ t19（后台**有改动才** bump `config_version`，`87a055d`）在实现侧闭合，文档侧指向附录 B §5.5 与验收 D10-5（`APPENDIX-D:209`）。**当初报 STOP 的原文逐字保留在下方**（历史不抹）；同节「待 server-api 补的两处」（`requirements.txt` 补 `jinja2`、`.env.example` 补三个 `ADMIN_` 键）实现侧也已补齐，一并回写为 ✅。
+- **附录 B §5.5 版本条款消歧**：原句「`PUT /admin/config` 成功保存后**必须**同步更新 `app_config['config_version']`」在「无改动（幂等保存）」情形下与实现（t19 的 `if changed:`）相反。现写死三种情形：**有实际改动 → 必须 bump + 照常写一条 `update_config` 审计；无改动 → 幂等成功、不 bump、不写第二条审计；保存失败 → 整体回滚**。裁决依据是该条款自身的立法意图（防「内容变了却感知不到」）—— 无改动时内容没变，照字面 bump 反而留下「版本 +1 但配置没动」的虚假变更记录，污染 `app_config` 与 `update_config` 审计。
+- **登记**：以上均**不新开 B 编号**（不是新缺陷，是 B46/B47 那批改动的收尾残留）—— `tests/cases/carbon-calc.json → docConflicts` 的 **B47 `correct` 字段**追加一段回写说明；本条 CHANGELOG 行即 `AGENTS.md §9` 要求的留痕。
+- **门禁**：`python3 tests/tools/check_l0.py --strict` → EXIT=0。
 
 ---
 

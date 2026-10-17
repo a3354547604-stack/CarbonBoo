@@ -112,9 +112,25 @@ JWT 密钥、audience、有效期、是否生产**仍只读 `app/core/config.py`
 - 不新增前端依赖：**无前端框架、无构建链**，只有一个 `static/admin.js`（原生 `fetch`）与 `static/admin.css`。
   仅有的 Python 依赖是 **Jinja2**（FastAPI 渲染所需，属模板引擎而非前端框架）。
 
-## 7. 未决问题（登记，未自行拍板）
+## 7. 登记过的问题（**现均已闭环**）与已知取舍
 
-**STOP-1（文档口径缺口，不阻塞本任务验收）**
+**STOP-1（文档口径缺口）—— ✅ 已闭环（2026-11-07 回写；历史原文保留在下方，不删不抹）**
+
+缺口的三段式结果：**文档侧**由附录 B **§5.5**（+ §5.4 端点表新增行）冻结契约；**实现侧**由三个任务闭合：
+
+| 环节 | 落点 | 证据 |
+|---|---|---|
+| ① 服务端提供**免鉴权**的客户端可读配置端点 | `GET /api/v1/config`（鉴权「无」） | t17，提交 `0f320c2` |
+| ② 客户端消费（整份校验 / 任一字段非法**整份丢弃** / 整份落 `app_config['server_config']` / **冷启动**生效） | 附录 B §5.5「客户端校验与落地口径」 | t18，提交 `18db1db` |
+| ③ 后台保存**有实际改动**时 bump `app_config['config_version']`（版本感知） | `server/admin_web/services/system_config.py:199` 的 `if changed:` | t19，提交 `87a055d` |
+
+- **契约落点**：`docs/APPENDIX-B-data-and-api.md:866`（§5.4 端点表）+ `:900-975`（**§5.5 config（客户端可读配置，免鉴权）**）；
+  验收 **D10-5** 的可执行口径见 `docs/APPENDIX-D-acceptance.md:209` —— 冷启动后本机 `app_config['server_config']` 的
+  `pointsDailyCap` / `badgesEnabled` / `goalRewards` 三项**与后台一致**即为通过。
+- 本目录 **§5「数据与口径」** 的「系统配置」行是该通道的**服务端写入侧**；闭环后它与下发侧成对，不再是「只写不读」。
+- **登记**：`AGENTS.md §1.4` 的 **B47**（`status: closed`）+ `tests/cases/carbon-calc.json → docConflicts`（同一批 **B46**）。
+
+**STOP-1 原文（2026-11-06 报出当时，逐字保留以便追溯）**
 
 ```
 STOP: 附录 D10-5 的通过判据含「App 侧能读到」，但文档没有把这三项下发给客户端的接口
@@ -126,13 +142,12 @@ STOP: 附录 D10-5 的通过判据含「App 侧能读到」，但文档没有把
       本任务只保证服务端侧写入正确、可回读、有审计（不擅自新增客户端接口 —— server/app/ 不在本任务写入范围）
 ```
 
-**待 server-api 补的两处（均在本任务写入范围之外）**
+**待 server-api 补的两处（当时在本任务写入范围之外）—— ✅ 两处均已补齐（2026-11-07 回写）**
 
-1. `server/requirements.txt` 需补 **`jinja2`**（本目录用它做服务端渲染；FastAPI 的 `Jinja2Templates` 依赖它）。
-   本机已按 `https://mirrors.aliyun.com/pypi/simple/` 装进 `server/.venv`（`jinja2==3.1.6`），但**没有**改
-   `requirements.txt`（属服务端切片范围）。
-2. `server/.env.example` 需补三行说明：`ADMIN_BOOTSTRAP_USERNAME` / `ADMIN_BOOTSTRAP_PASSWORD` / `ADMIN_UPLOAD_DIR`
-   （键名与本目录 `config.py` 的 `ADMIN_` 前缀一一对应，已用脚本核对）。
+1. ✅ `server/requirements.txt` 已补 **`jinja2==3.1.6`**（现 `server/requirements.txt:14-16`，并附注释说明
+   `fastapi.templating.Jinja2Templates` 依赖它）。
+2. ✅ `server/.env.example` 已补三行：`ADMIN_BOOTSTRAP_USERNAME`（`:59`）/ `ADMIN_BOOTSTRAP_PASSWORD`（`:60`）/
+   `ADMIN_UPLOAD_DIR`（`:62`），键名与本目录 `config.py` 的 `ADMIN_` 前缀一一对应。
 
 **已知的取舍（不是缺陷）**
 
