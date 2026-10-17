@@ -208,7 +208,7 @@ $ grep -rnE "^import .* from ['\"]" --include='*.ets' app | grep -v '/build/' \
 |---|---|
 | 唯一 `calculate` 入口 | `app/entry/src/main/ets/service/CarbonService.ets:76` `static calculate(activity: ActivityInput, factor: FactorSnapshot, options?: CalcOptions): CarbonCalculation` |
 | 唯一因子乘法 | `app/entry/src/main/ets/service/CarbonCalc.ets:153` `const product: Dec = Dec.from(amount).mul(Dec.from(factorValue));` |
-| 全 app 的 `Dec.mul` 落点 | `CarbonCalc.ets:153`（活动量 × 因子）、`:164`（kg × 100 求 C）、`:258`（树当量）、`:267`（纸张当量）—— **四处全在同一文件**，业务乘法无第二个文件 |
+| 全 app 的 `Dec.mul` 落点 | `CarbonCalc.ets:153`（活动量 × 因子）、`:164`（kg × 100 求 C）、`:258`（`amountOfCarFreeDays`：天数 × 单车里程）、`:267`（`amountOfRecyclePieces`：件数 × 单件重量）—— **四处全在同一文件**，业务乘法无第二个文件（**t33 更正**：此处原写「树当量 / 纸张当量」为误标，真实函数名见 §「本轮更正」C-F5） |
 | `pages/` + `components/` 零命中 | `grep -rn "calculate"` = **0**；`grep -rn "DecimalUtil\|Dec\.from"` = **0**；`grep -rnE "(factorValue|factor_value) *\*|\* *(factorValue|factor_value)|reductionKg *=[^=]"` = **0** |
 | 页面只展示、不计算 | `pages/`/`components/` 里出现 `factor` 字样的全部是 `Formatter.number(this.record.factorValue, 'factor')` 这类**格式化读取**（`RecordDetailPage.ets:141`、`RecordEditPage.ets:535-536`、`components/RecordItem.ets:55`、`components/BadgeItem.ets:37`、`components/GoalItem.ets:38`、`HomePage.ets:155`、`AboutPage.ets:105`），无乘法、无因子取值 |
 
@@ -1408,3 +1408,135 @@ cd app && hvigorw --no-daemon test                                            �
 **L1 全部未运行**（N1–N7，环境未变，本轮补跑证据）。F9/F12 闭环，F14 撤销，新增 F15–F18（四条低危）。
 
 **未决问题**：见 §14（五条）。
+
+---
+
+## 本轮更正（t33 · 对 F2/F3/F4/F5/F6 的追加更正，**不改动上文任何原始记录**）
+
+> 来源：t32 终审（`c9a3f1d`）报出的 F2/F3/F4/F5/F6。本节**只追加**：上文 round 1–4 的原始章节一字不删、不改写其结论
+> （唯一原位改动是 §7.1 表内一处**函数名事实错误**的更正，见 C-F5——那是错标订正，不是改写判定）。
+> 本节所有依据均为现场重跑的原始输出；基准为更正写入前的 HEAD `c9a3f1d`。
+
+### C-F2 · §R4.3 两条「沿用」理由与实测不符（结论偶然对，证据全错）
+
+§R4.3 表内两行原文的依据是「`git diff … -- tests/cases/` 为空且 md5 与 round 3 同值」「`git diff --stat 308d09f..e211ae1 -- app/ server/` 为空」。现场重跑：
+
+```
+$ git diff --stat 308d09f..e211ae1 -- app/ server/
+ app/entry/src/ohosTest/resources/rawfile/carbon-calc.json | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+$ git diff --stat 308d09f..e211ae1 -- tests/cases/
+ tests/cases/carbon-calc.json | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+$ git show 308d09f:tests/cases/carbon-calc.json | md5sum
+c096da45ba7e1852d25cf91699fcb42b  -
+$ md5sum tests/cases/carbon-calc.json
+e096b2db77bbcc9a43ee8728cbd883e9  tests/cases/carbon-calc.json
+```
+
+⇒ ① 「`app/` / `server/` 未被这些提交触碰」**不成立**（t30-O1 同步了 `ohosTest` 基准副本，2 增 2 删）；
+② 「本轮 md5 与 round 3 记录同值」**不成立**（`c096da45…` → `e096b2db…`，t28 改了 `docConflicts` 文本）；
+③ 连「`tests/cases/` 为空」也不成立（同一批 2 增 2 删）。
+被改的只是 `docConflicts` **元数据文本**，`samples` / `capSamples` / `factors` 期望值零变化（L0 `--strict` EXIT=0 可证），
+故「§4 复算 70 检查点、§9 契约 A/B/C 可沿用 round 3」的**结论仍然成立** —— 但它当时给出的两条证据是错的，属「结论偶然对，证据全错」。
+
+### C-F3 · §R4 首段「round 1–3 原文一字未删」不实
+
+```
+$ git diff --numstat 39be3b0..284c069 -- docs/VERIFICATION.md
+511	5	docs/VERIFICATION.md
+```
+
+⇒ 该区间 **511 增 5 删**。被删的 5 行（原文）：
+
+```
+-# CarbonBoo 独立验证报告（round 3 · t24）
+-| **V9** | 铁律 1 · 未登录 = 纯单机（五类例外） | 三处例外集 grep + 141 个网络调用点全表审查 | … |
+-| **F3** 例外集四类 → 五类 | 已修 | `AGENTS.md:104`（§2 铁律 1）/ `:143`（§5 L2）/ `:164`（§6）… | **闭环** |
+-$ grep -rn "四类网络例外\|四类例外" --include=*.md .   （排除 build/ 与 .agent-teams/）
+-唯一命中 docs/VERIFICATION.md:171 —— 是 round 2 报告里那条 grep 命令的文本本身，非口径残留
+```
+
+⇒ 正是 V9/F3 的旧判据与「窄模式假绿」证据（窄模式 `grep "四类网络例外"` 抓不到措辞变体「四项」），
+round 4（t31）为改用宽口径判据而**替换**了它们。所以「一字未删」的自我描述与该 diff 直接矛盾：
+round 4 实际做的是「新增 §R4 + 把部分旧判据**替换**为宽口径判据」。本轮（t33）起不再使用「一字未删」表述。
+
+### C-F4 · 「141 处网络调用点」的口径是 token 计数，不是调用点数
+
+`§0`/`§7.1` 引用的「全仓 `.ets` 网络调用 **141 处，五类之外 0 处**」在现场重跑中复现不出 141 个**调用点**：
+
+```
+$ grep -rn 'hub\.http\.request' --include=*.ets app/ | wc -l      → 0
+$ grep -rn 'this\.http\.request' --include=*.ets app/ | wc -l     → 10
+$ grep -rn 'HttpPort' --include=*.ets app/ | wc -l                → 38   （按出现次数 44）
+（三模式相加：按出现次数 0 + 10 + 44 = 54；按行数 0 + 10 + 38 = 48 —— 都不是 141）
+$ grep -roE 'http|HttpPort' --include=*.ets app/ | wc -l          → 141  ← 141 的真实来源
+```
+
+⇒ 141 是 **token 计数**（`grep -roE 'http|HttpPort'`，把注释、类型名、字符串、`FakeHttpClient` 一并计入），
+**不是调用点数**。真实**网络调用点 11 处**（现场实测）：
+
+```
+app/entry/src/main/ets/viewmodel/AuthService.ets:67 / :82 / :98            注册 / 登录 / 注销
+app/entry/src/main/ets/viewmodel/net/ServerConfigFetcher.ets:106           配置下发 GET /api/v1/config
+app/entry/src/main/ets/viewmodel/net/ShopPriceFetcher.ets:114              商品取价
+app/entry/src/main/ets/viewmodel/net/SyncService.ets:183 / :192 / :234 / :281 / :304   同步 push / pull + 云端备份
+app/entry/src/main/ets/viewmodel/net/HttpPort.ets:91                       传输层自身（http.request 唯一出口）
+```
+
+11 处逐条落在**五类例外**（登录/注册、多设备同步、取价、云端备份、配置下发）之内，
+**「五类之外 0 处」的实质结论仍成立**；但「141 处」这个数字及其「全表审查」表述属**错误口径**，
+应读作「141 个 token / **11 个调用点**」。
+
+### C-F5 · §7.1 表内 `CarbonCalc.ets:258/:267` 函数名标错（**已在原位更正**）
+
+§7.1 表原文写「`:258`（树当量）、`:267`（纸张当量）」。现场实测该两行的真实归属：
+
+```
+$ grep -n "static amountOf" app/entry/src/main/ets/service/CarbonCalc.ets
+257:  static amountOfCarFreeDays(days: number, kmPerDay: number): number {
+266:  static amountOfRecyclePieces(pieces: number, kgPerPiece: number): number {
+$ sed -n '258p;267p' app/entry/src/main/ets/service/CarbonCalc.ets
+    return toNumber(Dec.fromInt(days).mul(Dec.from(kmPerDay)), AppConstants.REDUCTION_DECIMALS);
+    return toNumber(Dec.fromInt(pieces).mul(Dec.from(kgPerPiece)), AppConstants.REDUCTION_DECIMALS);
+```
+
+⇒ `:258` 属 `amountOfCarFreeDays`（少开一天车：天数 × 单车里程）、`:267` 属 `amountOfRecyclePieces`（回收按件：件数 × 单件重量），
+**与「树当量 / 纸张当量」无关**（`Dec.mul` 只有四处落点、同在一个文件，四面都是「活动量 × 因子」的形态）。
+已就地把改处两个标签改为真实函数名，行号与「四处全在同一文件」的结论不变；
+本文件 :1050 原已按正确口径写作 `:258(days×kmPerDay) / :267(pieces×kgPerPiece)`，两处现已一致。
+
+### C-F6 · 两套未运行项编号同号不同义（补映射表，**不重写任一处编号**）
+
+本文件存在两套 `N1–Nn` 编号，语义不同，此前无任何提示：
+
+| 位置 | 编号域 | 含义 |
+|---|---|---|
+| §R4.7（round 4 / t31） | **N1–N5** | 绑定 `e211ae1` 的本轮未运行项：N1 L1 全部 hypium、N2 L2 端侧集成、N3 `server/deploy/` 实跑、N4 `/admin` 浏览器交互、N5 视觉模型走查 |
+| §13（round 3 / t24） | **N1–N8** | 历史轮次未运行项：N1 L1、N2 `hvigorw test` 执行段（EXIT=124）、N3 L2、N4 部署脚本、N5 `/admin` 交互、N6 t18 运行态、N7 t13 运行态、N8 视觉走查 |
+
+同义对应（映射）：
+
+| §R4.7 编号 | §13 编号 | 项 |
+|---|---|---|
+| N1 | N1 | L1 全部 hypium（10 套件 / 36 `it()`） |
+| N2 | N3 | L2 端侧集成（需两条设备） |
+| N3 | N4 | `server/deploy/` 实跑（systemd / nginx / TLS / 定时备份） |
+| N4 | N5 | `/admin` 浏览器交互（SSR 渲染 + `admin.js`） |
+| N5 | N8 | 视觉走查（18 页面截图 + 判图） |
+| （无） | N2 | `hvigorw test` 执行段（EXIT=124）—— round 4 未再单列 |
+| （无） | N6 | t18 运行态（配置下发真机生效）—— round 4 并入 N1 同因 |
+| （无） | N7 | t13 运行态（真机备份往返）—— round 4 并入 N1 同因 |
+
+> **引用约定**：两套编号一律带小节前缀（`§R4.7-N4` vs `§13-N5`），单写 `N4` 属歧义。
+> 本表**不统一重写**任何编号（那会改到前几轮的原始记录）。两套的实质结论一致：**未运行 = 一条都不算通过**。
+
+### C-收尾 · 本轮（t33）做了什么 / 没做什么
+
+- **改了**：`README.md:16`、`app/entry/src/main/ets/model/SyncTypes.ets:8`、`app/entry/src/main/ets/viewmodel/net/HttpPort.ets:1/:12`
+  （例外集「四项」→ **五类**，补「配置下发 `GET /api/v1/config`，免鉴权、与取价同组」与失败降级语义）+ 本文件（:211 函数名更正 + 本「本轮更正」小节）。
+- **没改**：`docs/REVIEW.md`（评审人结论，改它等于篡改评审记录）、`docs/CHANGELOG.md:116`（v4.1 历史留痕，正确）、
+  任何数值与测试基准（`tests/cases/carbon-calc.json` 零 diff，md5 与 `app/…/ohosTest/…` 副本同值）。
+- **没跑**：L1 / L2 / deploy / `/admin` 浏览器 / 视觉走查（环境未变）—— §R4.7 与 §13 的「未运行 = 不算通过」对本轮同样有效。
