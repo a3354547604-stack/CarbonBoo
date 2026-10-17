@@ -10,7 +10,7 @@
 | 层 | 范围 | 现在能否跑 | 位置 |
 |:--:|---|:--:|---|
 | **L0** | 数值与文档一致性：碳计算 18 组样例、封顶 5 组、边界样例、文档已知冲突扫描 | ✅ **现在就能跑**（只依赖 Python 3） | `tests/tools/check_l0.py` + `tests/cases/` |
-| **L1** | 纯逻辑单测（ArkTS / hypium）：计算、封顶、目标与徽章幂等、备份往返、CSV 编码、LWW 合并、系统配置下发 | ✅ **套件已建**（**10 个** `.test.ets` 用例文件 + `List.test.ets` 汇总入口）；执行需 SDK Previewer / 真机 / 模拟器，本机无 → **尚未真正跑过**（见 §5 L1） | `app/entry/src/ohosTest/ets/test/` |
+| **L1** | 纯逻辑单测（ArkTS / hypium）：计算、封顶、目标与徽章幂等、备份往返、CSV 编码、LWW 合并、系统配置下发 | ✅ **套件已建**（**10 个** `.test.ets` 用例文件 + `List.test.ets` 汇总入口）；执行需 SDK Previewer / 真机 / 模拟器，本机无 → **hypium 侧尚未真正跑过**（见 §5）。纯逻辑部分另有**离线执行器** `tests/tools/l1_offline/`（见 §5.1，跑的是仓库真实实现，**但不是 hypium 的替代品**） | `app/entry/src/ohosTest/ets/test/` + `tests/tools/l1_offline/` |
 | **L2** | 端侧集成：两条真机协同脚本、飞行模式全功能、性能打点 | ⏳ **需两条真机（或真机 + 模拟器）**；当前无执行记录（不阻塞 L1/L3） | 手工脚本 + 录屏，结果记入 `docs/APPENDIX-D` |
 | **L3** | 服务端（pytest）：账号、鉴权隔离、取价、同步幂等与冲突、后台管理端、配置下发 | ✅ **已建并可跑**（**6 个**用例文件 + `conftest.py` 夹具，跑在真实 MySQL 8 上：`pytest server/tests`） | `server/tests/` |
 
@@ -83,6 +83,25 @@ python3 tests/tools/check_l0.py --strict
 > 故 L1 的现有证据只有「随 `ohosTest` 目标 `assembleHap` 编译通过 + 人工审查」，**尚未真正跑过**——
 > 不得据此声称任何 L1 用例"通过"。
 
+### 5.1 L1 · 离线执行器 — `tests/tools/l1_offline/`（**不是 hypium 的替代品**）
+
+一条命令 `bash tests/tools/l1_offline/run.sh`（只依赖 esbuild + node，**无 npm 依赖、不生成 `node_modules`**，
+转译中间产物写临时目录、退出即删）：把 `app/` 下 **9 份真实 `.ets`**（`CarbonCalc` / `DecimalUtil` /
+`AppConstants` / `CarbonTypes` / `CarbonService` / `JsonUtil` / `StringUtil` / `CalcTestTypes` /
+`CalcBaselineValidator`）**原样复制 + 仅改写 import 前缀**，用 esbuild 转成 CJS 后在 Node 里跑**真实实现** ——
+本轮实测 `RESULT: PASS=55 FAIL=0`（`CarbonCalc` 逐样例）与 `checked = 323 / passed = true`
+（仓库自己的 `CalcBaselineValidator.run()`）；任一 FAIL 时脚本**非零退出**。用途、可复现性论证与完整实测输出见
+`tests/tools/l1_offline/README.md`。
+
+**边界（必须连这条一起读）**
+
+- 它**不覆盖** UI（ArkUI 组件树 / 交互）、数据库（`relationalStore` 19 张表与事务）、网络（HTTP 与超时降级）、
+  生命周期（`UIAbility` / 页面栈 / 冷启动）、权限与端侧能力（相册保存、识图 stub、近场协同）—— 这些只能靠
+  hypium 在真机/模拟器上跑；
+- 它**只证明**「纯逻辑模块的**真实实现**与 `tests/cases/carbon-calc.json` 基准一致」，不证明 App 行为正确；
+- **hypium 的 36 个 `it()` 仍然未运行**（见上方 ⚠️ 执行状态），上表 L1 的执行状态**不因本工具而改变**；
+  两条证据**不可互相顶替**，报告里必须分开陈述：「离线纯逻辑 = 55 项 + 323 个断言点」与「hypium = 未运行」。
+
 ### L3 · pytest — `server/tests/`
 | 文件 | 用例 |
 |---|---|
@@ -136,5 +155,9 @@ tests/
 ├─ cases/
 │  └─ carbon-calc.json    # 数值唯一真相源（L0 与 L1 共用）
 └─ tools/
-   └─ check_l0.py         # L0 检查器（现在即可运行）
+   ├─ check_l0.py         # L0 检查器（现在即可运行）
+   └─ l1_offline/         # L1 纯逻辑离线执行器（见 §5.1；跑仓库真实实现，不是 hypium 的替代品）
+      ├─ run.sh           # 一条命令：复制 → 校验 → 只改 import 前缀 → esbuild → Node 执行
+      ├─ runners/         # calc_samples.mjs（55 项）、baseline_validator.mjs（323 个断言点）
+      └─ README.md        # 用途、边界、capSamples 口径
 ```
