@@ -917,7 +917,7 @@ export interface AppResult<T> {
     "pointsDailyCap": 200,         // 非负整数：记录类积分每日封顶
     "badgesEnabled": true,         // **布尔**（不是 0/1 整数）：徽章开关
     "goalRewards": [               // **可缺省**：缺省（或空数组）= 用 App 内置 rawfile 种子
-      { "goalId": "S1", "reward": 60 },
+      { "goalId": "S1", "reward": 20 },
       { "goalId": "M2", "reward": 300 }
     ],
     "serverTime": 1762300000000    // 毫秒整数（服务端时钟）
