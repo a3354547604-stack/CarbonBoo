@@ -993,7 +993,10 @@ done          —— 写 sync_log(success)；更新 device_info.last_sync_at
 ### 6.3 LWW 合并伪码
 
 ```ts
-// lastSyncAt：上次成功同步的时间（device_info.last_sync_at），用于区分「真冲突」与「普通覆盖」
+// lastSyncAt：上次成功同步的时刻，**服务端时钟基准**（= 响应里的 serverTime；落盘 device_info.last_sync_at，
+//   也用于 push 请求体与 pull 的 since）——基准与理由见 §6.4-6「lastSyncAt 的基准」。
+// lastSyncAtLocal：同一时刻的**本机（客户端）基准**表示 = lastSyncAt + clientOffsetMs（= lastSyncAt − respOffsetMs）。
+//   真冲突计数里「本机那一侧」用它（本机行是本机时钟），「对端那一侧」直接用 lastSyncAt（对端行是服务端基准）。
 // clientOffsetMs：**客户端视角**的时钟偏移 = 客户端时钟 − 服务端时钟（§6.4-6）。
 //   ⚠️ 它**不是** §5.3 响应里的 `offsetMs`（那是**服务端视角** = 服务端时钟 − 客户端时钟，两者互为相反数）：
 //   客户端从响应拿到 `respOffsetMs` 后**必须取反**：`const clientOffsetMs = -respOffsetMs;`
@@ -1009,6 +1012,7 @@ async function mergeTable<T extends BaseRow>(
 ): Promise<{ toApply: T[]; conflicts: number; ignored: number }> {
   const toApply: T[] = [];
   let conflicts = 0, ignored = 0;
+  const lastSyncAtLocal = lastSyncAt + clientOffsetMs;  // 锚点：服务端基准 → 本机基准（偏移为 0 时同一个数）
   const map = new Map<string, T>();       // id → 本机行
   const keys = new Set<string>();         // 业务唯一键（含 user_id）→ 本机已有
   for (const row of local) {
@@ -1035,15 +1039,15 @@ async function mergeTable<T extends BaseRow>(
                                                    // 等价写法：r.updatedAt - respOffsetMs（respOffsetMs 是 §5.3 响应字段）
     if (rUpdated > l.updatedAt) {
       toApply.push(r);
-      // 真冲突 = 两端自上次同步后都改过这一行
-      if (l.updatedAt > lastSyncAt && r.updatedAt > lastSyncAt) conflicts++;
+      // 真冲突 = 两端自上次同步后都改过这一行；本机侧比换算后的锚点，对端侧比原值（基准口径见 §6.4-6）
+      if (l.updatedAt > lastSyncAtLocal && r.updatedAt > lastSyncAt) conflicts++;
     } else if (rUpdated === l.updatedAt) {
       // 平局：deviceId 字典序大者胜；两端用同一规则，结论一致
       if ((r.deviceId ?? '') > (l.deviceId ?? '')) {
         toApply.push(r);
         // 与上面的「真冲突」定义保持同一条件：两端自上次同步后都改过才计数；
         // deviceId 也相同的行视为同一版本，保留本机版本（不计数）
-        if (l.updatedAt > lastSyncAt && r.updatedAt > lastSyncAt) conflicts++;
+        if (l.updatedAt > lastSyncAtLocal && r.updatedAt > lastSyncAt) conflicts++;
       }
     }
     // 否则保留本机版本
@@ -1068,11 +1072,24 @@ async function mergeTable<T extends BaseRow>(
 1. **本机优先**：合并期间任何失败都必须保持本机数据可用（用事务或"先备份后合并"）。
 2. **删除也要传播**：比较 `is_deleted`；软删除行的 `updated_at` 更新后同样按 LWW 取胜。
 3. **`id` 与业务键双重幂等**：`id`（UUID）主键保证同一行不重复；业务唯一键（`uq_pr_source` / `uq_up` / `uq_uprofile`）保证跨设备重复发放**只入账一次**——账本表写入用 `INSERT OR IGNORE`，被忽略的行计入 `ignored`（§5.3 里同义的字段名是 `skipped`）。
-   **`ignored` 不计入 `conflicts`**：`conflicts` 只按 §6.3 的「真冲突」条件计数（`l.updatedAt > lastSyncAt && r.updatedAt > lastSyncAt`，即"两端自上次同步后都改过这一行"）；去重丢弃的行是"同一事实的重复"，**不是冲突**，页面口径是「跨设备重复已去重」。
+   **`ignored` 不计入 `conflicts`**：`conflicts` 只按 §6.3 的「真冲突」条件计数（`l.updatedAt > lastSyncAtLocal && r.updatedAt > lastSyncAt`（`lastSyncAtLocal = lastSyncAt + clientOffsetMs`，基准口径见 §6.4-6），即"两端自上次同步后都改过这一行"）；去重丢弃的行是"同一事实的重复"，**不是冲突**，页面口径是「跨设备重复已去重」。
 4. **封顶与重复发放（决策「甲2」）**：记录分以**本机已知流水**判定封顶，合并后若某天总量超 200，**不追回**已发分，只计冲突 +1；而**目标奖励与商品购买属「同一事实」**，跨设备重复发放 / 重复扣费**只入账一次**（业务唯一键 + `INSERT OR IGNORE`），两端收敛到同一账本。
 5. **静态字典不参与合并**：`goal_def` / `badge_def` / `shop_item` / `science_article` / `carbon_factor_meta` 随 App 版本走。
 6. **时钟偏移校正**：握手时测得 `offsetMs = 本机时钟 − 对端时钟`（**两端互为相反数**）：**客户端侧**取 `客户端时钟 − 服务端时钟`（即 §6.3 伪码的参数 `clientOffsetMs`），**服务端侧**取 `服务端时钟 − 客户端时钟`（即 §5.3 响应里的 `offsetMs` 字段，服务端代码里叫 `outcome.offset_ms`）。
    **客户端从响应取到的那个值是服务端视角的，必须取反一次才是自己这一侧的 `clientOffsetMs`**：`clientOffsetMs = −respOffsetMs`（等价写法：比较时写 `rUpdated = r.updatedAt − respOffsetMs`）；漏掉这一次取反会让对端时间戳朝相反方向偏移，得到与本条**相反**的收敛结论（判据与自证算例见 §5.3「响应字段口径」）。§5.3 请求体里可选的 `clientNow` 就是给服务端测这个用的；`clientNow` 缺失时两端一律 `offsetMs = 0`，按"无偏移"处理，不猜值。比较前统一把对端时间戳换算到本机基准；容差 ±5 分钟，超容差记 `sync_log.error_msg`（响应里的 `clockWarning`）但仍继续。
+
+   **`lastSyncAt` 的基准（v4.2 订正为单一口径 · 与 t15 的 `offsetMs` 消歧同一套算法）**
+
+   `lastSyncAt` = **服务端时钟基准**的"上次成功同步时刻"：客户端把它落盘为响应里的 `serverTime`（`device_info.last_sync_at` 与 push 请求体、pull 的 `since` 都用这一个值）。
+   选服务端基准而不是客户端基准，是因为 `GET /sync/pull?since=` **没有 `clientNow`**——服务端在那次请求里无从换算客户端基准的锚点，增量边界会随时钟偏移漂移；服务端基准则让 `updated_at > since` 两侧天然同基准。
+   于是真冲突计数**只需把锚点换算到本机一侧的基准**（对端/远端时间戳本来就与锚点同基准，原值即可比较），两侧的式子如下（`lastSyncAtLocal ≝ lastSyncAt + clientOffsetMs = lastSyncAt − respOffsetMs`，即"上次同步时刻"的**本机基准**表示）：
+
+   | 侧 | 真冲突计数的比较式 |
+   |---|---|
+   | 客户端（§6.3 伪码） | `l.updatedAt > lastSyncAtLocal` 且 `r.updatedAt > lastSyncAt` —— 本机行是客户端时钟，与换算后的锚点同基准（等价写法：`l.updatedAt + respOffsetMs > lastSyncAt`）；对端行保持原值 |
+   | 服务端 | `local_updated > last_sync_at` 且 `int(values["updated_at"]) + offset_ms > last_sync_at` —— 对端（客户端）行加偏移换算到服务端基准；本机（库内）行已是服务端基准 |
+
+   **判据（与 §5.3 的自证算例同一套）**：设 `respOffsetMs = +60000`（服务端快 60 秒）⇒ `clientOffsetMs = −60000` ⇒ `lastSyncAtLocal = lastSyncAt + clientOffsetMs = serverTime − 60000`（正如 §5.3 的判据：服务端时间戳相对本机`显得更旧`）；`respOffsetMs = 0` 时 `lastSyncAtLocal = lastSyncAt`，两式退化为同一个数、没有任何换算。**凡跨端使用的时间戳都必须能说清在哪个基准上**：`clientNow` / 本机业务行的 `updated_at` = **客户端基准**，`serverTime` / `lastSyncAt`(线上) / 服务端与云端行的 `updated_at` = **服务端基准**。
 
 ### 6.5 表分组与合并策略
 
