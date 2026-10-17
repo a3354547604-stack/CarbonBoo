@@ -350,5 +350,39 @@ export default function serverConfigFallbackTest(): void {
         'SELECT badge_id FROM user_badge WHERE user_id = ? AND is_deleted = 0', [userId]);
       expect(rows2.length > 1).assertTrue(); // 8 枚徽章行被写入
     });
+
+    it('⑧ goalRewards 缺省 / 空数组 → 字段缺省回落：用内置种子，不覆盖也不新增目标', 0, async () => {
+      const fx: Fixture = await setup();
+      const now: number = Date.now();
+      const userId: string = `t-config-default-${now}`;
+      await fx.hub.auth.logout(now);
+      await fx.hub.state.ensureUser(userId, now);
+      const url: string = `${fx.fake.baseUrl()}${PATH}`;
+      CarbonCalc.installDailyCap(undefined);
+
+      // a) **整个字段缺省**：合法（附录 B §5.5「缺省 → 用 App 内置种子」）
+      fx.fake.stub('GET', url, 200,
+        `{"ok":true,"data":{"version":"v-no-rewards","pointsDailyCap":150,` +
+        `"badgesEnabled":true,"serverTime":${SERVER_TIME}}}`);
+      const res: AppResult<ServerConfigOutcome> = await fx.hub.fetchServerConfig();
+      expect(res.ok).assertTrue();
+      expect(res.data === undefined ? -1 : res.data.goalRewardCount).assertEqual(0);
+      // 同一份里的封顶值照常生效（缺省只影响 goalRewards 一项）
+      expect(CarbonCalc.effectiveDailyCap()).assertEqual(150);
+      const cards: GoalCard[] = await fx.hub.reward.refreshProgress(userId, now);
+      expect(cards.length).assertEqual(11);
+      expect(rewardOfCard(cards, 'S1')).assertEqual(20);   // rawfile/goals/goal-defs.json 内置值
+      expect(rewardOfCard(cards, 'L1')).assertEqual(1000);
+
+      // b) 空数组：与"缺省"同义（不覆盖、不新增）
+      fx.fake.stub('GET', url, 200, okBody('v-empty-rewards', 150, true, '[]'));
+      const res2: AppResult<ServerConfigOutcome> = await fx.hub.fetchServerConfig();
+      expect(res2.ok).assertTrue();
+      expect(res2.data === undefined ? -1 : res2.data.goalRewardCount).assertEqual(0);
+      const cards2: GoalCard[] = await fx.hub.reward.refreshProgress(userId, now);
+      expect(cards2.length).assertEqual(11);
+      expect(rewardOfCard(cards2, 'S1')).assertEqual(20);
+      CarbonCalc.installDailyCap(undefined);
+    });
   });
 }
