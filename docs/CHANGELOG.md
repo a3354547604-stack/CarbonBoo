@@ -6,7 +6,7 @@
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **v4.2** | 2026-11-06 | **文档契约勘误（对齐已实现并验证的口径）**：`uq_pr_source` 补 `user_id`、同步契约七处收紧（备份三端点 / `clientNow` / `ignored` 与 `conflicts` 分离 / 鉴权）、附录 C 落盘路径与附录 D §9 演示数据口径；**后续（2026-11-07 追加）**：`offsetMs` 同名双视角消歧 + `lastSyncAt` 基准单一化、冻结免鉴权 `GET /api/v1/config` 配置下发通道（B46 / B47，见 §6）；**收尾回写（2026-11-07，见 §7）**：测试清单计数对齐仓库实测（L1 **10** 个用例文件 + `List.test.ets`、L3 **6** 个）、`LwwMerge` 行的失效 STOP 反转、`admin_web/README` 的 STOP-1 改记「已闭环」、附录 B §5.5 版本 bump 条件消歧 |
+| **v4.2** | 2026-11-06 | **文档契约勘误（对齐已实现并验证的口径）**：`uq_pr_source` 补 `user_id`、同步契约七处收紧（备份三端点 / `clientNow` / `ignored` 与 `conflicts` 分离 / 鉴权）、附录 C 落盘路径与附录 D §9 演示数据口径；**后续（2026-11-07 追加）**：`offsetMs` 同名双视角消歧 + `lastSyncAt` 基准单一化、冻结免鉴权 `GET /api/v1/config` 配置下发通道（B46 / B47，见 §6）；**收尾回写（2026-11-07，见 §7）**：测试清单计数对齐仓库实测（L1 **10** 个用例文件 + `List.test.ets`、L3 **6** 个）、`LwwMerge` 行的失效 STOP 反转、`admin_web/README` 的 STOP-1 改记「已闭环」、附录 B §5.5 版本 bump 条件消歧；**再追加（2026-11-07，见 §8）**：`AGENTS.md §5.1-4` 增「已推送」证据条款（唯一合格证据 = `git ls-remote` 原始输出），该条以本节代 `docs/DECISION-*.md` 留痕 |
 | **v4.1** | 2026-11-06 | **文档契约冻结**：统一账号与同步口径、补齐可执行契约、验收与界面双向承载、因子基准收敛 |
 | v4.0 | 2026-10-15 | 规划定稿：9 项官方要求全做、出行类净减排口径、因子 30 个、19 张表、11 个目标、8 枚徽章 |
 
@@ -79,6 +79,17 @@
 - **`server/admin_web/README.md §7` 的 STOP-1 改记「已闭环」**：B47 的缺口已由 t17（服务端免鉴权端点，`0f320c2`）+ t18（客户端消费，`18db1db`）+ t19（后台**有改动才** bump `config_version`，`87a055d`）在实现侧闭合，文档侧指向附录 B §5.5 与验收 D10-5（`APPENDIX-D:209`）。**当初报 STOP 的原文逐字保留在下方**（历史不抹）；同节「待 server-api 补的两处」（`requirements.txt` 补 `jinja2`、`.env.example` 补三个 `ADMIN_` 键）实现侧也已补齐，一并回写为 ✅。
 - **附录 B §5.5 版本条款消歧**：原句「`PUT /admin/config` 成功保存后**必须**同步更新 `app_config['config_version']`」在「无改动（幂等保存）」情形下与实现（t19 的 `if changed:`）相反。现写死三种情形：**有实际改动 → 必须 bump + 照常写一条 `update_config` 审计；无改动 → 幂等成功、不 bump、不写第二条审计；保存失败 → 整体回滚**。裁决依据是该条款自身的立法意图（防「内容变了却感知不到」）—— 无改动时内容没变，照字面 bump 反而留下「版本 +1 但配置没动」的虚假变更记录，污染 `app_config` 与 `update_config` 审计。
 - **登记**：以上均**不新开 B 编号**（不是新缺陷，是 B46/B47 那批改动的收尾残留）—— `tests/cases/carbon-calc.json → docConflicts` 的 **B47 `correct` 字段**追加一段回写说明；本条 CHANGELOG 行即 `AGENTS.md §9` 要求的留痕。
+- **门禁**：`python3 tests/tools/check_l0.py --strict` → EXIT=0。
+
+### 8. AGENTS §5.1-4「已推送」证据条款 —— 以本文件代 DECISION 留痕（t25，2026-11-07）
+
+> **为什么记在这里而不是 `docs/DECISION-*.md`**：`AGENTS.md §10` 末句规定「修改本文件必须 ① 在 `docs/DECISION-*.md` 里留下决策记录 ② 更新本表」。本次新增的 §5.1-4 是**可执行约定的补充**（怎么写「已推送」的证据），**不涉及数值 / 契约 / 架构取舍**，不构成需要长期追溯的决策分支。**队长裁决：不新建 DECISION 文件，以本行代决策留痕**，避免决策目录被流程性约定稀释。
+
+- **触发**：t23 第一轮报告用 `git fetch -q && git rev-list --left-right --count origin/main...HEAD` → `0	0` 证明「已推送」。这条命令读的是**本地 `origin/main` 引用缓存**——若 `push` 从未发生或失败，缓存本就停在该 commit，**同样显示 `0 0`**。**即：它在推送失败时也报「已推送」，是会直接造成假绿交付的证据。** t23 补跑 `git ls-remote origin main` 得到 `308d09f8c1e6b0178f1480ad8c6938c6b0c1dc3a	refs/heads/main` 后才真正闭环。
+- **条款内容**（`AGENTS.md §5.1` 第 4 条）：唯一合格证据 = `git ls-remote origin <branch>` 的**原始输出**（走网络问远端、只读、不碰本地缓存），且与本地 `git rev-parse HEAD` 一致；`git rev-list --left-right --count` 的 `0 0` 与 `git log origin/main` 读本地缓存，**明确列为不可单独作为证据**；`git push` 的 `a1b2c3..d4e5f6  main -> main` 只作**辅助**（证明发起过、远端接受了更新），报告仍须附 `ls-remote` 原文。
+- **特别写明**：`fetch` 之后再跑 `rev-list` **也不行**——`fetch` 只是刷新缓存，刷新完 `0 0` 依旧是 `0 0`。这是本条的实操要点，漏了它会以为「先 fetch 一下就严谨了」。
+- **只在跨环境时尤其危险**：推送凭据在本机 **Windows Git 凭据管理器**里、WSL 内没有（`AGENTS §7.3`），推送常态是经由 Windows git，更容易「看起来成功、其实没推」。
+- **范围**：只改 `AGENTS.md §5.1`（新增第 4 条）与 §10（补一行）；§1.4 的 B 编号区间、§2 的五类例外**一字未动**（那是 t21 刚定的口径）。**不新开 B 编号**——不是新缺陷，是证据判据的补充。
 - **门禁**：`python3 tests/tools/check_l0.py --strict` → EXIT=0。
 
 ---

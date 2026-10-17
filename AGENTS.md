@@ -157,6 +157,19 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
    - **不改数值**（只追加 `docConflicts` 登记项等元数据）时用 `docs:` 前缀，且在提交正文首行写明「**未改数值，仅登记/补条目**」；
    - **改动数值**（`samples` / `capSamples` / `factors` / `meta.*` 期望值）时用 `test:` 前缀，并与对应文档在同一次提交内完成（§3）；
    - **评审与验证报告必须把该文件的 diff 单独列一段**，不得混进「其他改动」，以便一眼判断数值有没有动。
+4. **「已推送」的唯一合格证据**（t23 推送证据纠错）：
+   - **唯一合格证据**：`git ls-remote origin <branch>` 的**原始输出**，且其 SHA 与本地 `git rev-parse HEAD` 一致。
+     ```
+     $ git ls-remote origin main
+     308d09f8c1e6b0178f1480ad8c6938c6b0c1dc3a	refs/heads/main
+     $ git rev-parse HEAD
+     308d09f8c1e6b0178f1480ad8c6938c6b0c1dc3a
+     ```
+     `ls-remote` 走网络向远端要引用、只读、**不碰本地缓存**，因此它反映的是远端事实。
+   - **不可单独作为证据**：`git rev-list --left-right --count origin/main...HEAD` → `0	0`，以及 `git log origin/main`。
+     原因：这两条读的都是**本地 `origin/main` 引用缓存**（上次 `fetch`/`push` 的结果）；**push 从没发生、或 push 失败时，它们同样显示 `0 0` / 同样显示那些提交**。t23 第一轮正是用 `fetch + rev-list` 的 `0 0` 报「已推送」——那是**假绿**，只能靠 `ls-remote` 才查得出来。`fetch` 之后再跑 `rev-list` 也不行：`fetch` 只是刷新缓存，刷新完仍然是 `0 0`。
+   - **可作辅助**：`git push` 自身的输出 `a1b2c3..d4e5f6  main -> main` —— 能证明本地**发起过**推送且远端**接受了**更新，但报告里仍须附 `ls-remote` 原文，两者一致才算数。
+   - **为什么单列一条**：推送凭据在本机 **Windows Git 凭据管理器**里、WSL 内没有（§7.3），跨环境推送尤其容易"看起来成功、其实没推"；缺这条证据的代价是交付物在远端根本不存在，而所有参与者都以为它在。
 
 ---
 
@@ -229,6 +242,7 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 |---|---|---|
 | 2026-11-07 | **v4.2.1（t21 修复轮）**：§2 铁律 1 / §5 L2 / §6 三处网络例外集统一为**五类**（补「配置下发」`GET /api/v1/config`，与取价同组），B42/B47 条目内显式声明该归属；新增 **§5.1 基准复现与并发热点约定**（完整 40 位 SHA + `git rev-parse HEAD` 复核、引用数值真相源须给 md5、`tests/cases/carbon-calc.json` 的提交前缀与「单列 diff」约定）；`data/dao/` 的两个 S1 表 Dao 经 `pages/Index.ets` 锚点恢复进编译图 | t7 验证发现 F2/F3/F5/F6/F8 + t21 修复轮；配置下发通道决策见 `docs/DECISION-0003-runtime-config-and-sync-anchor.md`（B47），例外集口径派生自 B42/B47 |
 | 2026-11-07 | **§5.1-2 去门禁化（t23）**：删掉「改动数值的同一次提交里必须同步刷新 md5」—— md5 是内容函数，不可能写进自身（不动点），该要求只能是无人检查的约定（round 2 验证 F12）。改为「引用时现场 `md5sum` 并贴原始输出」，明确**不设期望 md5 常量**，数值有没有动一律以 `git diff` 为准 | t22 验证 F12 |
+| 2026-11-07 | **§5.1-4 增「已推送」证据条款（t25）**：明确「已推送」的**唯一合格证据**是 `git ls-remote origin <branch>` 的原始输出（并与本地 `git rev-parse HEAD` 一致）；把 `git rev-list --left-right --count origin/main...HEAD` → `0	0` 与 `git log origin/main` **列为不可单独作为证据**（读的是本地引用缓存，push 从未发生或失败时同样显示 `0 0`）；`git push` 的 `a1b2c3..d4e5f6  main -> main` 只作辅助。**本条不新建 `docs/DECISION-*.md`**：属可执行约定的补充，不涉及数值 / 契约 / 架构取舍，改以 `docs/CHANGELOG.md` 一行代决策留痕（队长裁决，见 t25 提交信息与 `docs/CHANGELOG.md`） | t23 推送证据纠错（队长 / app-ui-wb） |
 | 2026-11-07 | **v4.2 后续契约订正**（本表第 1 行同批次追加，分开记因改动依据不同）：新增 **B46**（附录 B `offsetMs` 同名双视角消歧 —— 客户端必须 `clientOffsetMs = −respOffsetMs`，§6.3 参数更名；`lastSyncAt` 收敛为单一服务端基准并派生 `lastSyncAtLocal`，§6.3/§6.4-6 给出与之一致的判据式）与 **B47**（附录 D10-5 缺配置下发通道 → 冻结**免鉴权** `GET /api/v1/config`，附录 B §5.4 端点表加行 + 新 §5.5 五字段契约，闭合「后台系统配置只写不读」）；§1.4/§9 区间更新为 **B1–B47**；决策记录见 `docs/DECISION-0003-runtime-config-and-sync-anchor.md` | t6（`/admin`）报出的 STOP + t15 消歧 + 附录 D10-5/D10-8 |
 | 2026-11-06 | **v4.2 文档契约勘误**：头部状态行改为「S1–S6 已实现并落库，S7 与 `/admin` 收尾中」；§6 未登录例外集补齐为四类（与 §2 铁律 1 / §5 L2 / 附录 D §1.6 统一）；新增 B40–B45（`uq_pr_source` 补 `user_id`、同步契约七处、例外集漏网、附录 C 落盘路径、附录 D §9 演示数据口径、状态行）；决策记录见 `docs/DECISION-0002-doc-contract-errata.md` | 队长复核 + t5/t9 实现反馈 + `server/README.md §9.1` |
 | 2026-11-06 | **v4.1 文档契约冻结**：全仓统一 ADR-0001 口径（服务端必做、唯一可选项是 Web 后台管理端、未登录即单机、鸿蒙分布式降级为近场演示层）；补齐 `AuthProvider`/`AuthService` 契约与 8 条不可执行契约的写死；协同页补家庭合并视图与待同步数、新增 `BackupListSheet`/`DevOptionsSheet`/`DemoModeBanner`；因子基准补 10 条对照镜像（31 项）、版本号统一 `CF-2026.2`；验收新增 D5-12/D6-11/D6-12；五份附录末尾摘要与两份导航收敛到新建 `docs/CHANGELOG.md`；§1.4 与 §9 清空 | 两轮独立审计 + 用户拍板（ADR Decisions ①②③） |
