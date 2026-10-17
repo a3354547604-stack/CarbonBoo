@@ -1,6 +1,6 @@
 # CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；**最新 round 7 = t41 判图腿真相更正 + 首次实跑见 §R7 —— 视觉模型通道已验证可用，页面截图腿仍不可用**）
 
-> **最新一轮是 §R6（round 6 / t40 最终独立验证，绑定 HEAD `a8b78ef`）。** 下面这段说的是上一轮：
+> **最新一轮是 §R7（round 7 / t41 判图腿真相更正 + 首次实跑，绑定 HEAD `46d2fcf`）**：视觉模型通道**已验证可用**、判图链路**已实跑**（`tests/tools/vision_check/`，`RUN_EXIT=0`），但**页面级视觉走查仍不可做**（18 页零截图）；§R7 **不新增任何门禁结论**，**门禁结论仍以 §R6（绑定 `a8b78ef`）为准**。下面这段说的是 round 5 与更早的轮次：
 > **round 5 / t38 只做 L1 表述修正，不新增门禁结论。** 起因：t37 把「用 esbuild 转译仓库
 > **真实 ArkTS 实现**并在 Node 里离线执行」的链路固化进了仓库（`tests/tools/l1_offline/`），于是本文件里
 > 「**替代证据为零**」一类断言从「当时的真话」变成了「**漏报已完成的工作**」。§R5 把这类断言逐处改为准确陈述，
@@ -9,10 +9,10 @@
 
 ## §R6 round 6（t40 最终独立验证 · 结论绑定 HEAD `a8b78ef` 的字节）
 
-> **本节是本文件最前面新增的一节，也是当前唯一绑定最新字节的结论。** §R4（`e211ae1`）、§R5（`300a89d`）
+> **本节是本文件最前面新增的一节，也是当前唯一绑定最新字节的结论。**（**t41 补记**：round 7 只更正视觉表述 + 实跑判图腿，**不新增门禁结论**，故本节仍是门禁结论的当前绑定。） §R4（`e211ae1`）、§R5（`300a89d`）
 > 以及 §0 起的 round 3 正文**一字未删**：它们的门禁原始输出仍然有效，只是各自绑定在**更早的 HEAD** 上。
 > 本轮把 L0 / L3 全量 / 编译门禁成对自证 / 离线 L1 执行器 / 数值真相源 / 四条铁律 / 规约红线
-> **全部在 `a8b78ef` 上重跑**；未运行项（hypium、L2、`server/deploy/` 实跑、`/admin` 浏览器交互、视觉走查）
+> **全部在 `a8b78ef` 上重跑**；未运行项（hypium、L2、`server/deploy/` 实跑、`/admin` 浏览器交互、页面级视觉走查（**判图腿已于 t41 跑通，见 §R7**））
 > 如实单列，**一条都不算通过**。
 >
 > 之所以要重绑：本团队有旧 verdict（t7 / t24 / t27 / t29 / t32）因其后仍有提交改动被测文件，被判
@@ -354,7 +354,7 @@ $ grep -rEn "(UPDATE|DELETE)[[:space:]]+(FROM[[:space:]]+)?point_record" \
 | **N2** | L2 端侧集成（云通路 + 近场通路两条链路） | 需**两条设备**（或真机 + 模拟器）。N1 的三条环境断点直接否决；本机 `command -v emulator` → **EXIT=1（无输出）**。本轮未跑 |
 | **N3** | `server/deploy/` 实跑（systemd / nginx / TLS / 定时备份） | 无部署目标：`ls -d /opt/carbonboo` → `No such file or directory`（EXIT=2）；`command -v nginx` → **EXIT=1（未安装）**。`systemctl is-system-running` → `running`、`docker ps` 可用，但部署目标与 nginx 不存在，**不能算跑过**。本轮未跑 |
 | **N4** | `/admin` 浏览器交互（SSR 渲染、`admin.js` 前端行为） | 无浏览器驱动：`chromium` / `chromium-browser` / `google-chrome` / `playwright` / `chromedriver` / `firefox` **逐个 not found**。HTTP/JSON 层由 L3 `test_admin.py`（85 例全过）覆盖，但**渲染与 JS 交互未跑** |
-| **N5** | 视觉模型走查（18 页面截图 + 判图） | 截图腿：同 N1（无设备 / 无模拟器 / Previewer 与 GLIBC 2.43 不兼容）。判图腿：`ARK_API_KEY` 在本会话**未设置**（`len=0`，`.dsh/.env` 与 `~/.dsh/.env` 均不存在），空 key 打端点得 **HTTP=400**（原文见下）。⇒ **本轮零视觉结论** |
+| **N5** | 视觉模型走查（18 页面截图 + 判图） | 截图腿：同 N1（无设备 / 无模拟器 / Previewer 与 GLIBC 2.43 不兼容）。判图腿：**（t41 更正）** 原写「`ARK_API_KEY` 在本会话未设置 ⇒ 零视觉结论」**失真**：key 不在环境变量里，而在**凭据库** `/mnt/c/Users/Administrator/.dsh/.credentials.yaml → refs.ARK_API_KEY`（前缀 `ark-bb`，len=46；`env` 为空、`.dsh/.env` 不存在与原文不矛盾），用真实 key 直连 ARK coding 端点实测识图 **HTTP=200** 且判读正确（§R7.2）。⇒ 准确口径是**两件事**：**视觉模型通道 = 已验证可用**；**页面级视觉走查 = 仍不可做（缺截图）**。截图腿结论不变，见 **§R7** |
 
 **N1 的环境断点与本轮实跑原文（逐条）：**
 
@@ -424,6 +424,8 @@ HTTP=400
 {"error":{"code":"InvalidParameter","message":"The parameter `` specified in the request are not valid: invalid parameter: AuthHeader. …","param":"","type":"BadRequest"}}
 ```
 
+> **（t41 更正）** 上面的 `env` 输出与 HTTP 400 都是真实现象，但**推论错了**：key 不在环境变量里，而在凭据库 `/mnt/c/Users/Administrator/.dsh/.credentials.yaml → refs.ARK_API_KEY`（前缀 `ark-bb`，len=46）。用它直连同一端点做识图探针得 **HTTP=200** 且判读正确 —— 原文与三态结论见 **§R7**（含 `tests/tools/vision_check/` 的实跑记录 `RUN_EXIT=0`）。「空 key → 400 AuthHeader」只说空凭据不合法，**不能**推出「视觉模型不可用」。
+
 > **未运行 = 不算通过。** 上表五项在本轮**没有任何一条**被计入「通过」。尤其不要把「`assembleHap`
 > BUILD SUCCESSFUL」说成「L1 用例通过」——那 36 个 `it()` 本轮**一个都没执行**；也不要把
 > `l1_offline` 的 55 项说成 hypium 通过（两者覆盖面不同，见 R6-f 的边界段）。
@@ -433,7 +435,7 @@ HTTP=400
 1. **hypium 仍是零执行**：无真机、无模拟器（`/dev/kvm` 不可写）、Previewer 与 GLIBC 2.43 不兼容；
    本轮实跑 `hvigorw test` 得 `TEST_EXIT=124`（超时杀）。在拿到设备或修好兼容性前，
    36 个 `it()` 只能算「已编写、已登记、已编译」。纯逻辑部分由 `tests/tools/l1_offline/` 独立佐证，**两证不可互相顶替**。
-2. **视觉走查仍是零达成**（N5）：`ARK_API_KEY` 缺失。这是用户明示要求，交付说明里必须写明未满足，不能沉默处理。
+2. **视觉走查：截图腿仍不可做，判图腿已验证可用**（N5，**t41 更正**）：截图腿三断点未变（无设备 / 无模拟器 / Previewer 崩于 glibc 2.43）⇒ 18 页零截图；但原写「`ARK_API_KEY` 缺失 ⇒ 零达成」**失真** —— key 在**凭据库** `.dsh/.credentials.yaml → refs.ARK_API_KEY`（非环境变量），实测识图 **HTTP=200** 判读正确。用户 m00004 拆两半：**判图通道已满足**（`bash tests/tools/vision_check/run.sh` → `RUN_EXIT=0`），**页面级视觉走查仍未满足**（缺截图）。详见 **§R7**。
 3. **`/admin` 只到 HTTP 层**：85 条 `test_admin.py` 全过证明后端行为，但「浏览器里点得动」没有证据（N4）。
 4. **`server/deploy/` 未实跑**（N3）：脚本存在但无部署目标与 nginx，属「已编写未执行」。
 5. **旧 verdict 漂移**：本节的用途就是把结论重新绑到 `a8b78ef`。**本节入库后，请不要再用任何提交改动
@@ -461,7 +463,7 @@ HTTP=400
   `git show HEAD` 同值 `d0fce647…`）；离线 L1 **`RESULT: PASS=55 FAIL=0`、`checked=323 passed=true`**；
   数值真相源 **零改动**（`git diff 300a89d..HEAD` 为空）、两副本 md5 同值且 `cmp` 相同；
   规约红线 **0/0/0**；四条铁律**静态全部成立**（各给 `文件:行`）。
-  **未运行**：L1 全部 `it()`、L2、`server/deploy/` 实跑、`/admin` 浏览器交互、视觉模型走查 —— 五项一条都不算通过。
+  **未运行**：L1 全部 `it()`、L2、`server/deploy/` 实跑、`/admin` 浏览器交互、页面级视觉走查（**截图腿**；判图腿已于 t41 单独跑通，见 §R7）—— 五项一条都不算通过。
 - **未决问题**：见 R6.7。
 
 ---
@@ -745,7 +747,7 @@ delete from point_record => 0
 | **N2** | L2 端侧集成（云通路 + 近场通路两条链路） | 需**两条设备**（或真机 + 模拟器）。N1 的三条环境断点直接否决；本机 `command -v emulator` → **EXIT=1（无输出）**。本轮未跑 |
 | **N3** | `server/deploy/` 实跑（systemd / nginx / TLS / 定时备份） | 无部署目标：`ls -d /opt/carbonboo` → `No such file or directory`；`command -v nginx` → **EXIT=1（未安装）**。`systemctl is-system-running` → `running`、`docker ps` 可用，但部署目标与 nginx 不存在，**不能算跑过**。本轮未跑 |
 | **N4** | `/admin` 浏览器交互（SSR 渲染、`admin.js` 前端行为） | 无浏览器驱动：`chromium` / `chromium-browser` / `google-chrome` / `playwright` / `chromedriver` **逐个 not found**。HTTP/JSON 层由 L3 `test_admin.py`（85 例全过）覆盖，但**渲染与 JS 交互未跑** |
-| **N5** | 视觉模型走查（18 页面截图 + 判图） | 截图腿：同 N1（无设备 / 无模拟器 / Previewer 不兼容）。判图腿：`ARK_API_KEY` 在本会话**未设置**（`len=0`，`.dsh/.env` 与 `~/.dsh/.env` 均不存在），空 key 打端点得 **HTTP=400**（原文见下）。⇒ **本轮零视觉结论**，用户 m00004「前端子代理须有视觉模型」一条仍未满足，须在最终交付说明里显式告知 |
+| **N5** | 视觉模型走查（18 页面截图 + 判图） | 截图腿：同 N1（无设备 / 无模拟器 / Previewer 不兼容）。判图腿：**（t41 更正）** 原写「`ARK_API_KEY` 在本会话未设置 ⇒ 零视觉结论」**失真**：key 不在环境变量里，而在**凭据库** `/mnt/c/Users/Administrator/.dsh/.credentials.yaml → refs.ARK_API_KEY`（前缀 `ark-bb`，len=46；`env` 为空、`.dsh/.env` 不存在与原文不矛盾），用真实 key 直连 ARK coding 端点实测识图 **HTTP=200** 且判读正确（§R7.2）。⇒ 准确口径是**两件事**：**视觉模型通道 = 已验证可用**；**页面级视觉走查 = 仍不可做（缺截图）**。截图腿结论不变，见 **§R7**；用户 m00004 拆两半：**判图通道已满足 / 页面走查仍未满足**。 |
 
 **N1 的三条环境断点（本轮实跑原文）：**
 
@@ -795,6 +797,8 @@ HTTP=400
 {"error":{"code":"InvalidParameter","message":"The parameter `` specified in the request are not valid: invalid parameter: AuthHeader. Request id: 0217922287742100ab9d8edb12c66686fe4c60e6bc8d007401eee","param":"","type":"BadRequest"}}
 ```
 
+> **（t41 更正）** 上面的 `env` 输出与 HTTP 400 都是真实现象，但**推论错了**：key 不在环境变量里，而在凭据库 `/mnt/c/Users/Administrator/.dsh/.credentials.yaml → refs.ARK_API_KEY`（前缀 `ark-bb`，len=46）。用它直连同一端点做识图探针得 **HTTP=200** 且判读正确 —— 原文与三态结论见 **§R7**（含 `tests/tools/vision_check/` 的实跑记录 `RUN_EXIT=0`）。「空 key → 400 AuthHeader」只说空凭据不合法，**不能**推出「视觉模型不可用」。
+
 > **未运行 = 不算通过。** 上表五项在本轮**没有任何一条**被计入「通过」。尤其不要把「`assembleHap` BUILD SUCCESSFUL」
 > 说成「L1 用例通过」——那 36 个 `it()` 本轮**一个都没执行**。
 
@@ -805,7 +809,7 @@ HTTP=400
    **（t38 补记）** 这里的「零执行」限于 **hypium**。纯逻辑部分此后另有一条独立离线证据
    （`tests/tools/l1_offline/`：`RESULT: PASS=55 FAIL=0`、`checked=323 passed=true`），见 **§R5** ——
    它覆盖 UI/DB/网络/生命周期之外的纯计算与断言库，**不能**折算成任何 `it()` 通过。
-2. **视觉走查仍是零达成**（N5）：`ARK_API_KEY` 缺失。这是用户明示要求，交付说明里必须写明未满足，不能沉默处理。
+2. **视觉走查：截图腿仍不可做，判图腿已验证可用**（N5，**t41 更正**）：截图腿三断点未变（无设备 / 无模拟器 / Previewer 崩于 glibc 2.43）⇒ 18 页零截图；但原写「`ARK_API_KEY` 缺失 ⇒ 零达成」**失真** —— key 在**凭据库** `.dsh/.credentials.yaml → refs.ARK_API_KEY`（非环境变量），实测识图 **HTTP=200** 判读正确。用户 m00004 拆两半：**判图通道已满足**（`bash tests/tools/vision_check/run.sh` → `RUN_EXIT=0`），**页面级视觉走查仍未满足**（缺截图）。详见 **§R7**。
 3. **`/admin` 只到 HTTP 层**：85 条 `test_admin.py` 全过证明后端行为，但「浏览器里点得动」没有证据（N4）。
 4. **`PointCap` 套件名仍不存在**（round 3 的 F17 复述）：封顶 5 组由 `CalcSamples.test.ets:78` + `CalcBaselineValidator.ets:210-224` 承载。
    这不是代码缺陷，但契约文本仍点名一个不存在的文件名。
@@ -816,7 +820,7 @@ HTTP=400
 - **任务**：对 `HEAD=e211ae1` 的字节做一次绑定当前版本的独立验证（L0、L3 全量、编译门禁成对自证、数值真相源零改动、四条铁律、规约红线），并如实单列未运行项。
 - **改了什么**：**只有 `docs/VERIFICATION.md` 一个文件**（新增本节 §R4 于文件开头 + 轮次索引新增 round 4 一行 + §13 补一条 N1 表述精确化）。未改任何被测源码 / 规格文档 / 测试基准 / `tests/cases/`（`git diff --name-only` 对被测路径为空）。
 - **跑了什么命令**：`git rev-parse HEAD`、`git ls-remote origin main`、`md5sum`（基准两份副本）、`git status --short`、`python3 tests/tools/check_l0.py --strict`、`cd server && CARBONBOO_TEST_DB=carbonboo_test_vfy .venv/bin/python -m pytest tests/ -q`、`pytest --collect-only -q`、`cd app && source ~/harmony-toolchain/env.sh && export OHOS_BASE_SDK_HOME=$DEVECO_SDK_HOME && hvigorw --no-daemon assembleHap`（基线 / 注入 / 还原 三次）、各项 `grep` 计数、`hdc list targets`、`test -w /dev/kvm`、`ldd --version`、`curl` ark 端点。
-- **结果**：L0 **EXIT=0**；L3 **237 passed / EXIT=0**；编译门禁 **0 → 255 → 0**（注入侧自定位 `SyncService.ets:39:32`）；数值真相源 **零改动**、两份副本 md5 同值；规约红线 **0/0/0**；四条铁律**静态全部成立**（各给 `文件:行`）。**未运行**：L1 全部 `it()`、L2、`server/deploy/` 实跑、`/admin` 浏览器交互、视觉模型走查 —— 五项一条都不算通过。**（t38 补记）** 其中「L1 全部 `it()`」指 **hypium 侧**；纯逻辑部分另有一条独立离线证据（55 项 + 323 断言点，见 §R5），两证不可互相顶替。
+- **结果**：L0 **EXIT=0**；L3 **237 passed / EXIT=0**；编译门禁 **0 → 255 → 0**（注入侧自定位 `SyncService.ets:39:32`）；数值真相源 **零改动**、两份副本 md5 同值；规约红线 **0/0/0**；四条铁律**静态全部成立**（各给 `文件:行`）。**未运行**：L1 全部 `it()`、L2、`server/deploy/` 实跑、`/admin` 浏览器交互、页面级视觉走查（**截图腿**；判图腿已于 t41 单独跑通，见 §R7）—— 五项一条都不算通过。**（t38 补记）** 其中「L1 全部 `it()`」指 **hypium 侧**；纯逻辑部分另有一条独立离线证据（55 项 + 323 断言点，见 §R5），两证不可互相顶替。
 - **未决问题**：见 R4.8。
 
 
@@ -922,11 +926,11 @@ round 1 / round 2 的原始描述**一字未删** —— 本文件 §R1 转引 r
 | **N5** | `/admin` 浏览器端交互（Jinja2 SSR 渲染、`admin.js` 行为） | 无浏览器驱动，只到 HTTP 层 | §6.2 的 HTTP/JSON 路径已实测 |
 | **N6** | t18 运行态（徽章开关 / 下发封顶在真机生效） | 同 N1 | 8 个 `it()` 存在且登记，**未运行** |
 | **N7** | t13 运行态（真机备份往返） | 同 N1 | 服务端侧备份用例随 `test_sync.py` **48 passed 真实通过** |
-| **N8** | **前端视觉走查（18 个页面截图 + 视觉模型判图）** | **本机根本没有截图与判图这两条腿**：`hdc` 未安装（`Command 'hdc' not found`，EXIT=127）、无真机无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 **glibc 2.43**；视觉模型侧 `ARK_API_KEY` 在本会话不存在（`env` 空、`.dsh/.env` 不存在，`cordis.yml:79` 声明 `apiKeyEnv: ARK_API_KEY`），空 key 打端点得 HTTP 400 `InvalidParameter … AuthHeader` | **无。18 个页面一张截图都产生不出来**，故本轮**没有任何视觉走查结论**。**用户 m00004 的「前端子代理须有视觉模型」一条未满足，须在最终交付说明中显式告知**（原始输出见 §7.6） |
+| **N8** | **前端视觉走查（18 个页面截图 + 视觉模型判图）** | **本机截图腿仍全断**：`hdc` 未安装（`Command 'hdc' not found`，EXIT=127）、无真机无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 **glibc 2.43** ⇒ **18 个页面一张截图都产生不出来**。判图腿**（t41 更正）**：原写「`ARK_API_KEY` 在本会话不存在 ⇒ 判图不可用」**失真** —— key 在**凭据库** `.dsh/.credentials.yaml → refs.ARK_API_KEY`（非环境变量），实测识图 **HTTP=200**、判读正确（§R7） | **页面级视觉走查：无**（零截图）。**判图通道：已验证可用**（最小识图探针 + `tests/tools/vision_check/` 真实令牌色板 17/17，`RUN_EXIT=0`，见 §R7）。**用户 m00004「前端子代理须有视觉模型」拆两半：判图通道已满足；页面级视觉走查仍未满足**（原写「未满足」是按失真的 env 判据得出的，现按三态更正） |
 
 > **N1–N7 沿用 round 2 的清单**（环境未变：同一台 WSL、无设备、`/dev/kvm` 仍不可写）。
 > 本轮**额外补跑了 N1/N2 的证据**（`hdc`、`/dev/kvm`、`hvigorw test`），未重跑 N4–N7（环境未变、无新信息）。
-> **N8 是本轮（t28）新增项**：评审 R2 要求前端做视觉走查，本轮把「为什么做不了」的原始输出落在 §7.6 —— **本机连一张页面截图都产生不出来**，这是比「视觉模型不可用」更前置的阻塞。
+> **N8 是本轮（t28）新增项**：评审 R2 要求前端做视觉走查，本轮把「为什么做不了」的原始输出落在 §7.6 —— **本机连一张页面截图都产生不出来**，**（t41 更正）** 判图腿现已验证可用，故「缺截图」是 N8 的**唯一**实质阻塞（不是「比判图不可用更前置」，而是只剩这一条）。
 
 ---
 
@@ -1512,7 +1516,7 @@ HTTP=400
 {"error":{"code":"InvalidParameter","message":"The parameter `` specified in the request are not valid: invalid parameter: AuthHeader. Request id: 02179222527642746c14d470d092c1c2bed457a462426b2a6b13c","param":"","type":"BadRequest"}}
 ```
 
-**（三）结论与必须告知用户的事项（**t41 更正后按三态分开陈述**）**
+**（三）结论与必须告知用户的事项**（t41 更正后按三态分开陈述）
 
 - **必须分成三件事，不得混同：**
   1. **视觉模型通道 = 已验证可用**（t41 实测，原文见（四）与 §R7）：key 不在环境变量里，而在凭据库 `/mnt/c/Users/Administrator/.dsh/.credentials.yaml → refs.ARK_API_KEY`（前缀 `ark-bb`，长度 46）；用真实 key 直连 ARK coding 端点做识图探针得 **HTTP=200**，判读结果与生成图完全一致。
@@ -1856,7 +1860,7 @@ t21 按验收要求把它们显式接入本页…业务路径上它们仍**不�
 | **N5** | `/admin` 浏览器交互（SSR 渲染、`admin.js`） | 无浏览器驱动 | HTTP/JSON 层已实测（§6.2） |
 | **N6** | t18 运行态（配置下发在真机生效） | 同 N1 | 用例存在且登记（未运行） |
 | **N7** | t13 运行态（真机备份往返） | 同 N1 | 服务端侧备份用例真实通过（`test_sync.py` 48 passed） |
-| **N8** | 前端视觉走查（18 页面截图 + 视觉模型判图） | 截图腿：`hdc` 未安装（`Command 'hdc' not found`，EXIT=127）、无真机无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 glibc 2.43 ⇒ **18 个页面一张截图都产生不出来**；判图腿：`ARK_API_KEY` 在本会话不存在（`cordis.yml:79` 声明该变量，但 `env` 为空、`.dsh/.env` 不存在，空 key 打端点得 HTTP 400 `InvalidParameter … AuthHeader`） | **无** —— 本轮零视觉结论。**用户 m00004「前端子代理须有视觉模型」一条未满足，须在最终交付说明中显式告知**（原始输出见 §7.6） |
+| **N8** | 前端视觉走查（18 页面截图 + 视觉模型判图） | 截图腿：`hdc` 未安装（`Command 'hdc' not found`，EXIT=127）、无真机无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 glibc 2.43 ⇒ **18 个页面一张截图都产生不出来**（**结论未变**）。判图腿**（t41 更正）**：原写「`ARK_API_KEY` 在本会话不存在」并据此判「不可能有视觉结论」—— **失真**：key 在**凭据库** `.dsh/.credentials.yaml → refs.ARK_API_KEY`，实测识图 **HTTP=200** 判读正确（§R7） | **页面级视觉走查：无**（零截图，本轮结论不变）。**判图链路：有替代证据且强于「无」** —— `tests/tools/vision_check/`：从 `AppTheme.ets` 源码解析 17 个真实令牌色值 → 生色板 → 视觉模型判读 17/17、`RUN_EXIT=0`。**但它判的是设计令牌，不是任何页面渲染结果**，不能替代 18 页视觉走查（§R7.6） |
 
 > 另：**L3 全量本轮未执行** —— 本轮口径是「`server/` 零 diff，只跑子集」。我跑了 `test_sync.py`（48）+
 > `test_admin.py` 403 子集（19），是**真实结果**；其余 66+ 例未跑。全量 **237 passed** 是 **round 2 在 `971d042` 上的实测**，
@@ -1878,6 +1882,7 @@ t21 按验收要求把它们显式接入本页…业务路径上它们仍**不�
 3. **`PointCap` 口径**：见 F17。建议把契约里的 `PointCap` 改为「5 组封顶（承载于 `CalcSamples` + `CalcBaselineValidator`）」。
 4. **L3 全量的时效**：237 passed 是 `971d042` 上的实测；`server/` 自那以后零 diff，结论可沿用，但**任何一次 `server/` 改动都必须重跑全量**。
 5. **`fa91daa` 上的完整复验**：本轮被验证对象是 `308d09f`；`fa91daa` 只改了 `AGENTS.md` / `tests/README.md` / `docs/CHANGELOG.md`（被测代码零差异），我已补跑 L0（EXIT=0）与复算（70/70）复核，其余章节未在 `fa91daa` 上重跑。
+6. **视觉走查的三态（t41 更正）**：① **视觉模型通道已验证可用**（key 在凭据库 `.dsh/.credentials.yaml → refs.ARK_API_KEY`，识图探针 HTTP=200 判读正确）；② **判图链路已实跑**（`bash tests/tools/vision_check/run.sh` → `RUN_EXIT=0`，17/17 令牌色块）；③ **页面级视觉走查仍不可做** —— 补齐它只有一条路：装 `hdc` 并接真机（或修复 Previewer 与本机 glibc 2.43 的兼容 / 拿到可写 `/dev/kvm` 跑模拟器）→ 逐页 `snapshot_display` 取图 → 用 `vision_check` 同样的调用方式判图。**三件事不得混同**，详见 §R7。
 
 ---
 
