@@ -748,6 +748,119 @@ def test_config_put_persists_and_audits(client: Any, admin_headers: dict[str, st
     assert detail["goal_def.reward"]["S3"] == {"before": 15, "after": 25}
 
 
+def config_row(db_session: Any, key: str) -> Any:
+    """读一行 `app_config`（返回 `Row(value, version)`；不存在返回 `None`）。
+
+    先 `rollback()`：`db_session` 是默认隔离级别（REPEATABLE READ）的普通 Session，
+    快照在**首条语句**时建立 —— 不丢弃它，PUT 之后再读会拿到"PUT 之前那份快照"。
+    （既有用例只在 PUT 之后首读，所以没暴露这一点；下面的用例要在 PUT 前后各读一次。）
+    """
+    db_session.rollback()
+    return db_session.execute(
+        text("SELECT value, version FROM app_config WHERE id = :key"), {"key": key}
+    ).first()
+
+
+def test_config_put_bumps_config_version_same_day_increments(
+    client: Any, admin_headers: dict[str, str], db_session: Any
+) -> None:
+    """附录 B §5.5 的 ⚠️：保存成功后**必须**更新 `app_config['config_version']`，同日递增（D10-5）。
+
+    版本号是客户端判断"配置内容是否变了"的唯一依据（`GET /api/v1/config` 的 `data.version`），
+    不 bump 则"后台改了 App 能读到"退化成碰运气。
+    """
+    from datetime import datetime
+
+    from admin_web.services.system_config import CONFIG_VERSION_KEY
+
+    assert config_row(db_session, CONFIG_VERSION_KEY) is None, "种子不写 config_version（缺键 → 端点下发 0.0.0）"
+    assert client.get("/api/v1/config").json()["data"]["version"] == "0.0.0"
+
+    today = datetime.now().astimezone().strftime("%Y.%m.%d")
+
+    first = client.put(f"{ADMIN}/config", headers=admin_headers, json={"dailyCap": 300})
+    assert first.status_code == 200, first.text
+    row = config_row(db_session, CONFIG_VERSION_KEY)
+    assert row is not None, "保存成功后 config_version 必须存在"
+    assert row.value == f"{today}-1", f"格式必须是 <yyyy.MM.dd>-<n>，实际 {row.value!r}"
+    assert row.version == row.value, "value 与 version 两列同写（下发端读 value or version）"
+
+    audit = client.get(f"{ADMIN}/logs?action=update_config", headers=admin_headers).json()["data"]
+    assert audit["total"] == 1
+    assert audit["items"][0]["detail"]["configVersion"] == {"before": None, "after": f"{today}-1"}, (
+        "首次保存前没有这一行 → 审计记 null 而不是编造 0.0.0"
+    )
+
+    second = client.put(f"{ADMIN}/config", headers=admin_headers, json={"dailyCap": 310})
+    assert second.status_code == 200, second.text
+    assert config_row(db_session, CONFIG_VERSION_KEY).value == f"{today}-2", "同日再次保存 → n 递增"
+
+    # 交叉断言（t17 已落地的客户端端点，免 token）：下发的 version 就是库里这一份
+    assert client.get("/api/v1/config").json()["data"]["version"] == f"{today}-2"
+
+
+def test_config_version_next_format_resets_across_days() -> None:
+    """格式 `<yyyy.MM.dd>-<n>`：同日递增、跨日（或首次保存）重置为 1。"""
+    from datetime import datetime
+
+    from admin_web.services.system_config import next_version
+
+    midday = datetime(2026, 11, 7, 12, 0, 0)
+    assert next_version("2026.11.07-3", now=midday) == "2026.11.07-4"
+    assert next_version("2026.11.06-9", now=midday) == "2026.11.07-1", "跨日重置为 1"
+    assert next_version("", now=midday) == "2026.11.07-1", "首次保存"
+
+
+def test_config_put_failure_rolls_back_version_and_config(
+    client: Any, admin_headers: dict[str, str], db_session: Any
+) -> None:
+    """验收：校验不通过 / 事务回滚时**不得** bump 版本号，也不得留下半份配置（同一事务）。"""
+    ok = client.put(f"{ADMIN}/config", headers=admin_headers, json={"dailyCap": 300})
+    assert ok.status_code == 200, ok.text
+    good_version = config_row(db_session, "config_version").value
+
+    unknown = client.put(
+        f"{ADMIN}/config", headers=admin_headers, json={"goalRewards": [{"id": "ZZ", "reward": 1}]}
+    )
+    assert unknown.status_code == 404 and unknown.json()["code"] == "NOT_FOUND"
+
+    # 关键用例：同一请求里「先写 dailyCap、再撞未知目标」→ 整个事务回滚
+    partial = client.put(
+        f"{ADMIN}/config",
+        headers=admin_headers,
+        json={"dailyCap": 400, "goalRewards": [{"id": "ZZ", "reward": 1}]},
+    )
+    assert partial.status_code == 404 and partial.json()["code"] == "NOT_FOUND"
+
+    invalid = client.put(f"{ADMIN}/config", headers=admin_headers, json={"dailyCap": -1})
+    assert invalid.status_code == 400 and invalid.json()["code"] == "INVALID_REQUEST"
+
+    assert config_row(db_session, "config_version").value == good_version, "失败的保存不得 bump 版本号"
+    assert config_row(db_session, "points_daily_cap").value == "300", (
+        "回滚后封顶值保持失败前的值（不出现『配置改了版本没动』）"
+    )
+    assert client.get(f"{ADMIN}/config", headers=admin_headers).json()["data"]["dailyCap"] == 300
+
+
+def test_config_no_op_save_does_not_bump_version(
+    client: Any, admin_headers: dict[str, str], db_session: Any
+) -> None:
+    """无改动保存是幂等成功：不写第二条审计、不推版本号（与商品目录同语义）。
+
+    "版本动了但配置没改"正是验收禁止的那一半中间态 —— 这里把它钉住。
+    """
+    assert client.put(f"{ADMIN}/config", headers=admin_headers, json={"dailyCap": 300}).status_code == 200
+    before = config_row(db_session, "config_version").value
+
+    same = client.put(f"{ADMIN}/config", headers=admin_headers, json={"dailyCap": 300, "badgesEnabled": 1})
+    assert same.status_code == 200, same.text
+    assert same.json()["data"]["changed"] == [], "无改动 → changed 为空"
+
+    assert config_row(db_session, "config_version").value == before, "无改动不得推版本号"
+    logs = client.get(f"{ADMIN}/logs?action=update_config", headers=admin_headers).json()["data"]
+    assert logs["total"] == 1, "无改动不写审计（版本号也不会动）"
+
+
 def test_config_put_rejects_unknown_goal_and_bad_values(client: Any, admin_headers: dict[str, str]) -> None:
     unknown = client.put(
         f"{ADMIN}/config", headers=admin_headers, json={"goalRewards": [{"id": "ZZ", "reward": 1}]}
