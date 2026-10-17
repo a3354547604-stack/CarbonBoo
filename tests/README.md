@@ -102,6 +102,25 @@ python3 tests/tools/check_l0.py --strict
 - **hypium 的 36 个 `it()` 仍然未运行**（见上方 ⚠️ 执行状态），上表 L1 的执行状态**不因本工具而改变**；
   两条证据**不可互相顶替**，报告里必须分开陈述：「离线纯逻辑 = 55 项 + 323 个断言点」与「hypium = 未运行」。
 
+### 5.2 判图腿 · 视觉模型一致性检查 — `tests/tools/vision_check/`（**不是截图腿，也不是 hypium 的替代品**）
+
+一条命令 `bash tests/tools/vision_check/run.sh`：从 `app/entry/src/main/ets/util/AppTheme.ets`
+**解析真实颜色令牌**（不手抄常数表）→ 渲染色板 PNG（每色一块 + 色名/十六进制/用途，背景用令牌
+`COLOR_BG`）→ 采样像素自检（必须与令牌色值一致，否则退出 2）→ 把图交给视觉模型
+（`deepseek-v4-1-flash-260910`，key 从凭据库 `.dsh/.credentials.yaml → refs.ARK_API_KEY` 读，**不落盘**）
+判读 → 打印**原始响应** → 按「背景色被描述为浅色 + 至少 8/17 色块被正确说出」给 PASS/FAIL。
+本轮实测 `RESULT: PASS` / `RUN_EXIT=0`（17/17 色块命中）；无网络退出 3、取不到 key 退出 4，
+失败一律打印原因，**不会静默通过**。用途与完整实测见 `tests/tools/vision_check/README.md`。
+
+**边界（必须连这条一起读）**
+
+- 它验的是**设计令牌色板**，**不是页面截图外观**；它不碰设备、不启动模拟器、不渲染任何页面，
+  所以**一页 UI 也没验**；
+- **截图腿仍然不可用**：`hdc` 未安装、无真机无模拟器、`/dev/kvm` 不可写、SDK Previewer 崩于
+  glibc 2.43 ⇒ **18 个页面一张截图都产生不出来**，页面级视觉走查仍不可做；
+- 报告里必须把 **「视觉模型通道 = 已跑通」** 与 **「页面级视觉走查 = 仍不可做」** 分开写，
+  不能合并成「视觉走查完成」；它同样不改变 hypium / L3 / 验收的任何判定。
+
 ### L3 · pytest — `server/tests/`
 | 文件 | 用例 |
 |---|---|
@@ -156,8 +175,12 @@ tests/
 │  └─ carbon-calc.json    # 数值唯一真相源（L0 与 L1 共用）
 └─ tools/
    ├─ check_l0.py         # L0 检查器（现在即可运行）
-   └─ l1_offline/         # L1 纯逻辑离线执行器（见 §5.1；跑仓库真实实现，不是 hypium 的替代品）
+   ├─ l1_offline/         # L1 纯逻辑离线执行器（见 §5.1；跑仓库真实实现，不是 hypium 的替代品）
       ├─ run.sh           # 一条命令：复制 → 校验 → 只改 import 前缀 → esbuild → Node 执行
       ├─ runners/         # calc_samples.mjs（55 项）、baseline_validator.mjs（323 个断言点）
       └─ README.md        # 用途、边界、capSamples 口径
+   └─ vision_check/       # 判图腿：设计令牌色板 → 视觉模型判读（见 §5.2；不产生页面截图）
+      ├─ run.sh           # 一条命令：挑带 Pillow 的解释器 → 解析 AppTheme → 画色板 → 判读 → PASS/FAIL
+      ├─ vision_check.py  # 解析令牌 / 渲染色板 / 像素自检 / 调视觉模型 / 判定
+      └─ README.md        # 用途、退出码、边界（不是截图腿，不能替代 18 页视觉走查）
 ```
