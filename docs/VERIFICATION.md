@@ -1,4 +1,4 @@
-# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；**最新 round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`**）
+# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；**最新 round 7 = t41 判图腿真相更正 + 首次实跑见 §R7 —— 视觉模型通道已验证可用，页面截图腿仍不可用**）
 
 > **最新一轮是 §R6（round 6 / t40 最终独立验证，绑定 HEAD `a8b78ef`）。** 下面这段说的是上一轮：
 > **round 5 / t38 只做 L1 表述修正，不新增门禁结论。** 起因：t37 把「用 esbuild 转译仓库
@@ -858,6 +858,7 @@ ohosTest 副本 app/entry/src/ohosTest/resources/rawfile/carbon-calc.json md5 �
 | round 5 | t38（`fixer-oc`，**表述修正轮，不新增门禁结论**） | `300a89d900c3b38722d67747a17a08518e843665` | 2026-11-07（与 R1–R4 同口径） | **仅修正 L1 表述**：t37 已把离线执行器入库（`tests/tools/l1_offline/`，用 **9 份真实 `.ets`** 转译执行），故把「**替代证据为零**」等失真断言改为准确三态陈述；本机实跑 `RESULT: PASS=55 FAIL=0`、`checked=323 passed=true`（反证：坏基准 → `PASS=53 FAIL=2` / `passed=false`，两者 `EXIT=1`）；**hypium 36 个 `it()` 仍未运行**，N1 结论不变，两证不可互相顶替；L0 `EXIT=0` | 本文 §R5（文件末尾） |
 
 | round 6 | t40（`verifier-oc`，**最终独立验证**） | `a8b78efa505d7643bf20e13674305a332e6925e6` | 2026-11-07 | **通过（限已跑项）**：L0 EXIT=0（28 项 0 错误 / 89 文件 0 命中 / docConflicts 0）、**L3 全量 237 passed**（85+40+29+25+10+48，专属库 `carbonboo_test_final`，218.64s）、**编译门禁成对自证 EXIT 0→255→0**（注入侧自定位 `SyncService.ets:39:32`，还原后 md5 与 `git show HEAD` 同值 `d0fce647…`）、**离线 L1 执行器 `RESULT: PASS=55 FAIL=0` / `checked=323 passed=true`**、数值真相源零 diff（`300a89d..HEAD`）且两副本同 md5+`cmp` 相同、规约红线 0/0/0、四条铁律静态全部成立；**hypium 36 个 `it()` / L2 / `server/deploy/` 实跑 / `/admin` 浏览器交互 / 视觉走查 五项仍未运行，一条不算通过** | 本文 §R6（文件最前） |
+| round 7 | t41（`fixer-oc`，**表述更正轮 + 判图腿首次实跑，不新增门禁结论**） | `46d2fcfc26c7957bc31398adc6c805ad27f09cc4` | 2026-11-07（与 R1–R6 同口径） | **仅更正视觉相关表述**：原「`ARK_API_KEY` 在本会话未设置 ⇒ 视觉模型零达成」失真 —— key 在**凭据库** `.dsh/.credentials.yaml → refs.ARK_API_KEY`（非环境变量），实测识图探针 **HTTP=200** 判读正确（最小探针 + 仓库真实令牌色板 `17/17`）；新增 `tests/tools/vision_check/`（从 `AppTheme.ets` 源码解析令牌 → 生色板 → 判读，`RUN_EXIT=0`），**视觉模型通道已验证可用 + 判图链路已实跑**；**页面级视觉走查仍不可做**（`hdc`/模拟器/Previewer 三断点未变，18 页零截图）；hypium 36 `it()` / L2 / deploy / `/admin` 浏览器 四项未运行，一条不算通过；L0 `EXIT=0` | 本文 §R7（文件末尾） |
 
 **F 编号规则**：跨轮累加不重用。round 1 用到 **F8**，round 2 用到 **F14**，round 3 从 **F15** 起。
 round 1 / round 2 的原始描述**一字未删** —— 本文件 §R1 转引 round 1 要点，两份备份文件完整留档（见 §15）。
@@ -1442,7 +1443,7 @@ tests/cases/carbon-calc.json:971:      "correct": "【已闭环·择一为准·2
 逐个归入五类：登录注册 / 同步 / 取价 / 备份 / 配置下发 —— **五类之外 0 处**。
 未登录时这五类都返回 `NOT_LOGGED_IN` 或走「失败即整份丢弃」，本机数据不受影响。**成立。**
 
-### 7.6 前端视觉走查（N8，本轮新增 · **未运行**）
+### 7.6 前端视觉走查（N8，本轮新增 · **未运行**；**t41 更正：判图腿已跑通，截图腿仍不可用 —— 见本节（二）更正块与（四）实跑记录，以及 §R7**）
 
 评审 **R2** 要求对 18 个页面做视觉走查。走查需要两条腿：**能截到图** + **能判图**。本轮实测两条腿**都不存在**，且第一条比第二条更根本 —— 截图都产生不出来。
 
@@ -1472,7 +1473,9 @@ $ test -w /dev/kvm; echo $?
 
 无 KVM 写权限 ⇒ 模拟器起不来；Previewer 崩于 **GLIBC 2.43**（本机 glibc 版本即 2.43，round 2/3 已两次实证）。**结论：18 个页面一张截图都产生不出来。**
 
-**（二）判图腿：视觉模型不可用（`ARK_API_KEY` 在本会话不存在）**
+**（二）判图腿：原判「视觉模型不可用」已失真（t41 更正）—— key 在凭据库，不在环境变量**
+
+> 下面这段原始输出**保留不动**（它是当时的真实观测）；失真之处在**推论**：把「环境变量里没有 key」推成了「视觉模型不可用」。更正见本节末（三）（四）。
 
 ```
 $ env | grep -i ARK_API_KEY
@@ -1509,11 +1512,47 @@ HTTP=400
 {"error":{"code":"InvalidParameter","message":"The parameter `` specified in the request are not valid: invalid parameter: AuthHeader. Request id: 02179222527642746c14d470d092c1c2bed457a462426b2a6b13c","param":"","type":"BadRequest"}}
 ```
 
-**（三）结论与必须告知用户的事项**
+**（三）结论与必须告知用户的事项（**t41 更正后按三态分开陈述**）**
 
-- **N8 未运行，不得算作通过。** 本轮**没有任何**视觉走查结论 —— 既没有截图，也没有任何模型对页面外观的判断。
-- **用户 m00004「前端子代理须有视觉模型」这条要求未满足**（配置里声明了 `ARK_API_KEY`，但本会话没有这个变量，`.dsh/.env` 也不存在，空 key 打端点直接 HTTP 400 `InvalidParameter … AuthHeader`）。**须在最终交付说明中显式告知用户。**
-- 待环境可用后的补跑方式：装 `hdc` 或起模拟器 → `hdc shell snapshot_display` 逐页取图 → 用有效 `ARK_API_KEY` 调 `POST https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions` 判图。**本轮不做任何「看起来还行」的口头替代**。
+- **必须分成三件事，不得混同：**
+  1. **视觉模型通道 = 已验证可用**（t41 实测，原文见（四）与 §R7）：key 不在环境变量里，而在凭据库 `/mnt/c/Users/Administrator/.dsh/.credentials.yaml → refs.ARK_API_KEY`（前缀 `ark-bb`，长度 46）；用真实 key 直连 ARK coding 端点做识图探针得 **HTTP=200**，判读结果与生成图完全一致。
+  2. **页面级视觉走查 = 仍不可做**：截图腿的三个断点一个都没变（`hdc` 无设备 / 无模拟器（`/dev/kvm` 不可写）/ Previewer 崩于 glibc 2.43），**18 个页面一张截图都产生不出来**。这是 N8 的**唯一实质阻塞**，不因判图腿可用而缓解。
+  3. **设计令牌色板判读 = 已实跑通过**（`bash tests/tools/vision_check/run.sh` → `RUN_EXIT=0`）：验的是 `AppTheme.ets` 真实令牌色值与判图链路，**不是页面外观**，**不能**替代 18 页视觉走查。
+- **用户 m00004「前端子代理须有视觉模型」**：判图通道这一半**已满足**（可用且已实跑）；「对页面做视觉走查」这一半**仍未满足**（缺截图）。本节原写「要求未满足」，是按当时失真的 env 判据得出的，现按三态更正 —— **交付说明里必须照这三条写，不能笼统说「视觉零达成」。**
+- 待截图腿可用后的补跑方式：装 `hdc` 或起模拟器 → `hdc shell snapshot_display` 逐页取图 → 用 `tests/tools/vision_check/` 里同样的调用方式（`POST …/api/coding/v3/chat/completions`，`model=deepseek-v4-1-flash-260910`，`image_url` 传 base64 PNG）判图。**不做任何「看起来还行」的口头替代。**
+
+**（四）判图腿实跑记录（t41 · 用仓库真实设计令牌生成色板 → 视觉模型判读）**
+
+命令与结果（本机实测，`RUN_EXIT` 为 `run.sh` 自身的退出码，不是管道尾值）：
+
+```
+$ bash tests/tools/vision_check/run.sh; echo RUN_EXIT=$?
+解释器 = …/dependencies/python/python.exe（3.12.14）        ← 自动挑「能 import PIL」的解释器
+令牌源 = app/entry/src/main/ets/util/AppTheme.ets            ← 从源码解析，脚本内无硬编码色表
+=== ① 解析真实设计令牌 ===  共解析到 17 个颜色令牌
+=== ② 渲染色板图 ===  自检：色块像素 == 令牌色值  17/17 ✓  （背景取令牌 COLOR_BG=#F5F7F6）
+=== ③ 取 key ===  key = ark-bb…16 (len=46)（不落盘、不回显明文）；环境变量 ARK_API_KEY = <未设置>
+=== ④ 调视觉模型判读（model=deepseek-v4-1-flash-260910）===
+  HTTP_STATUS = 200   elapsed = 14.7s
+--- RAW_RESPONSE_BEGIN ---（节选：省略 reasoning_content 字段，其余逐字）
+{"choices":[{"finish_reason":"stop","message":{"content":"1) 最外层背景色：约 **#F5F7F6**，非常浅的近白，略带灰绿调 …
+- #01 row 1 col 1：**COLOR_PRIMARY** — **#2E7D5B**
+- #02 row 1 col 2：**COLOR_PRIMARY_PRESS** — **#256449**
+…
+- #17 row 5 col 1：**COLOR_DISABLED_BG** — **#EDF1EF**"}],"model":"deepseek-v4-1-flash","usage":{"total_tokens":5008}}
+--- RAW_RESPONSE_END ---
+=== ⑤ 判定 ===
+  - 色块命中 17/17（名称或十六进制任一命中）
+  - 背景色：描述为浅色 ✓（令牌 #F5F7F6；答案有给出该十六进制）
+RESULT: PASS —— 视觉模型通道可用，且判读了 AppTheme 真实色板（背景 + 17/17 色块）
+RUN_EXIT=0
+```
+
+**边界（写死，别读成「页面视觉走查通过了」）**：
+
+- 这张图是**设计令牌色板**（17 个色块 + 色名/十六进制），不是任何页面的渲染结果 —— 它证明「**判图链路能用、且能读出仓库真实令牌色值**」，**不证明** 18 个页面长什么样，**不能**替代页面级视觉走查（截图腿仍然全断）。
+- 脚本只读 `AppTheme.ets`（不写 `app/`），key 只从凭据库读、不落盘；无网络时退出 3 并打印 `WinError 10061`，凭据库缺该 ref 时退出 4，**不会静默通过**（退出码表见 `tests/tools/vision_check/README.md`）。
+- N8 的判定仍是 **未运行（截图腿）**，本节只把其中的判图腿从「未验证」升级为「已验证可用」。
 
 ### 7.2 铁律 2 · 单一计算入口
 
@@ -2199,3 +2238,80 @@ $ echo $?
 - **只改本文件**：`git diff --name-only` 只有 `docs/VERIFICATION.md`；`tests/cases/carbon-calc.json` 零 diff（两份副本 md5 仍同值）。
 - **只改表述**：没有为让措辞好看而删掉任何「未运行/不算通过」的判定 —— 本轮改的方向是**补上漏报**，不是放宽结论。
 - **不 push**：提交后由队长推送；本轮的「已推送」证据以队长的 `git ls-remote` 为准（AGENTS.md §5.1-4）。
+
+---
+
+## §R7 round 7（t41 · 判图腿真相更正 + 首次实跑：**视觉模型通道已验证可用，页面截图腿仍不可用**）
+
+> 本轮**不新增任何门禁结论**，只做两件事：① 更正本文件里「视觉模型不可用 ⇒ 视觉零达成」这一族**失真表述**；
+> ② 用仓库真实设计令牌生成一张色板图，让视觉模型**真跑一次**，把「声称可用」变成「用过且有原始输出」。
+> 绑定基准：`HEAD=46d2fcf`（开工第一步 `git rev-parse HEAD` 复核；本轮只改 `docs/VERIFICATION.md` + 新增 `tests/tools/vision_check/`）。
+
+### R7.1 失真的成因（一句话：把「环境变量里没有」推成了「模型不可用」）
+
+- **事实部分（仍然为真，原文保留）**：`env` 里确实没有 `ARK_API_KEY`、`.dsh/.env` 确实不存在、空 key 打端点确实得 **HTTP=400 `InvalidParameter … AuthHeader`**。
+- **失真的推论**：由上面三条推出「视觉模型不可用 / 视觉零达成 / 用户 m00004 要求未满足」。
+- **真相**：key 不在环境变量里，而在**凭据库** `/mnt/c/Users/Administrator/.dsh/.credentials.yaml → refs.ARK_API_KEY`（前缀 `ark-bb`，长度 46）。`cordis.yml:79` 的 `apiKeyEnv: ARK_API_KEY` 只说明「宿主侧那个 provider 从环境变量取 key」，**不等于**「本会话没有 key」。空 key 的 400 是**空凭据**的正确响应，推不出「通道不存在」或「模型不支持 image」。
+
+### R7.2 我的探针（本轮实测原始输出；两种图各一次）
+
+**（a）最小识图探针**（自造 PNG：红底 + 左侧白色竖长方形 + 右侧蓝色椭圆；`model=deepseek-v4-1-flash-260910`）：
+
+```
+$ python3 -c "...['refs']['ARK_API_KEY']" | <windows-python> /tmp/probe_min.py
+KEY_PREFIX=ark-bb LEN=46
+HTTP_STATUS=200
+MODEL=deepseek-v4-1-flash
+ANSWER_BEGIN
+1) 红色。
+2) 一个竖直长方形和一个椭圆；长方形在左侧，椭圆在右侧。
+3) 长方形白色，椭圆蓝色。
+ANSWER_END
+```
+
+判读与生成图**完全一致**。**（诚实记录）** 同一脚本先用 **360×240** 的小图跑，模型对三问全答「无法确定」；放大到 **800×520** 后判读正确 ⇒ 小尺寸/低信息量图会让该模型的图像分支不稳定，探针图不能太小（色板图 138 KB，不受影响）。
+
+**（b）仓库真实令牌色板探针**：见 §7.6-（四）（`HTTP_STATUS=200`、`17/17` 色块命中、`RUN_EXIT=0`）。
+
+### R7.3 已入库的可复现工具：`tests/tools/vision_check/`
+
+| 文件 | 作用 |
+|---|---|
+| `tests/tools/vision_check/run.sh` | 一条命令入口：挑「能 import PIL」的解释器 → 解析令牌 → 画色板 → 取 key → 判读 → PASS/FAIL |
+| `tests/tools/vision_check/vision_check.py` | 从 `app/entry/src/main/ets/util/AppTheme.ets` **源码**解析颜色令牌（脚本内无硬编码色表）、渲染色板、**像素自检**（块像素必须等于令牌值）、调视觉模型、判定 |
+| `tests/tools/vision_check/README.md` | 用途、判定口径、退出码、边界 |
+| `tests/README.md` §5.2 | 登记 + 边界声明（**不能**替代页面级视觉走查） |
+
+退出码：`0` PASS ｜ `1` 判读不符 ｜ `2` 像素自检失败（图与令牌不一致）｜ `3` 连不上端点/HTTP 非 200 ｜ `4` 凭据库取不到 key 或解释器没有 Pillow。**失败一律非零退出并打印原因，不会静默通过**（实测：`VISION_ENDPOINT=http://127.0.0.1:9/nope` → 3；`VISION_KEY_REF=NO_SUCH_KEY` → 4）。
+
+### R7.4 准确三态（交付说明照这三条写，不得混同）
+
+| 层 | 状态 | 证据 |
+|---|---|---|
+| **视觉模型通道**（key、端点、模型、image 输入） | **已验证可用** | §R7.2 两次探针 `HTTP=200` 且判读正确 |
+| **判图链路 + 仓库真实令牌色值** | **已实跑通过** | `bash tests/tools/vision_check/run.sh` → `RUN_EXIT=0`、17/17 |
+| **页面级视觉走查（18 个页面截图）** | **仍不可做** | 截图腿三断点未变：`hdc` 无设备（`Connect server failed`）、无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 glibc 2.43 ⇒ **一张图都产生不出来** |
+
+**用户 m00004「前端子代理须有视觉模型」**：判图通道这一半**已满足**；「对页面做视觉走查」这一半**仍未满足**（缺截图）。
+
+### R7.5 本轮逐处改动清单（只改表述，不删任何「未运行」判定）
+
+| # | 位置 | 改前 | 改后 |
+|---|---|---|---|
+| 1 | 文件第 1 行标题 | 「最新 round 6 = …」 | 追加 round 7 指针（§R7） |
+| 2 | §7.6 标题 | 「本轮新增 · **未运行**」 | 追加「t41 更正：判图腿已跑通，截图腿仍不可用」 |
+| 3 | §7.6（二）标题 | 「判图腿：视觉模型不可用」 | 「原判已失真（t41 更正）—— key 在凭据库，不在环境变量」＋保留原原始输出 |
+| 4 | §7.6（三） | 「N8 未运行 + 用户要求未满足（env 无 key）」 | 改为**三态陈述**；用户要求拆成「判图已满足 / 页面走查未满足」 |
+| 5 | §7.6（四） | （无） | **新增实跑记录**：命令、`RUN_EXIT=0`、原始响应节选、边界（色板 ≠ 页面截图） |
+| 6 | §R6-N5 行 / §R6.7-2 / §R6.8 | 「`ARK_API_KEY` 未设置 ⇒ 视觉零达成」 | 三态更正 + 指向 §R7；截图腿结论原样保留 |
+| 7 | §R4-N5 行 / §R4.8-2 / §R4.9 | 同上 | 同上（历史行**不改正文**，只加「t41 更正」指针） |
+| 8 | §0 未运行表 N8 行 + 表后注 | 同上 | 同上 |
+| 9 | §13-N8 行 | 判图腿「不可用」、替代证据「无」 | 判图腿改为「已验证可用（§R7）」；替代证据改为「色板判读（不覆盖页面外观）」 |
+| 10 | §14 未决问题 | （无视觉专条） | 新增第 6 条：三态 + 补齐截图的唯一路径 |
+| 11 | 轮次索引 | 到 round 6 | 新增 round 7 一行（t41，表述更正 + 判图腿首次实跑） |
+
+### R7.6 边界（写死）与仍未运行的项
+
+- **色板 ≠ 页面**：`vision_check` 判的是**设计令牌颜色**，不产生、也不判任何页面渲染结果；**18 页视觉走查仍是零**，`hdc`/模拟器/Previewer 三个断点本轮一个都没动。
+- **hypium / L2 / `server/deploy/` 实跑 / `/admin` 浏览器交互 仍未运行** —— 本轮与 §R6 相比在这四项上**没有任何变化**，一条都不能算通过。
+- **不 push**：本轮提交由队长推送；「已推送」以队长的 `git ls-remote origin main` 原始输出为准（AGENTS.md §5.1-4）。
