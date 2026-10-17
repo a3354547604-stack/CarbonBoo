@@ -41,7 +41,7 @@ python3 tests/tools/check_l0.py --strict
 
 **这是所有碳计算与积分数值的唯一真相源**（`AGENTS.md` §1.2）。`docs/` 与它不一致时：改文档，不改基准；确有必要改基准时，必须同时改文档并在同一次提交里完成。
 
-包含：21 个因子（20 个可录入 + `CAR_OWN_FACTOR`）、2 条换算规则、18 组正向样例、5 组封顶样例、6 条边界样例、`docConflicts` 待修清单。
+包含：**31 项**因子相关条目 = 30 条因子（20 条 `recording: true` 可录入 + 10 条 `recording: false` 对照镜像）+ 换算常量 `CAR_OWN_FACTOR` 1 条；另含 2 条换算规则、18 组正向样例、5 组封顶样例、6 条边界样例、`docConflicts` 待修清单。条目口径与 `docs/APPENDIX-A-carbon-factors.md §2.5` 的「30 条 + `CAR_OWN_FACTOR` 1 条 = 31 项」镜像关系一致（B36）。
 
 它同时是 L1 的输入：ArkTS 单测**不要重复抄数字**，应当把这份 JSON 拷进 `app/entry/src/ohosTest/resources/` 后逐条断言。
 
@@ -64,7 +64,7 @@ python3 tests/tools/check_l0.py --strict
 | 文件 | 用例 |
 |---|---|
 | `CalcSamples.test.ets` | 18 组正向样例：断言 `reductionKg`（4 位小数）与应得 C；**并含 5 组封顶样例**：断言实入 A、`capped` 标记、`<0.005 kg` 不生成流水 |
-| ~~`PointCap.test.ets`~~ | **已并入 `CalcSamples.test.ets`**（同上行，5 组封顶样例），不再单独建文件 |
+| ~~`PointCap.test.ets`~~ | 封顶 5 组（无独立套件，由 `CalcSamples.test.ets` + `CalcBaselineValidator.ets` 承载），不再单独建文件 |
 | `GoalIdempotent.test.ets` | 同一 `(goalId, periodKey)` 重复触发只发一次；跨周期重置；11 个目标判定 |
 | `BadgeIdempotent.test.ets` | 8 枚徽章幂等、不发积分、删除记录后不撤销 |
 | `ShopPurchase.test.ets` | 购买事务原子性、重复购买被拒、余额不足不可买 |
