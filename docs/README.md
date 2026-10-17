@@ -25,6 +25,7 @@
 | 8 | [adr/0001-account-and-sync.md](./adr/0001-account-and-sync.md) | **账号与同步决策**：服务端必做（账号 + 同步 + 取价 + 备份）、仅 Web 后台可选、不接华为账号；注销后云端软删保留 30 天 | 涉及登录 / 同步 / 服务端时 |
 | 9 | [CHANGELOG.md](./CHANGELOG.md) | **全仓库唯一变更记录**（各附录末尾的"变更摘要"都指向这里） | 想知道"哪一版改了什么"时 |
 | 10 | [DECISION-0002-doc-contract-errata.md](./DECISION-0002-doc-contract-errata.md) | **v4.2 文档契约勘误的决策记录**：`uq_pr_source` 补 `user_id`、同步契约七处、附录 C 落盘路径、附录 D §9 演示数据口径（`AGENTS.md §10` ① 要求的留档） | 想追"这一轮文档为什么这么改"时 |
+| 11 | [DECISION-0003-runtime-config-and-sync-anchor.md](./DECISION-0003-runtime-config-and-sync-anchor.md) | **运行期配置下发通道与同步锚点基准的决策记录**（D1–D10）：`offsetMs` 客户端取反 / `lastSyncAt` 单一服务端基准 + 派生 `lastSyncAtLocal` / 新增免鉴权 `GET /api/v1/config`（附录 B §5.5）与「整份校验失败即整份丢弃」的落地口径（B46 / B47） | 想追"配置怎么下发、时间戳在哪个基准上比"时 |
 
 ---
 

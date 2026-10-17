@@ -52,7 +52,7 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 **仍未清零（阻塞对应模块的编码）**
 
 > ✅ **当前为空。** `python3 tests/tools/check_l0.py --strict` 已通过：0 处 DOC_SCAN 命中 + 0 条 open docConflicts（2026-11-06）。
-> 下面的 B20–B45 全部已清零；新增缺陷必须**同时**写进本表与 `tests/cases/carbon-calc.json → docConflicts`（`status: "open"`）。
+> 下面的 B20–B47 全部已清零；新增缺陷必须**同时**写进本表与 `tests/cases/carbon-calc.json → docConflicts`（`status: "open"`）。
 
 **已清零（2026-11-06 · v4.2 文档契约勘误）**
 
@@ -62,6 +62,8 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 - B43 附录 C 落盘路径勘误：设计令牌唯一来源是 `app/entry/src/main/ets/util/AppTheme.ets`（**没有** `common/` 目录）；§25 自检第 2 条的例外不是 `LiteralConstants.ets` 文件，而是同一文件里的 `LiteralConstants` 类
 - B44 附录 D §9 演示数据四约束互斥 → 新增「§9.1 汇总口径」收敛为自洽规格：单条量级按「日均 ≈0.7 kg」缩放（与 `DemoService` 逐条一致），条数 261（表述「约 260 条」），累计减排 **61.7400 kgCO₂e**（落 60–90 区间、< 100 kg），记录类毛收益 ≈6,174 分由收尾兑换收敛到余额 **4,820–4,919**；§10.3 `summary.csv` 示例与 §9.1 逐字同源；附录 C §3.4 补「示意数字≠演示数据规格」
 - B45 AGENTS.md 头部状态行勘误：删掉「只做计划与开发文档，暂不编码」「`app/`、`server/` 尚未创建」，改为「S1–S6 已实现并落库（`app/` 19 张表 + 18 个页面；`server/` 21 张表 + 账号/同步/取价/备份 + L3 pytest），S7 与 `/admin` 收尾中」，规划版本 v4.1 → v4.2
+- B46 **`offsetMs` 同名双视角消歧 + `lastSyncAt` 基准单一化**（附录 B §5.3 / §6.3 / §6.4-6）：① `offsetMs` 是**服务端视角**（`服务端时钟 − 客户端时钟`，服务端 `outcome.offset_ms`），而 §6.3 伪码要的是**客户端视角**（`客户端时钟 − 服务端时钟`），**客户端必须取反** `clientOffsetMs = −respOffsetMs`；漏掉取反会把对端时间戳朝相反方向偏移、让更旧的行覆盖本机，得到与 §6.4-6 **相反**的收敛结论（§5.3 已补自证判据：`respOffsetMs = +60000` ⇒ 服务端 `updatedAt = T` 的行换算到客户端基准必须是 `T − 60000`，即显得更旧）；§6.3 参数名由 `offsetMs` **更名 `clientOffsetMs`**，避免与响应字段同名反向。② `lastSyncAt` 由「同名不同基准」收敛为**单一服务端基准**：客户端把它落盘为响应里的 `serverTime`（`device_info.last_sync_at`、push 请求体、pull 的 `since` 用同一个值——选服务端基准是因为 `pull?since=` 没有 `clientNow`，无从换算客户端锚点）；真冲突判定只把**锚点**换算到本机一侧：客户端 `l.updatedAt > lastSyncAtLocal && r.updatedAt > lastSyncAt`（`lastSyncAtLocal ≝ lastSyncAt + clientOffsetMs = lastSyncAt − respOffsetMs`），服务端 `local_updated > last_sync_at && int(values[\"updated_at\"]) + offset_ms > last_sync_at`。文档侧已闭环（`67f363b` offsetMs + `bfd5090` lastSyncAt）；客户端 t13 已按取反实现
+- B47 附录 D10-5「改目标奖励分值 / 每日封顶值 / 徽章开关 → **App 侧能读到**」缺下发通道（后台系统配置「只写不读」的死功能）→ **已冻结 `GET /api/v1/config`**：附录 B §5.4 端点表新增一行 + 新开 **§5.5** 五字段契约（`version` 非空字符串 / `pointsDailyCap` 非负整数 / `badgesEnabled` **JSON 布尔** / 可缺省的 `goalRewards[{goalId,reward}]` / `serverTime` 毫秒整数）+ 服务端生成规则表（含 `config_version` 独立键名、`1→true` 序列化、`goal_def` 逐行）+ 客户端「整份校验失败即整份丢弃」6 条落地口径；**免 Bearer**（与 §5.4 取价同组：未登录也要能读到公共配置，后端不可用时照常用本地值 → D10-8 / 铁律 1）；附录 D10-5 补可执行口径（App 冷启动后本机 `app_config['server_config']` 的 `pointsDailyCap`/`badgesEnabled`/`goalRewards` 三项与后台一致即为通过）。`app_config` 仍是**本机专属表、不参与同步**（§1.1/§1.2 清单与口径未动）。文档侧已闭环（`d719c45`）；**实现跟进任务：t17 服务端 / t18 客户端**
 
 **已清零（2026-11-06 · v4.1 文档契约冻结）**
 
@@ -198,7 +200,7 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 
 ## 9. 已知但未清零的其他缺陷（清单）
 
-**✅ 2026-11-06：清单已清空。** 前几轮交叉审查共发现的 31 条不一致（家庭碳积分合并视图、协同面板"待同步数"、"我的 → 数据管理"页、看板下钻字段、录入向导"两步"、"撤销上一笔（3 秒）"、演示脚本承诺但界面没有的元素、"我的"页徽章数 6/8、已读判定、生活建议条数、附录 E PPT 页码、`_tmp_*.txt` 引用的官方原文等）、v4.1 新发现的 8 条（版本号分叉、数字文案批次、`AuthProvider` 落点、契约可执行性、因子镜像、验收↔界面双向承载、冗余重复源、ADR 未决项）以及 **v4.2 的 6 条（B40–B45：`uq_pr_source` 补 `user_id`、同步契约七处对齐实现、`AGENTS.md §6` 例外集漏网、附录 C 落盘路径、附录 D §9 演示数据口径、`AGENTS.md` 头部状态行）** 已全部闭环，逐条见 §1.4 与 `tests/cases/carbon-calc.json → docConflicts`（**B1–B45**，`status` 全为 `closed`）。
+**✅ 2026-11-06：清单已清空。** 前几轮交叉审查共发现的 31 条不一致（家庭碳积分合并视图、协同面板"待同步数"、"我的 → 数据管理"页、看板下钻字段、录入向导"两步"、"撤销上一笔（3 秒）"、演示脚本承诺但界面没有的元素、"我的"页徽章数 6/8、已读判定、生活建议条数、附录 E PPT 页码、`_tmp_*.txt` 引用的官方原文等）、v4.1 新发现的 8 条（版本号分叉、数字文案批次、`AuthProvider` 落点、契约可执行性、因子镜像、验收↔界面双向承载、冗余重复源、ADR 未决项）以及 **v4.2 的 8 条（B40–B47：`uq_pr_source` 补 `user_id`、同步契约七处对齐实现、`AGENTS.md §6` 例外集漏网、附录 C 落盘路径、附录 D §9 演示数据口径、`AGENTS.md` 头部状态行、`offsetMs` 同名双视角消歧 + `lastSyncAt` 基准单一化、附录 D10-5 缺配置下发通道 → 冻结 `GET /api/v1/config`）** 已全部闭环，逐条见 §1.4 与 `tests/cases/carbon-calc.json → docConflicts`（**B1–B47**，`status` 全为 `closed`）。
 
 **唯一遗留（不阻塞编码，登记备查）**
 
@@ -212,6 +214,7 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 
 | 日期 | 变更 | 依据 |
 |---|---|---|
+| 2026-11-07 | **v4.2 后续契约订正**（本表第 1 行同批次追加，分开记因改动依据不同）：新增 **B46**（附录 B `offsetMs` 同名双视角消歧 —— 客户端必须 `clientOffsetMs = −respOffsetMs`，§6.3 参数更名；`lastSyncAt` 收敛为单一服务端基准并派生 `lastSyncAtLocal`，§6.3/§6.4-6 给出与之一致的判据式）与 **B47**（附录 D10-5 缺配置下发通道 → 冻结**免鉴权** `GET /api/v1/config`，附录 B §5.4 端点表加行 + 新 §5.5 五字段契约，闭合「后台系统配置只写不读」）；§1.4/§9 区间更新为 **B1–B47**；决策记录见 `docs/DECISION-0003-runtime-config-and-sync-anchor.md` | t6（`/admin`）报出的 STOP + t15 消歧 + 附录 D10-5/D10-8 |
 | 2026-11-06 | **v4.2 文档契约勘误**：头部状态行改为「S1–S6 已实现并落库，S7 与 `/admin` 收尾中」；§6 未登录例外集补齐为四类（与 §2 铁律 1 / §5 L2 / 附录 D §1.6 统一）；新增 B40–B45（`uq_pr_source` 补 `user_id`、同步契约七处、例外集漏网、附录 C 落盘路径、附录 D §9 演示数据口径、状态行）；决策记录见 `docs/DECISION-0002-doc-contract-errata.md` | 队长复核 + t5/t9 实现反馈 + `server/README.md §9.1` |
 | 2026-11-06 | **v4.1 文档契约冻结**：全仓统一 ADR-0001 口径（服务端必做、唯一可选项是 Web 后台管理端、未登录即单机、鸿蒙分布式降级为近场演示层）；补齐 `AuthProvider`/`AuthService` 契约与 8 条不可执行契约的写死；协同页补家庭合并视图与待同步数、新增 `BackupListSheet`/`DevOptionsSheet`/`DemoModeBanner`；因子基准补 10 条对照镜像（31 项）、版本号统一 `CF-2026.2`；验收新增 D5-12/D6-11/D6-12；五份附录末尾摘要与两份导航收敛到新建 `docs/CHANGELOG.md`；§1.4 与 §9 清空 | 两轮独立审计 + 用户拍板（ADR Decisions ①②③） |
 | 2026-10-14 | 新建本文件：规约 + 冲突裁决 + 停手规则 + B1–B16 待修清单 + 切片顺序 + 测试要求 + 账号/同步规则 + 多 agent 约定 | `docs/adr/0001-account-and-sync.md` |

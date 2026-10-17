@@ -978,6 +978,22 @@
       "bad": "两份文档都写着与仓库现实不符的进度：「当前阶段：只做计划与开发文档，暂不编码」+「`app/`、`server/` **尚未创建**」/「计划已定稿，**尚未开始编码**」；而 `app/`（ArkTS + API 12，19 张表 + 18 个页面）与 `server/`（FastAPI + MySQL 8，21 张表 + 账号/多设备同步/取价/云端备份 + L3 pytest）都已落库，`/admin` 在实现中——后续 agent（连队长都要靠实测）会据此误判仓库现状",
       "correct": "【已闭环·2026-11-06 队长复核】AGENTS.md 头部改为「S1–S6 已实现并落库（`app/` 19 张表 + 18 个页面；`server/` 21 张表 + 账号/多设备同步/取价/云端备份 + L3 pytest），S7 创新项与 `/admin` 后台收尾中；规划 v4.2 定稿（2026-11-06 文档契约勘误）」；docs/README.md「当前阶段」改为同一口径（含 v4.2）。复核依据：`app/entry/src/main/ets/data/schema/ClientSchema.ets` TABLES=19 / SYNCED_TABLES=9；`ls app/entry/src/main/ets/pages` 19 个 .ets；`grep -c __tablename__ server/app/models/*.py` = 21；`ls server/tests` 有 test_auth/test_authz/test_shop/test_sync",
       "status": "closed"
+    },
+    {
+      "id": "B46",
+      "file": "docs/APPENDIX-B-data-and-api.md",
+      "locator": ":824/:996-999（§5.3 push 请求体、§6.3 伪码头注释）、:1043/:1050（§6.3 真冲突与平局分支）、:1075（§6.4-3 ignored 计数）、:1081-1092（§6.4-6 lastSyncAt 的基准）",
+      "bad": "`offsetMs` 一个名字被两端各自复用却没有写出客户端那一次取反：§5.3 响应里的 `offsetMs` 是**服务端视角**（服务端 − 客户端），而 §6.3 伪码要的是**客户端视角**（客户端 − 服务端）——照字面把响应值直接相加，在服务端快 60 秒时会把对端时间戳算**新** 60 秒，对端更旧的行反而覆盖本机，得到与 §6.4-6 **相反**的收敛结论（双机演示才暴露、极难定位）。同类且更严重的是 `lastSyncAt`：既被定义为「上次成功同步的时刻（服务端时钟基准，落 `device_info.last_sync_at`）」，又在 §6.3 的冲突条件 `l.updatedAt > lastSyncAt && r.updatedAt > lastSyncAt` 里与**本机**行的 `updatedAt` 直接比较 —— 同名不同基准",
+      "correct": "【已闭环·2026-11-06】① `offsetMs` 消歧（t15，提交 `67f363b`）：§5.3 补明文「响应里的 `offsetMs` 是服务端视角，客户端必须 `const clientOffsetMs = -respOffsetMs;`」并给自证判据（`respOffsetMs = +60000` ⇒ 服务端 `updatedAt = T` 的行换算到客户端必须是 **`T − 60000`**，即显得更旧；服务端侧与自己的基准同向、不取反）；§6.3 伪码参数由 `offsetMs` 更名 `clientOffsetMs` 并注明「它不是 §5.3 响应里的 `offsetMs`（互为相反数）」。② `lastSyncAt` 基准单一化（t16，提交 `bfd5090`）：冻结为**唯一服务端基准** = 响应 `serverTime`（落 `device_info.last_sync_at`，也用于 push 请求体与 pull 的 `since`）；§6.3 真冲突与平局分支改用派生锚点 `lastSyncAtLocal ≝ lastSyncAt + clientOffsetMs = lastSyncAt − respOffsetMs`（本机行与换算后的锚点同基准，对端行保持原值），等价写法 `l.updatedAt + respOffsetMs > lastSyncAt`；§6.4-6 新增「lastSyncAt 的基准」给出客户端/服务端两侧比较式表（服务端侧 `int(values[\"updated_at\"]) + offset_ms > last_sync_at`）+ 自证判据（`respOffsetMs = 0` 时两式退化为同一个数）+「凡跨端时间戳必须能说清在哪个基准上」的字段归属表。③ 选服务端基准而否决「客户端单锚点」的理由写进 §6.4-6：`GET /sync/pull?since=` 没有 `clientNow`，服务端在 pull 路径上拿不到 `offset_ms`，增量边界会随时钟偏移漂移。门禁：`python3 tests/tools/check_l0.py --strict` → EXIT=0",
+      "status": "closed"
+    },
+    {
+      "id": "B47",
+      "file": "docs/APPENDIX-B-data-and-api.md + docs/APPENDIX-D-acceptance.md",
+      "locator": "APPENDIX-B §5.4 端点表（:866）与新增 §5.5（:900-975）；APPENDIX-D D10-5（:209）；PLAN §13.3",
+      "bad": "验收 **D10-5** 的判据含「改目标奖励分值 / 每日封顶值 / 徽章开关 → **App 侧能读到**」，但附录 B §5.4 与 `PLAN §13.3` 只定义了商品目录下发（`GET /api/v1/shop/items`），**没有任何 `app_config` / `goal_def` 下发通道** —— 后台的系统配置是「只写不读」的死功能，D10-5 没有可执行路径（t6 交付时报出的 STOP）",
+      "correct": "【已闭环·2026-11-06 文档侧；实现跟进任务：**t17 服务端 / t18 客户端**】① 附录 B §5.4 端点表新增 `GET /api/v1/config`（鉴权「**无**」，与 `GET /api/v1/shop/items` 同组 —— 未登录也要能读到公共配置，后端不可用时照常用本地值，D10-8 / 铁律 1）。② 新增 **§5.5 config（客户端可读配置，免鉴权）** 冻结响应体契约 `{ ok: true, data: { version: 非空字符串, pointsDailyCap: 非负整数, badgesEnabled: 布尔, goalRewards: [{ goalId, reward }] 可缺省, serverTime: 毫秒整数 } }`、服务端生成规则表（`version` ← 服务端 `app_config['config_version']`，**独立键名**不与 `shop_items_version` 互相顶替、缺省 `\"0.0.0\"`；`pointsDailyCap` ← `points_daily_cap` 缺省 `200`；`badgesEnabled` ← `badges_enabled` 的 `1`/`0` **必须序列化为 JSON 布尔**、缺省 `true`；`goalRewards` ← `goal_def` 按 `id` 升序、表空可省略）与客户端校验落地口径（整份校验、**任一字段非法即整份丢弃**、`goalId` 必须能在 `rawfile/goals/goal-defs.json` 找到否则**整条忽略**、整份落 `app_config['server_config']`、**冷启动**生效、`version` 与上一份相同由客户端自行决定、只读不写 `admin_op_log`/`sync_log`）。③ D10-5 补可执行口径：冷启动后本机 `app_config['server_config']` 内 `pointsDailyCap` / `badgesEnabled` / `goalRewards` 三项**与后台一致**即为通过。④ 铁律 1 边界写明：服务端只提供**下行默认值**（搬运），本机 `app_config` 仍是唯一真相源；§1.1/§1.2 的表清单与「`app_config` 不参与同步」**未动**。提交：`d719c45`；门禁 `python3 tests/tools/check_l0.py --strict` → EXIT=0",
+      "status": "closed"
     }
   ]
 }
