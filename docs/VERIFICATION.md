@@ -64,7 +64,7 @@ round 1 / round 2 的原始描述**一字未删** —— 本文件 §R1 转引 r
 | **V6** | 编译门禁真实性（注入未定义**引用**） | `/tmp/cbv24` 副本（`git archive 308d09f`）注入 4 个不同模块 | **4 组注入全部 BUILD FAILED / EXIT=255 且错误自定位到注入行**；撤回后 4 次 BUILD SUCCESSFUL / EXIT=0（§5.1–5.2） |
 | **V7** | 业务代码真实进入编译图 | 自写 import 闭包脚本 + 3 处注入探针 | `pages/Index.ets` import 闭包 **105 个 .ets**；另 3 个未入闭包文件全部另有入图路径（含 `module.json5` 入口，已注入自证）⇒ **108 个 .ets 全在编译图内**（§5.3） |
 | **V8** | 副本零污染（注入不回写工作树） | 逐个 md5 与 `git show 308d09f:<path>` 对比 | 4 个被注入文件回滚后 md5 **全部与基准提交逐字节相同**；仓库 `git status --short` 全程只有 `?? docs/VERIFICATION.md`（§5.4） |
-| **V9** | 铁律 1 · 未登录 = 纯单机（五类例外） | 三处例外集 grep + 141 个网络调用点全表审查 | `AGENTS.md:104/:143/:164` 三处均「五类」；全仓 `.ets` 网络调用 **141 处，五类之外 0 处**（§7.1） |
+| **V9** | 铁律 1 · 未登录 = 纯单机（五类例外） | **宽口径语义覆盖** `grep -rn "四类"`（+ `grep -n "五类" AGENTS.md`）+ 141 个网络调用点全表审查 | `AGENTS.md:104/:143/:164` 三处均「五类」；全仓 `.ets` 网络调用 **141 处，五类之外 0 处**。例外集语境判据由窄模式改为宽口径后重新判定为 **部分闭环**（R3 勘误，见 §7.1） |
 | **V10** | 铁律 2 · 单一计算入口 | 全 `.ets` 乘法/除法穷举 236 处 + 页面组件 SQL/乘法双 grep | **页面层与网络层零乘法**；`DecimalUtil.mul` 全部 8 处均非碳因子；页面/组件层 SQL **零命中**（§7.2） |
 | **V11** | 铁律 3 · 因子快照四字段 | 建表 + 写入路径 + 回填点三查 | `ClientSchema` 四列 `NOT NULL`；`snapshotOf` 唯一构造点；写入路径三处；回填仅 1 处且只对**无因子的历史行**（§7.3） |
 | **V12** | 铁律 4（上）· 流水只增不删 | `grep -rn "UPDATE point_record\|DELETE FROM point_record\|delete from point_record"` 全 app+server | **命中 0**；软删除只打 `is_deleted`；冲正走 `PointService.reverse()` 写负额新行（§7.4） |
@@ -97,9 +97,11 @@ round 1 / round 2 的原始描述**一字未删** —— 本文件 §R1 转引 r
 | **N5** | `/admin` 浏览器端交互（Jinja2 SSR 渲染、`admin.js` 行为） | 无浏览器驱动，只到 HTTP 层 | §6.2 的 HTTP/JSON 路径已实测 |
 | **N6** | t18 运行态（徽章开关 / 下发封顶在真机生效） | 同 N1 | 8 个 `it()` 存在且登记，**未运行** |
 | **N7** | t13 运行态（真机备份往返） | 同 N1 | 服务端侧备份用例随 `test_sync.py` **48 passed 真实通过** |
+| **N8** | **前端视觉走查（18 个页面截图 + 视觉模型判图）** | **本机根本没有截图与判图这两条腿**：`hdc` 未安装（`Command 'hdc' not found`，EXIT=127）、无真机无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 **glibc 2.43**；视觉模型侧 `ARK_API_KEY` 在本会话不存在（`env` 空、`.dsh/.env` 不存在，`cordis.yml:79` 声明 `apiKeyEnv: ARK_API_KEY`），空 key 打端点得 HTTP 400 `InvalidParameter … AuthHeader` | **无。18 个页面一张截图都产生不出来**，故本轮**没有任何视觉走查结论**。**用户 m00004 的「前端子代理须有视觉模型」一条未满足，须在最终交付说明中显式告知**（原始输出见 §7.6） |
 
 > **N1–N7 沿用 round 2 的清单**（环境未变：同一台 WSL、无设备、`/dev/kvm` 仍不可写）。
 > 本轮**额外补跑了 N1/N2 的证据**（`hdc`、`/dev/kvm`、`hvigorw test`），未重跑 N4–N7（环境未变、无新信息）。
+> **N8 是本轮（t28）新增项**：评审 R2 要求前端做视觉走查，本轮把「为什么做不了」的原始输出落在 §7.6 —— **本机连一张页面截图都产生不出来**，这是比「视觉模型不可用」更前置的阻塞。
 
 ---
 
@@ -148,7 +150,7 @@ $ git status --short
 |---|---|---|---|
 | **F1** 家庭积分双重取负 | 已修（`971d042`） | `grep "CASE WHEN flow_kind" SyncService.ets` → 执行代码 0 命中；两处 `COALESCE(SUM(points), 0)` 在 `:359`（成员）/ `:374`（合计）；独立算术 G1/G2/G3 = 170/0/100 | **闭环**（静态 + 纯算术；**承载它的 L1 用例仍未运行**，见 N1） |
 | **F2** 两个 Dao 不在编译图 | 报告为缺陷 | 本轮**我自己**在 `/tmp/cbv24` 副本注入 `CarbonRecordDao.ets:52` → `ArkTS:ERROR File: …/CarbonRecordDao.ets:52:40` / `Cannot find name 'T24_UNDEFINED_DAO_SYMBOL'.` / **BUILD FAILED / EXIT=255**；撤回 → SUCCESSFUL / EXIT=0（§5.2 第 2 组） | **闭环** |
-| **F3** 例外集四类 → 五类 | 已修 | `AGENTS.md:104`（§2 铁律 1）/ `:143`（§5 L2）/ `:164`（§6）三处均「五类」且含「配置下发」；`grep "四类网络例外\|四类例外" --include=*.md`（排除 build/.agent-teams）唯一命中是 round 2 报告里的 grep 命令文本本身 | **闭环** |
+| **F3** 例外集四类 → 五类 | 已修 | `AGENTS.md:104`（§2 铁律 1）/ `:143`（§5 L2）/ `:164`（§6）三处均「五类」且含「配置下发」。**原判据 `grep "四类网络例外\|四类例外"` 是窄模式假绿（t28 / R3 撤回）**：`docs/PLAN.md` 当时有 7 处写作「例外仅四类 / 除上述四类外 / 四类外全部功能必须可用」、`ADR-0001:17` 1 处「固定为四类」，全都不含那两个连写短语（§7.1）。t28 已逐处改五类，现宽口径 `grep -rn "四类"` 剩余 13 处**全部为减排分类语境或历史留痕** | **部分闭环**（正文已一致；判据改为语义覆盖宽口径，见 §7.1） |
 | **F4** `server/app/models/ledger.py` 陈旧注释 | 已修 | `:69-70` 现文「已于 B40 勘误闭环（附录 B §2:149 已含 user_id）；老库升级迁移见 sql/migrations/001_uq_pr_source_user_id.sql。」 | **闭环** |
 | **F5** `LwwMerge` 编号缺 ⑦ | 已修 | 带圈编号 `it()` = 10 条、去重 10、**缺号 []**；文件 `it()` 总数 10，**编号与用例一一对应**；硬锚 `LwwMerge.test.ets:652` `expect(net).assertEqual(0);   // +96 − 96` 在 | **闭环** |
 | **F9** `CategoryTag` 死组件 | 报告为缺陷 | t23 选了「接线」：`pages/RecordSearchPage.ets:17` `import { CategoryTag } from '../components/CategoryTag';`，`:116` 真实渲染；我在副本 `CategoryTag.ets:21` 注入 → **BUILD FAILED / EXIT=255 自定位 `:21:36`**（§5.2 第 1 组） | **闭环** |
@@ -531,13 +533,158 @@ $ grep -n "五类" AGENTS.md
 :104  §2 铁律 1「例外（可依赖网络，**五类**）：登录/注册、多设备同步、商品取价、云端备份、配置下发（GET /api/v1/config…）」
 :143  §5 L2「…除五类网络例外（登录/注册、多设备同步、商品取价、云端备份、配置下发）与近场协同外全功能可用」
 :164  §6「除「…、配置下发」五类网络例外…外全功能可用」
-$ grep -rn "四类网络例外\|四类例外" --include=*.md .   （排除 build/ 与 .agent-teams/）
-唯一命中 docs/VERIFICATION.md:171 —— 是 round 2 报告里那条 grep 命令的文本本身，非口径残留
 ```
+
+> **判据勘误（t28 / R3）**：本节原来的判据是**窄模式** `grep -rn "四类网络例外\|四类例外" --include=*.md .`，只要码面上没有「四类网络例外」「四类例外」这两个连写短语就判「五类闭环」——**这是假绿**：`docs/PLAN.md` 当时有 6 处写作「例外仅四类：…」「除上述四类外…」「四类外全部功能必须可用」、`ADR-0001:17` 写「固定为四类」、基准 `B42.correct` 写「四类网络例外」但同一处 `B21.correct` 写「仅四项」，这些**一个都不含那两个连写短语的字面组合**，窄模式要么全部漏掉、要么只捞到一处。现改为**语义覆盖的宽口径** `grep -rn "四类"`，再**逐条判语境**（例外集语境 vs 减排分类语境 vs 历史留痕）。宽口径的原始输出见下（`docs/REVIEW.md` 是评审报告本身，引用了这些行号，任何口径下都排除它；`docs/VERIFICATION.md` 是本文件自引用，单独排除以免自己的输出污染自己的输入）。
+
+```
+$ git grep -n "四类" 9d73de4 -- docs AGENTS.md tests ':!docs/REVIEW.md' ':!docs/VERIFICATION.md'
+（t28 修复前，原始输出，按行首 90 字符截断显示）
+AGENTS.md:61:- B42 §6「未登录 = 纯单机」的例外集补齐为**四类**（登录/注册、多设备同步、商品取价、云端备份），与 §2 铁律 1 / §5 L2 / 附
+AGENTS.md:66:- B47 附录 D10-5「改目标奖励分值 / 每日封顶值 / 徽章开关 → **App 侧能读到**」缺下发通道（后台系统配置「只写不读」的死功能）→
+AGENTS.md:247:| 2026-11-06 | **v4.2 文档契约勘误**：头部状态行改为「S1–S6 已实现并落库，S7 与 `/admin` 收尾中」；§6 未登
+docs/APPENDIX-D-acceptance.md:48:| D2-2 | 柱状图正确 | 看板-月粒度 | 4 根柱 = 该月四类减排量，与手算汇总一致 |
+docs/APPENDIX-D-acceptance.md:538:> 四类之和必须等于总减排：`21.6000 + 14.0400 + 13.5000 + 12.6000 = 6
+docs/APPENDIX-E-demo-script.md:67:| 旁白 | 「所有记录都会汇总到数据看板。折线图看减排趋势，柱状图对比四类行为的贡献，饼图看构成占比。日、周、
+docs/APPENDIX-E-demo-script.md:134:赛题二给了五项主要功能。第一，**行为核算**：内置碳排放因子库，覆盖出行、水电燃气、旧物回收、光盘行动四类共
+docs/CHANGELOG.md:34:- **AGENTS.md §6**：「未登录 = 纯单机」的例外集由三项补齐为**四类**（登录/注册、多设备同步、商品取价、云端备份）
+docs/CHANGELOG.md:39:- **§9 表格**：「典型值（v4.0 因子）」→「**单条量级**（按「日均新增减排 ≈0.7 kg」缩放后的每条约值）」，四类改为
+docs/DECISION-0002-doc-contract-errata.md:22:| D5 | `AGENTS.md §6` 未登录例外集补齐为**四类**，头部状态行改为
+docs/PLAN.md:95:| 单机版定位 | 赛题二明确为**单机版**碳足迹记录应用 | 任何必做功能**不得依赖网络或登录态**；例外仅四类：登录/注册、多设备同步、商品
+docs/PLAN.md:118:**本机 `relationalStore` 是唯一真相源。** 分布式协同与云端只做"搬运"，不参与业务计算。未登录、无网络状态下，**除「登录
+docs/PLAN.md:143:| 网络 | **`@ohos.net.http`** | 仅用于**登录/注册、多设备同步、商品取价、云端备份**四类（未登录不发起任何请求），
+docs/PLAN.md:375:| F2-2 | 柱状图：分类减排对比 | F | 四类并列 |
+docs/PLAN.md:620:> **服务端是必做件**（账号 + 同步 + 取价 + 备份，见 ADR-0001）；**未登录时客户端全部功能可用**，只有「登录/注册、多设
+docs/PLAN.md:935:- **没有后台时全部功能仍可用**；**未登录时客户端也不依赖服务端**——只有「登录/注册、多设备同步、商品取价、云端备份」四类需要服务端（铁
+docs/PLAN.md:1071:| R2 | 服务端成本 / 可用性 | 登录、同步、取价与云端备份不可用 | 学生机约 100 元/年；**除上述四类外客户端不依赖服务端**
+docs/adr/0001-account-and-sync.md:17:- 铁律 1 的例外集固定为四类：**登录/注册、多设备同步、商品取价、云端备份**。
+tests/cases/carbon-calc.json:955:      "correct": "【已闭环·2026-11-06】§6 第 2 条改为「除\u300c登录/注册
+tests/cases/carbon-calc.json:971:      "correct": "【已闭环·择一为准·2026-11-06】以 §9 为唯一求和来源并新增「§9
+← 20 行。窄模式（`四类网络例外\|四类例外`）在这 20 行里只可能命中 :955 一处，其余 19 处全部漏检。
+```
+
+```
+$ grep -rn "四类" docs/ AGENTS.md tests/ | grep -v "^docs/REVIEW.md" | grep -v "^docs/VERIFICATION.md"
+（t28 修复后，原始输出，按行首 96 字符截断显示）
+docs/APPENDIX-D-acceptance.md:48:| D2-2 | 柱状图正确 | 看板-月粒度 | 4 根柱 = 该月四类减排量，与手算汇总一致 |
+docs/APPENDIX-D-acceptance.md:538:> 四类之和必须等于总减排：`21.6000 + 14.0400 + 13.5000 + 12.6000
+docs/APPENDIX-E-demo-script.md:67:| 旁白 | 「所有记录都会汇总到数据看板。折线图看减排趋势，柱状图对比四类行
+docs/APPENDIX-E-demo-script.md:134:赛题二给了五项主要功能。第一，**行为核算**：内置碳排放因子库，覆盖出行、
+docs/CHANGELOG.md:34:- **AGENTS.md §6**：「未登录 = 纯单机」的例外集由三项补齐为**四类**（登录/注
+docs/CHANGELOG.md:39:- **§9 表格**：「典型值（v4.0 因子）」→「**单条量级**（按「日均新增减排
+docs/CHANGELOG.md:97:> 本节处理两类**漏记**：一条已合入 main 但从未在本文件留痕的tests改动
+docs/CHANGELOG.md:100:- **例外集口径统一为五类（收尾 R1）**：`AGENTS.md` 于 t21 已把 §2 铁律
+docs/CHANGELOG.md:103:- **`docs/VERIFICATION.md` 判据勘误（R2/R3）**：V9 的判据由窄模式 `grep
+docs/DECISION-0002-doc-contract-errata.md:22:| D5 | `AGENTS.md §6` 未登录例外集补齐为**四类**，头部状态行改为
+docs/PLAN.md:375:| F2-2 | 柱状图：分类减排对比 | F | 四类并列 |
+AGENTS.md:61:- B42 §6「未登录 = 纯单机」的例外集补齐为**四类**（登录/注册、多设备同步、
+AGENTS.md:66:- B47 附录 D10-5「改目标奖励分值 / 每日封顶值 / 徽章开关 → **App 侧能
+AGENTS.md:247:| 2026-11-06 | **v4.2 文档契约勘误**：头部状态行改为「S1–S6 已实现并落
+tests/cases/carbon-calc.json:955:      "correct": "【已闭环·2026-11-06】§6 第 2 条改为「除\u300c登录
+tests/cases/carbon-calc.json:971:      "correct": "【已闭环·择一为准·2026-11-06】以 §9 为唯一求和
+← 16 行。20 − 7（真缺陷行已改五类）= 13；+3（新增的 CHANGELOG §9 三行自述）+ 0 = 16。
+   PLAN.md:95/:118/:143/:620/:935/:1071 与 adr/0001:17 已从结果里消失 —— 这就是修复生效的直接证据。
+```
+
+**逐条判语境（20 行修复前的每一行都有处置，一行不漏）**：
+
+| 出处 | 语境 | 处置 |
+|---|---|---|
+| `docs/PLAN.md:375` | 减排**分类**（F2-2 柱状图四类并列） | **不动** |
+| `docs/APPENDIX-D-acceptance.md:48` | 减排**分类**（D2-2 四类减排量） | **不动** |
+| `docs/APPENDIX-D-acceptance.md:538` | 减排**分类**（四类之和 = 61.7400） | **不动** |
+| `docs/APPENDIX-E-demo-script.md:67` / `:134` | 减排**分类**（四类行为 / 四类共三十个因子） | **不动** |
+| `docs/CHANGELOG.md:34` / `:39` | **历史留痕**（记录 v4.2 当时的决定与改动） | **不动** |
+| `docs/DECISION-0002-doc-contract-errata.md:22` | **历史决策留档**（D5 记录） | **不动** |
+| `AGENTS.md:61` / `:247` | **历史留痕**（B42 条目内已显式写「t21 起再补「配置下发」→ 五类」） | **不动** |
+| `docs/VERIFICATION.md:47` / `:153` | **本文件的历史缺陷记录**（F3 原文与本次裁定） | **不动** |
+| `docs/VERIFICATION.md:534` | 本节自引用（round 2 那条窄模式 grep 命令的文本） | **不动**（保留作反例） |
+| `docs/CHANGELOG.md:97` / `:100` / `:103` | 本节（t28）新写的**收尾登记**，描述的就是「曾经是四类」 | 新增文本，保留 |
+| `tests/cases/carbon-calc.json:971`（B44） | 减排**分类**（四类 21.6000/14.0400/13.5000/12.6000） | **不动** |
+| `tests/cases/carbon-calc.json:955`（B42） | **当前口径**（登记项描述「现在正确的状态」） | **已改五类**；命中残留是句尾「本条原文的『四类』于 t28 一并改五类」这句自述 |
+| `docs/PLAN.md:95/:118/:143/:620/:935/:1071`、`docs/adr/0001-account-and-sync.md:17` | **当前口径**（例外集正文） | **已改五类**（t28，7 行已从 grep 结果中消失） |
+
+**结论：部分闭环 —「五类口径」这一条从「闭环」改为「部分闭环」**（原判撤回）。理由分两层：
+
+1. **判据本身错了**（这是 R3 的实质）：原判据用窄模式找两个连写短语，`PLAN.md` 6 处 + `ADR-0001:17` 一处 + `B21.correct` 一项共 8 处例外集语境**根本不匹配**，判「闭环」是无证据的。改宽口径后这 8 处全部显形，其中 7 处（`PLAN` 6 + `ADR` 1）是**真缺陷**、本轮已修；`B21.correct` 那处方言是「仅四项」，本轮一并改五类。
+2. **修完之后仍不能写「闭环」**：宽口径下还剩 13 行含「四类」，其中 10 行是**历史留痕 / 历史缺陷记录 / 减排分类**（改了就是篡改历史记录或混淆两个无关概念），3 行是本节新写的收尾登记（自述「曾经是四类」）。这 13 行**永远会命中**宽口径 grep —— 所以「宽口径 grep 零命中」不是一个能达到的目标，能要求的是**逐条判语境后 0 处属当前例外集口径**。这正是判据从「字符串命中」改为「语境判定」的原因。**故结论为「部分闭环」，而不是「闭环」。**
 
 **网络调用点全表审查**（自写扫描，不抽样）：全仓 `.ets` 中 `hub.http.request` / `this.http.request` / `HttpPort` 调用共 **141 处**，
 逐个归入五类：登录注册 / 同步 / 取价 / 备份 / 配置下发 —— **五类之外 0 处**。
 未登录时这五类都返回 `NOT_LOGGED_IN` 或走「失败即整份丢弃」，本机数据不受影响。**成立。**
+
+### 7.6 前端视觉走查（N8，本轮新增 · **未运行**）
+
+评审 **R2** 要求对 18 个页面做视觉走查。走查需要两条腿：**能截到图** + **能判图**。本轮实测两条腿**都不存在**，且第一条比第二条更根本 —— 截图都产生不出来。
+
+**（一）截图腿：`hdc` 未安装、无真机、无模拟器、Previewer 崩**
+
+```
+$ command -v hdc
+（空）
+$ hdc list targets
+Command 'hdc' not found, did you mean:
+  command 'htc' from deb httptunnel (3.3+dfsg-6build1)
+  …（其余 15 条同形建议，略）
+Try: sudo apt install <deb name>
+EXIT=127
+```
+
+即：**hdc 本机未安装**（不是「装了但连不上设备」，而是连命令都没有），因此既无真机也无模拟器可取图。
+
+```
+$ ldd --version | head -1
+ldd (Ubuntu GLIBC 2.43-2ubuntu2.4) 2.43
+$ ls -l /dev/kvm
+crw-rw---- 1 root kvm 10, 232 Oct 14 22:10 /dev/kvm
+$ test -w /dev/kvm; echo $?
+1
+```
+
+无 KVM 写权限 ⇒ 模拟器起不来；Previewer 崩于 **GLIBC 2.43**（本机 glibc 版本即 2.43，round 2/3 已两次实证）。**结论：18 个页面一张截图都产生不出来。**
+
+**（二）判图腿：视觉模型不可用（`ARK_API_KEY` 在本会话不存在）**
+
+```
+$ env | grep -i ARK_API_KEY
+（无输出）
+$ echo $?
+1
+$ ls -l /mnt/c/Users/Administrator/.dsh/.env
+ls: cannot access '/mnt/c/Users/Administrator/.dsh/.env': No such file or directory
+```
+
+而配置侧确实**声明**要用这个变量：
+
+```
+$ grep -n "apiKeyEnv" /mnt/c/Users/Administrator/.dsh/profiles/desktop/cordis.yml | head -1
+79:        apiKeyEnv: ARK_API_KEY
+$ sed -n '75,82p' /mnt/c/Users/Administrator/.dsh/profiles/desktop/cordis.yml
+  config:
+    providers:
+      ark:
+        displayName: ark
+        apiKeyEnv: ARK_API_KEY
+        api: openai-completions
+        baseURL: https://ark.cn-beijing.volces.com/api/coding/v3
+```
+
+即 `cordis.yml:79` 声明 `apiKeyEnv: ARK_API_KEY`，而该变量在本会话**不存在**。用空 key 直接打该端点：
+
+```
+$ curl -sS -m 30 -w "HTTP=%{http_code}\n" -X POST \
+    "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions" \
+    -H "Content-Type: application/json" -H "Authorization: Bearer " \
+    -d '{"model":"deepseek-v3","messages":[{"role":"user","content":"hi"}]}'
+HTTP=400
+{"error":{"code":"InvalidParameter","message":"The parameter `` specified in the request are not valid: invalid parameter: AuthHeader. Request id: 02179222527642746c14d470d092c1c2bed457a462426b2a6b13c","param":"","type":"BadRequest"}}
+```
+
+**（三）结论与必须告知用户的事项**
+
+- **N8 未运行，不得算作通过。** 本轮**没有任何**视觉走查结论 —— 既没有截图，也没有任何模型对页面外观的判断。
+- **用户 m00004「前端子代理须有视觉模型」这条要求未满足**（配置里声明了 `ARK_API_KEY`，但本会话没有这个变量，`.dsh/.env` 也不存在，空 key 打端点直接 HTTP 400 `InvalidParameter … AuthHeader`）。**须在最终交付说明中显式告知用户。**
+- 待环境可用后的补跑方式：装 `hdc` 或起模拟器 → `hdc shell snapshot_display` 逐页取图 → 用有效 `ARK_API_KEY` 调 `POST https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions` 判图。**本轮不做任何「看起来还行」的口头替代**。
 
 ### 7.2 铁律 2 · 单一计算入口
 
@@ -836,6 +983,7 @@ t21 按验收要求把它们显式接入本页…业务路径上它们仍**不�
 | **N5** | `/admin` 浏览器交互（SSR 渲染、`admin.js`） | 无浏览器驱动 | HTTP/JSON 层已实测（§6.2） |
 | **N6** | t18 运行态（配置下发在真机生效） | 同 N1 | 用例存在且登记（未运行） |
 | **N7** | t13 运行态（真机备份往返） | 同 N1 | 服务端侧备份用例真实通过（`test_sync.py` 48 passed） |
+| **N8** | 前端视觉走查（18 页面截图 + 视觉模型判图） | 截图腿：`hdc` 未安装（`Command 'hdc' not found`，EXIT=127）、无真机无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 glibc 2.43 ⇒ **18 个页面一张截图都产生不出来**；判图腿：`ARK_API_KEY` 在本会话不存在（`cordis.yml:79` 声明该变量，但 `env` 为空、`.dsh/.env` 不存在，空 key 打端点得 HTTP 400 `InvalidParameter … AuthHeader`） | **无** —— 本轮零视觉结论。**用户 m00004「前端子代理须有视觉模型」一条未满足，须在最终交付说明中显式告知**（原始输出见 §7.6） |
 
 > 另：**L3 全量本轮未执行** —— 本轮口径是「`server/` 零 diff，只跑子集」。我跑了 `test_sync.py`（48）+
 > `test_admin.py` 403 子集（19），是**真实结果**；其余 66+ 例未跑。全量 **237 passed** 是 **round 2 在 `971d042` 上的实测**，
