@@ -1,4 +1,10 @@
-# CarbonBoo 独立验证报告（轮次累积 · 最新 round 4 = t31 终验，结论见 §R4）
+# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；**最新 round 5 = t38 L1 表述修正见 §R5**）
+
+> **最新一轮（round 5 / t38）只做 L1 表述修正，不新增门禁结论。** 起因：t37 把「用 esbuild 转译仓库
+> **真实 ArkTS 实现**并在 Node 里离线执行」的链路固化进了仓库（`tests/tools/l1_offline/`），于是本文件里
+> 「**替代证据为零**」一类断言从「当时的真话」变成了「**漏报已完成的工作**」。§R5 把这类断言逐处改为准确陈述，
+> 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
+> §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
 
 ## §R4 round 4（t31 终验 · 结论绑定 HEAD `e211ae1` 的字节）
 
@@ -386,6 +392,7 @@ ohosTest 副本 app/entry/src/ohosTest/resources/rawfile/carbon-calc.json md5 �
 | round 2 | t22（`qa-verifier-wb`） | `971d042e8166fcd125879d67bcb569b848614c09` | 2026-11-07 | **部分通过 / 判 failed**：L0 EXIT=0、L3 **237 passed**、独立复算 **70 检查点 0 失败**、契约 A/B/C 全等、编译门禁注入自证成立、铁律 2/3/4 成立；F1/F2/F3/F4/F5 已修并复验闭环；但 **L1 仍全部未运行**，并新增 F9–F14（F9 **死组件**、F10 `PointCap` 套件名不存在、F12 `AGENTS.md §5.1` 的 md5 刷新要求**不可执行**） | 全文备份 `/tmp/cbv24/ev/VERIFICATION-round2-backup.md`（md5 `d12abec7ec1fff474c54affbaa6a3b2a`，783 行）；**同样从未被提交**（见 F15） |
 | round 3 | t24（本轮，`qa-verifier-wb`） | `308d09f8c1e6b0178f1480ad8c6938c6b0c1dc3a` | 2026-11-07 | **部分通过**：L0 EXIT=0、独立复算 70/70、契约 A/B/C 全等、**编译门禁四组注入自证成立且副本零污染**、铁律 1/2/3/4 全部成立、未登录态证据链成立；**F9/F12 闭环、F14 撤销、F3/F4/F5/F10/F11 复验属实**；新增 F15–F18（四条低危）；**L1 仍全部未运行**（N1–N7 环境未变，本轮补跑证据） | 本文 §0 起 |
 | round 4 | t31（`verifier-oc`，终验） | `e211ae143a04922952693adf2262cc9feae2e9b4` | 2026-11-07 | **通过（限已跑项）**：L0 EXIT=0（28 项 0 错误 / 89 文件 0 命中 / docConflicts 0）、**L3 全量 237 passed**（85+40+29+25+10+48，专属库 `carbonboo_test_vfy`）、**编译门禁成对自证 EXIT 0→255→0**（注入侧自定位 `SyncService.ets:39:32`，还原后 md5 与 `git show HEAD` 一致）、数值真相源零 diff 且两副本同 md5、规约红线 0/0/0、四条铁律静态全部成立；**L1/L2/deploy/`/admin` 浏览器/视觉走查 五项仍未运行，一条不算通过** | 本文 §R4 |
+| round 5 | t38（`fixer-oc`，**表述修正轮，不新增门禁结论**） | `300a89d900c3b38722d67747a17a08518e843665` | 2026-11-07（与 R1–R4 同口径） | **仅修正 L1 表述**：t37 已把离线执行器入库（`tests/tools/l1_offline/`，用 **9 份真实 `.ets`** 转译执行），故把「**替代证据为零**」等失真断言改为准确三态陈述；本机实跑 `RESULT: PASS=55 FAIL=0`、`checked=323 passed=true`（反证：坏基准 → `PASS=53 FAIL=2` / `passed=false`，两者 `EXIT=1`）；**hypium 36 个 `it()` 仍未运行**，N1 结论不变，两证不可互相顶替；L0 `EXIT=0` | 本文 §R5（文件末尾） |
 
 **F 编号规则**：跨轮累加不重用。round 1 用到 **F8**，round 2 用到 **F14**，round 3 从 **F15** 起。
 round 1 / round 2 的原始描述**一字未删** —— 本文件 §R1 转引 round 1 要点，两份备份文件完整留档（见 §15）。
@@ -1540,3 +1547,157 @@ $ sed -n '258p;267p' app/entry/src/main/ets/service/CarbonCalc.ets
 - **没改**：`docs/REVIEW.md`（评审人结论，改它等于篡改评审记录）、`docs/CHANGELOG.md:116`（v4.1 历史留痕，正确）、
   任何数值与测试基准（`tests/cases/carbon-calc.json` 零 diff，md5 与 `app/…/ohosTest/…` 副本同值）。
 - **没跑**：L1 / L2 / deploy / `/admin` 浏览器 / 视觉走查（环境未变）—— §R4.7 与 §13 的「未运行 = 不算通过」对本轮同样有效。
+  （**t38 补记**：上面的「没跑」指 hypium 的 36 个 `it()`；纯逻辑部分现在另有一条独立离线证据，见 §R5 —— 但那条证据**不改变**这里的结论。）
+
+---
+
+## §R5 round 5（t38 · L1 表述修正如实化：离线执行证据已入库，「替代证据为零」不再成立）
+
+> 本节**不新增任何门禁结论**，只把与 L1 有关的**表述**改准。它针对的是「第二种失真」：
+> **漏报已完成的工作** —— 与夸大成果等价。前四轮（round 1–4）的全部记录保持原样，只在失真的断言旁加「t38 补记/更正」指针。
+
+### R5.1 为什么会失真
+
+round 4（t31）写「**替代证据为零**」时是**真话**：那时能跑通这条链路的脚本只在本机 `/tmp/cbv*`、`/tmp/cbl1`、
+`/tmp/cbl2` 里，仓库内 `tests/tools/` 只有 `check_l0.py`，评审把它登记为 **O4「复算证据链不可从仓库复现」**。
+
+t37（提交 `63695f998d209ecc251a365b1f7e1094eeeba5dc` / `47eaf882e3d94105babad9ae0991e3f13324a518` /
+`300a89d900c3b38722d67747a17a08518e843665`）把这条链路**固化进仓库**：`tests/tools/l1_offline/`。
+于是同一句话从「当时的真话」变成「漏报」—— 必须先说清这一点，后面的边界才有意义。
+
+### R5.2 不变的事实：hypium 侧仍是零执行，N1 结论不动
+
+**36 个 `it()` 一条都没有执行过**：无真机（`hdc list targets` → `Connect server failed`）、无模拟器
+（`test -w /dev/kvm` → `EXIT=1`）、SDK Previewer 崩于 GLIBC 2.43（`ldd --version` → `2.43`）、
+`hvigorw test` 执行段 `timeout 420` → **`EXIT=124`**（`Finished :entry:default@UnitTestArkTS...` 之后零输出）。
+
+⇒ **§R4.7-N1 与 §13-N1 的结论都不变：L1 不判通过。** 本节新增的是一条**覆盖更窄**的独立证据，
+它既不把 N1 变成「通过」，也不减少 N1 的剩余风险。
+
+### R5.3 本轮实跑的命令与原始输出（绑定 `HEAD = 300a89d`）
+
+```
+$ bash tests/tools/l1_offline/run.sh
+== l1_offline：离线执行仓库真实 ArkTS 实现 ==
+仓库 HEAD   : 300a89d900c3b38722d67747a17a08518e843665
+仓库根      : /mnt/c/Users/Administrator/Desktop/CarbonBoo
+esbuild     : /home/qinyixiang/harmony-toolchain/esbuild/bin/esbuild
+node        : /home/qinyixiang/harmony-toolchain/clt/command-line-tools/tool/node/bin/node (v18.20.1)
+中间产物目录: /tmp/cbl1-offline-S0Na1x
+
+-- ① 消费仓库真实源文件（原样复制，逐字节 cmp） --
+   ok(未改写)  app/entry/src/main/ets/util/DecimalUtil.ets  ->  main/ets/util/DecimalUtil.ts
+   ok(未改写)  app/entry/src/main/ets/util/AppConstants.ets  ->  main/ets/util/AppConstants.ts
+   ok(未改写)  app/entry/src/main/ets/util/JsonUtil.ets  ->  main/ets/util/JsonUtil.ts
+   ok(未改写)  app/entry/src/main/ets/util/StringUtil.ets  ->  main/ets/util/StringUtil.ts
+   ok(未改写)  app/entry/src/main/ets/model/CarbonTypes.ets  ->  main/ets/model/CarbonTypes.ts
+   ok(未改写)  app/entry/src/main/ets/service/CarbonCalc.ets  ->  main/ets/service/CarbonCalc.ts
+   ok(未改写)  app/entry/src/main/ets/service/CarbonService.ets  ->  main/ets/service/CarbonService.ts
+   ok(仅改 import 前缀 app/entry/src/ohosTest/ets/test/CalcTestTypes.ets -> test/CalcTestTypes.ts)
+   ok(仅改 import 前缀 app/entry/src/ohosTest/ets/test/CalcBaselineValidator.ets -> test/CalcBaselineValidator.ts)
+
+-- ④ bundle 输入文件断言（esbuild metafile：吃进去的就是上面那 9 个仓库源） --
+   实际输入(8): main/ets/service/CarbonCalc.ts, main/ets/service/CarbonService.ts, main/ets/util/AppConstants.ts,
+                main/ets/util/DecimalUtil.ts, main/ets/util/JsonUtil.ts, main/ets/util/StringUtil.ts,
+                test/CalcBaselineValidator.ts, test/CalcTestTypes.ts
+   ok: 8/8 运行期输入 + 1 个纯类型文件（合计 9/9）全部来自仓库真实源文件
+   ok: tests/tools/ 里没有一行算法 —— 转译产物完全由 app/ 下那 9 份 .ets 决定
+
+-- ⑤ 用真实实现复算基准 --
+samples(18×2)        PASS=36 FAIL=0
+capSamples(5×2+1)    PASS=11 FAIL=0
+conversions(2)       PASS=2 FAIL=0
+boundary 20/21/22(6) PASS=6 FAIL=0
+
+RESULT: PASS=55 FAIL=0
+checked = 323
+passed  = true
+summary = 全部一致：共复算 323 个断言点
+RESULT: checked=323 passed=true mismatches=0
+
+RUN.SH: 全部 PASS（离线纯逻辑部分）
+$ echo $?
+0            ← RUN_EXIT=0
+```
+
+两段结论各由谁产出（这一点决定了它是不是「跑真实实现」）：
+
+- `RESULT: PASS=55 FAIL=0`：`runners/calc_samples.mjs` 把基准里的输入喂给**转译出来的 `CarbonCalc`**，
+  逐条比对 `expectedReductionKg` / `expectedPointC` / `expectedActualA`（55 项 = 18×2 + 5×2+1 + 2 + 4 + 2）。
+- `checked = 323 / passed = true`：`runners/baseline_validator.mjs` 调用的是**仓库里那份真实的
+  `CalcBaselineValidator.run()`**（连同它依赖的 `CalcTestTypes` 的 `parseBenchmark` / `parseFactors`），
+  即 hypium 用例原本会走的同一段断言库；`323` 是它自己算出来的断言点数量，不是本节抄来的常量。
+
+### R5.4 消费的 9 份真实源文件（转译，不是复制粘贴改写）
+
+| # | 文件 | 在链路里的角色 |
+|---|---|---|
+| 1 | `app/entry/src/main/ets/service/CarbonCalc.ets` | **被测实现**：减排量 / 应得 C / 实入 A 的唯一计算入口 |
+| 2 | `app/entry/src/main/ets/util/DecimalUtil.ets` | 定点十进制（half-up 舍入的实现） |
+| 3 | `app/entry/src/main/ets/util/AppConstants.ets` | `REDUCTION_DECIMALS` 等常量 |
+| 4 | `app/entry/src/main/ets/model/CarbonTypes.ets` | 类型定义（纯类型，转译后被 TS 擦除，故 metafile 里只数到 8 个运行期输入） |
+| 5 | `app/entry/src/main/ets/service/CarbonService.ets` | 被 `CarbonCalc` 依赖的调用链 |
+| 6 | `app/entry/src/main/ets/util/JsonUtil.ets` | `CarbonService` 依赖的 JSON 工具 |
+| 7 | `app/entry/src/main/ets/util/StringUtil.ets` | 同上 |
+| 8 | `app/entry/src/ohosTest/ets/test/CalcBaselineValidator.ets` | **仓库真实的断言库**（hypium 用例也调它） |
+| 9 | `app/entry/src/ohosTest/ets/test/CalcTestTypes.ets` | `parseBenchmark` / `parseFactors`：读真实基准与真实因子库 |
+
+三条防「悄悄重写」的机制：① 8 个不依赖相对 import 的文件是**原样复制**后 `cmp` 逐字节比对（不一致即 `EXIT=3`）；
+② 只有 `CalcTestTypes.ets` / `CalcBaselineValidator.ets` 两个文件改写 `../../../main/ets/` → `../main/ets/` 前缀，
+改完用 `diff` 断言**每一行差异都只涉及该前缀**（出现无关差异即 `EXIT=3`）；③ esbuild `--metafile` 断言
+bundle 的 inputs 集合 ⊆ 这 9 份源（实测 8/8 运行期输入全中）。`run.sh` 还会把 9 份文件的 `sha256` 逐条打印，
+数值或逻辑一改，留档值就会变。
+
+### R5.5 反证：它不是「永远绿」的摆设
+
+只在 `/tmp` 的副本上把基准改错 2 处（不动仓库里的基准），再分别跑两个 runner：
+
+```
+$ # ① 先保留一个中间产物目录（否则脚本退出即删）：L1_OFFLINE_KEEP=1 bash tests/tools/l1_offline/run.sh
+$ # ② 只改 /tmp 里的副本，仓库里的基准一个字节都不动：
+$ python3 - "$KEEP" <<'PY'
+import json, sys
+b = json.load(open('tests/cases/carbon-calc.json'))        # 只读；不写回
+b['samples'][0]['expectedReductionKg'] = "0.9700"          # 真值 0.9600
+b['samples'][1]['expectedPointC'] += 1                     # 真值 96 → 97
+json.dump(b, open(sys.argv[1] + '/mutated-bench.json', 'w'), ensure_ascii=False, indent=1)
+PY
+$ node tests/tools/l1_offline/runners/calc_samples.mjs "$KEEP/out/carboncalc.cjs" "$KEEP/mutated-bench.json"
+samples(18×2)        PASS=34 FAIL=2
+…
+RESULT: PASS=53 FAIL=2
+   FAIL [samples] #1.reductionKg: got 0.9600, want 0.9700
+   FAIL [samples] #2.expectedPointC: got 96, want 97
+$ echo $?
+1            ← MUT_CALC_EXIT=1
+
+$ node tests/tools/l1_offline/runners/baseline_validator.mjs "$KEEP/out/validator.cjs" "$KEEP/out/types.cjs" \
+       "$KEEP/mutated-bench.json" app/entry/src/main/resources/rawfile/factors/carbon-factors.json
+checked = 323
+passed  = false
+summary = 发现 3 处不一致（共复算 323 个断言点）
+   MISMATCH {"scope":"sample#1","field":"reductionKg","expected":"0.9700","actual":"0.9600"}
+   MISMATCH {"scope":"sample#1","field":"reductionKg(参考实现)","expected":"0.9700","actual":"0.9600"}
+   MISMATCH {"scope":"sample#2","field":"expectedPointC","expected":"97","actual":"96"}
+RESULT: checked=323 passed=false mismatches=3
+$ echo $?
+1            ← MUT_VALIDATOR_EXIT=1
+```
+
+⇒ 两个 runner 都会**真的失败、真的非零退出**，不是「打印 PASS 就算过」。这也是为什么本文件的「通过」判定
+不能只看它的 `EXIT=0`：它的价值在**可复现地证伪**，而它覆盖的范围比 hypium 窄得多。
+
+### R5.6 边界（写死；这一段是这个工具存在的全部理由）
+
+1. **不覆盖**：UI（ArkUI 组件树 / 交互 / 页面栈）、数据库（`relationalStore` 19 张表 / 事务 / 迁移）、
+   网络（HTTP 超时与降级 / `HttpPort` / 同步）、生命周期（`UIAbility` / 冷启动）、权限与端侧能力
+   （相册保存、识图 stub、近场协同）。以上**只能靠 hypium 在真机/模拟器上跑**。
+2. **只证明**：纯逻辑模块的**真实实现**（`CarbonCalc` + `DecimalUtil` + `AppConstants` 链）与
+   `tests/cases/carbon-calc.json` 的数值唯一真相源**一致**，且仓库里那份真实的 `CalcBaselineValidator` 断言库得出
+   `323 / passed = true`。**不证明** App 行为正确、不证明任何页面可渲染、不证明服务端契约。
+3. **hypium 的 36 个 `it()` 仍然未运行**；本节不改变 N1，也不把「编译通过」或「离线执行」折算成任何用例通过。
+4. **两条证据不可互相顶替**：报告里必须分开陈述 ——「离线纯逻辑 = 55 项 + 323 个断言点」与「hypium = 未运行」。
+   任何把前者写成「L1 已通过」的表述都是造假；反过来，把后者写成「替代证据为零」则是本节要修掉的漏报。
+5. **它不属于「通过」三态中的任何一态**：`§0 结论速览` 的「通过（V1–V20）」一项都不因本节而改变，
+   离线证据是**第四种表述**（「未运行 + 一条覆盖更窄的可复现旁证」），证据强度排序为
+   `hypium 通过 > 离线纯逻辑 55 项/323 断言点 > 编译通过 > 无`。
