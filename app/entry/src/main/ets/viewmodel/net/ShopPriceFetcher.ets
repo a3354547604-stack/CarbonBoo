@@ -2,8 +2,8 @@
  * ShopPriceFetcher —— 商品取价的**唯一网络入口**（附录 B §5.4 / 铁律 1 的例外之一）。
  *
  * 职责（只有这一件事）：
- *  ① `GET /api/v1/shop/items`（**无需 token** —— 附录 B §5.3 开头行与 §5.4 端点表都写明
- *     「只有取价接口无需 token」，故未登录也能拉）；
+ *  ① `GET /api/v1/shop/items`（**无需 token** —— 附录 B §5.3 开头行与 §5.4 端点表写明取价与配置下发
+ *     两个接口无需 token，故未登录也能拉；配置下发的免鉴权口径见 §5.5 与 `ServerConfigFetcher`）；
  *  ② **整份校验**：响应的 `data` 必须是 `{ version: string, items: [...] }`，且每个元素
  *     必备字段齐全、数值合法。**任何一处不合法 → 整份丢弃**（不做部分应用）；
  *  ③ 校验通过才**整份覆盖** `app_config['shop_items']`（连目录 `version` 一起存），

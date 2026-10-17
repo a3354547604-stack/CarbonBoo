@@ -83,7 +83,7 @@ export default function shopPriceFallbackTest(): void {
       expect((raw === undefined ? '' : raw).indexOf('frame_01') >= 0).assertTrue();
       // 目录版本可读回（供设置/开发者选项展示）
       expect(await fx.hub.shop.catalogVersion()).assertEqual('2026.02.01-1');
-      // 取价**不带 token**（唯一免鉴权接口）
+      // 取价**不带 token**（免鉴权接口之一；另一个是配置下发 `GET /api/v1/config`，见 ServerConfigFetcher）
       expect(fx.fake.countWithAuth()).assertEqual(0);
       expect(fx.fake.count()).assertEqual(1);
     });
