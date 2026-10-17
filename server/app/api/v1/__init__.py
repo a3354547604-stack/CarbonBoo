@@ -9,6 +9,7 @@
     GET  /api/v1/sync/backup          下载云端快照（恢复即覆盖的数据源）
     POST /api/v1/sync/backup/restore  用快照覆盖云端副本（恢复前先生成快照）
     GET  /api/v1/shop/items           商品目录与价格（§5.4，**无需 token**）
+    GET  /api/v1/config               全局可读配置（§5.5，**无需 token**；D10-5 的唯一下发通道）
 
 `/admin/*` 的 Web 后台管理端**不在这里**：它是可选件，由 t6 在 `server/admin_web/` 实现，
 经 `app/main.py` 的 `_mount_optional_admin` 挂载（ADR-0001）。
@@ -19,7 +20,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from app.api.v1 import auth, backup, shop, sync
+from app.api.v1 import auth, backup, config, shop, sync
 from app.core.config import get_settings
 from app.core.security import now_ms
 
@@ -62,5 +63,8 @@ router.include_router(backup.router, prefix="/sync", tags=["云端备份"])
 
 # 商品取价（唯一无需令牌的接口；失败时客户端整份丢弃 → 内置默认价）
 router.include_router(shop.router, prefix="/shop", tags=["碳小铺"])
+
+# 全局可读配置（同样无需令牌；D10-5 的下发通道，失败时客户端整份丢弃 → 内置种子）
+router.include_router(config.router, prefix="/config", tags=["系统配置"])
 
 __all__ = ["HealthData", "router"]
