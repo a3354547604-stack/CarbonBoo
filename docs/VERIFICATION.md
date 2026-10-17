@@ -281,7 +281,7 @@ delete from point_record => 0
 
 | 编号 | 项 | 未运行的具体原因（本轮实测原始输出） |
 |---|---|---|
-| **N1** | **L1 全部 hypium（10 套件 / 36 个 `it()`）** | 三座桥全断，见下方三行原文。**替代证据为零**：编译通过 ≠ 用例通过，本轮不给 L1 任何通过判定 |
+| **N1** | **L1 全部 hypium（10 套件 / 36 个 `it()`）** | 三座桥全断，见下方三行原文。**hypium 侧零执行**：编译通过 ≠ 用例通过，本轮不给 L1 任何通过判定。**（t38 更正）** 此处原写「**替代证据为零**」，该断言随 `tests/tools/l1_offline/` 于 t37 入库而**失真** —— 纯逻辑部分现有一条可复现的独立离线证据（`RESULT: PASS=55 FAIL=0`、`checked=323 passed=true`，命令 `bash tests/tools/l1_offline/run.sh`），详见 **§R5**；但**它不改变本节结论**：36 个 `it()` 仍然一条都没执行 |
 | **N2** | L2 端侧集成（云通路 + 近场通路两条链路） | 需**两条设备**（或真机 + 模拟器）。N1 的三条环境断点直接否决；本机 `command -v emulator` → **EXIT=1（无输出）**。本轮未跑 |
 | **N3** | `server/deploy/` 实跑（systemd / nginx / TLS / 定时备份） | 无部署目标：`ls -d /opt/carbonboo` → `No such file or directory`；`command -v nginx` → **EXIT=1（未安装）**。`systemctl is-system-running` → `running`、`docker ps` 可用，但部署目标与 nginx 不存在，**不能算跑过**。本轮未跑 |
 | **N4** | `/admin` 浏览器交互（SSR 渲染、`admin.js` 前端行为） | 无浏览器驱动：`chromium` / `chromium-browser` / `google-chrome` / `playwright` / `chromedriver` **逐个 not found**。HTTP/JSON 层由 L3 `test_admin.py`（85 例全过）覆盖，但**渲染与 JS 交互未跑** |
@@ -342,6 +342,9 @@ HTTP=400
 
 1. **L1 仍是零执行**：无真机、无模拟器、Previewer 与 GLIBC 2.43 不兼容。这不是「再试一次」能解决的；在拿到设备或修好 Previewer 兼容性前，
    `CalcSamples / LwwMerge / NotLoggedIn` 等 36 个 `it()` 只能算「已编写、已登记、已编译」。
+   **（t38 补记）** 这里的「零执行」限于 **hypium**。纯逻辑部分此后另有一条独立离线证据
+   （`tests/tools/l1_offline/`：`RESULT: PASS=55 FAIL=0`、`checked=323 passed=true`），见 **§R5** ——
+   它覆盖 UI/DB/网络/生命周期之外的纯计算与断言库，**不能**折算成任何 `it()` 通过。
 2. **视觉走查仍是零达成**（N5）：`ARK_API_KEY` 缺失。这是用户明示要求，交付说明里必须写明未满足，不能沉默处理。
 3. **`/admin` 只到 HTTP 层**：85 条 `test_admin.py` 全过证明后端行为，但「浏览器里点得动」没有证据（N4）。
 4. **`PointCap` 套件名仍不存在**（round 3 的 F17 复述）：封顶 5 组由 `CalcSamples.test.ets:78` + `CalcBaselineValidator.ets:210-224` 承载。
@@ -353,7 +356,7 @@ HTTP=400
 - **任务**：对 `HEAD=e211ae1` 的字节做一次绑定当前版本的独立验证（L0、L3 全量、编译门禁成对自证、数值真相源零改动、四条铁律、规约红线），并如实单列未运行项。
 - **改了什么**：**只有 `docs/VERIFICATION.md` 一个文件**（新增本节 §R4 于文件开头 + 轮次索引新增 round 4 一行 + §13 补一条 N1 表述精确化）。未改任何被测源码 / 规格文档 / 测试基准 / `tests/cases/`（`git diff --name-only` 对被测路径为空）。
 - **跑了什么命令**：`git rev-parse HEAD`、`git ls-remote origin main`、`md5sum`（基准两份副本）、`git status --short`、`python3 tests/tools/check_l0.py --strict`、`cd server && CARBONBOO_TEST_DB=carbonboo_test_vfy .venv/bin/python -m pytest tests/ -q`、`pytest --collect-only -q`、`cd app && source ~/harmony-toolchain/env.sh && export OHOS_BASE_SDK_HOME=$DEVECO_SDK_HOME && hvigorw --no-daemon assembleHap`（基线 / 注入 / 还原 三次）、各项 `grep` 计数、`hdc list targets`、`test -w /dev/kvm`、`ldd --version`、`curl` ark 端点。
-- **结果**：L0 **EXIT=0**；L3 **237 passed / EXIT=0**；编译门禁 **0 → 255 → 0**（注入侧自定位 `SyncService.ets:39:32`）；数值真相源 **零改动**、两份副本 md5 同值；规约红线 **0/0/0**；四条铁律**静态全部成立**（各给 `文件:行`）。**未运行**：L1 全部 `it()`、L2、`server/deploy/` 实跑、`/admin` 浏览器交互、视觉模型走查 —— 五项一条都不算通过。
+- **结果**：L0 **EXIT=0**；L3 **237 passed / EXIT=0**；编译门禁 **0 → 255 → 0**（注入侧自定位 `SyncService.ets:39:32`）；数值真相源 **零改动**、两份副本 md5 同值；规约红线 **0/0/0**；四条铁律**静态全部成立**（各给 `文件:行`）。**未运行**：L1 全部 `it()`、L2、`server/deploy/` 实跑、`/admin` 浏览器交互、视觉模型走查 —— 五项一条都不算通过。**（t38 补记）** 其中「L1 全部 `it()`」指 **hypium 侧**；纯逻辑部分另有一条独立离线证据（55 项 + 323 断言点，见 §R5），两证不可互相顶替。
 - **未决问题**：见 R4.8。
 
 
@@ -449,7 +452,7 @@ round 1 / round 2 的原始描述**一字未删** —— 本文件 §R1 转引 r
 
 | 编号 | 项 | 本机原因（实证，本轮全部重跑） | 替代证据（**效力有限**） |
 |---|---|---|---|
-| **N1** | **L1 全部 hypium 用例（10 套件 / 36 个 `it()`）** | 无真机：`hdc list targets` → stderr **`Connect server failed`**（无任何设备行）；无模拟器：`/dev/kvm` 存在但 **`test -w /dev/kvm` 失败**（uid 1000 不在 kvm 组）；Previewer 崩于 GLIBC 2.43 | §4 离线复算 70/70；§7 铁律静态核查；§8 未登录态静态核查 |
+| **N1** | **L1 全部 hypium 用例（10 套件 / 36 个 `it()`）** | 无真机：`hdc list targets` → stderr **`Connect server failed`**（无任何设备行）；无模拟器：`/dev/kvm` 存在但 **`test -w /dev/kvm` 失败**（uid 1000 不在 kvm 组）；Previewer 崩于 GLIBC 2.43 | §4 离线复算 70/70；§7 铁律静态核查；§8 未登录态静态核查。**（t38 补记，不改本轮结论）** 另有更强的一条：`tests/tools/l1_offline/` 用**仓库真实 `.ets` 转译执行**得 `PASS=55 FAIL=0` 与 `checked=323 passed=true`（§R5）—— 它仍**不是** hypium，**不覆盖** UI/DB/网络/生命周期，36 个 `it()` 仍未运行 |
 | **N2** | `hvigorw test` 的**执行段** | 仓库工作树（含 `oh_modules`）实跑：`Finished :entry:default@UnitTestArkTS... after 19 s 880 ms` 之后**再无任何输出**，`timeout 420` 触发 **EXIT=124**（执行器等不到设备，静默挂住） | 仅「编译段通过」，**不构成 L1 通过** |
 | **N3** | L2 端侧集成（双设备协同、飞行模式全功能） | 需两条真实设备（或真机 + 模拟器），同上无设备 | 无 |
 | **N4** | 部署脚本实跑（systemd / nginx / TLS / `mysqldump` 定时） | 本机无 `systemd` 承载目标路径、nginx 未安装；unit 的 `ExecStart` 指向 `/opt/carbonboo/…`（本机不存在） | 沿用 round 2 的 `bash -n` / `systemd-analyze verify` / `migrate.sh --dry-run`（EXIT=0）+ 安全阀（EXIT=2）；**本轮环境未变，未重跑** |
@@ -658,6 +661,11 @@ $ echo $?
 
 > 注：`verify.mjs` 的标题里就写着「离线复算，非设备运行」—— 它验证的是 `DecimalUtil` 的定点算法与基准自洽，
 > **不能替代 hypium 用例**（不经过 ArkTS 运行时与 OHOS 环境）。
+>
+> **（t38 补记）** 这种「/tmp 里的临时脚本」后来在 t37 有了仓库内的正式版本：`tests/tools/l1_offline/`（见 **§R5**）。
+> 它与本节 `verify.mjs` 的差别是**是否可复现、是否直接执行仓库实现**：`l1_offline` 用 esbuild 转译 `app/` 下 9 份
+> 真实 `.ets` 并在 Node 里执行 `CarbonCalc` / `CalcBaselineValidator`，`RESULT: PASS=55 FAIL=0`、
+> `checked=323 passed=true`。**两者都不能替代 hypium** —— 这条判断不变。
 
 ### 4.6 D. half-up 舍入（**单独验证**）
 
