@@ -155,7 +155,7 @@ MINE ─┬─ APPEARANCE / POINT_LOG / GOAL / BADGE / SHOP
 
 ## 4. 通用组件
 
-> 落盘路径：`app/entry/src/main/ets/view/components/`
+> 落盘路径：`app/entry/src/main/ets/components/`
 
 | 组件 | 规格 |
 |---|---|
