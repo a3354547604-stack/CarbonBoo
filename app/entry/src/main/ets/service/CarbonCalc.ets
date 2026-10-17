@@ -4,7 +4,8 @@
  * 职责（本文件只有这一个职责）：
  *  ① `reductionOf`：`减排量 = round_half_up(活动量 × 因子值, 4)`；
  *  ② `expectedPointOf`：`应得 C = round_half_up(减排量 × 100, 0)`；
- *  ③ `actualPointOf`：`实入 A = max(0, min(C, 200 − D))`；
+ *  ③ `actualPointOf`：`实入 A = max(0, min(C, cap − D))`，`cap` 缺省取
+ *     `effectiveDailyCap()`（后台下行值；取不到即内置 200）；
  *  ④ `evaluate`：把三者串起来，并给出 `willBeCapped` / `capped` 与「不生成积分流水」判定。
  *
  * 为什么独立于 `CarbonService`：本文件**不 import 任何 ArkTS 运行时 API**，
@@ -15,6 +16,21 @@
  *  - 舍入一律 **half-up（四舍五入）**，禁止语言默认的 banker's rounding；
  *  - **禁止浮点累加**：本文件全程用 6 位小数定点整数运算（见 `DecimalUtil.Dec`）；
  *  - `round(x, n)` 表示对 10 的负数次幂做 half-up 量化。
+ *
+ * 「每日封顶」的下行默认值（附录 B §5.5 / 验收 D10-5）：
+ *  后台可以把 `pointsDailyCap` 改小/改大并下发，客户端由 `AppConstants.DAILY_RECORD_CAP`
+ *  之外**多一个来源**：`installDailyCap()` 装进来的内存镜像。调用点（`CarbonService` /
+ *  `RecordService`，本任务写入范围之外）只传 `todayRecordPoint`，因此 `cap` 缺省时
+ *  必须能取到下行值，否则「后台改了封顶值」在保存链路里根本不生效（D10-5 退化成碰运气）。
+ *  三条约束：
+ *   ① **默认仍是 200**：镜像未被安装（纯单机 / 从未拉到过配置 / 用例离线复算）时
+ *      `effectiveDailyCap()` 恒等于 `AppConstants.DAILY_RECORD_CAP`，`tests/cases/carbon-calc.json`
+ *      的 5 组封顶样例语义与数值**一字不变**；
+ *   ② **显式传参优先**：调用点传了 `dailyCap` 就用传参值，镜像不参与（离线复算与用例可控）；
+ *   ③ **只影响新写入**：本文件不发分、不读库、不写库，封顶只改变"这一笔实入 A 是多少"
+ *      （铁律 3/4：历史流水与已发分永不回写）。
+ *  镜像本身由 `ServiceHub` 在冷启动读到 `app_config['server_config']` 后安装
+ *  （读写两侧共用 `ServerConfigFetcher` 的同一套整份校验，见 `net/ServerConfigFetcher.ets`）。
  */
 import { Dec } from '../util/DecimalUtil';
 import { AppConstants } from '../util/AppConstants';
@@ -35,7 +51,7 @@ export interface FactorSnapshot {
 export interface CalcOptions {
   /** 今日已得记录分 D（**只含记录类**，不含目标分）。缺省 0。 */
   todayRecordPoint?: number;
-  /** 每日记录分上限；缺省 `AppConstants.DAILY_RECORD_CAP`（200）。 */
+  /** 每日记录分上限；缺省取 `effectiveDailyCap()`（后台下行值，取不到即 `AppConstants.DAILY_RECORD_CAP` 200）。 */
   dailyCap?: number;
   /** 每 kgCO₂e 折算积分；缺省 `AppConstants.POINTS_PER_KG`（100）。 */
   pointsPerKg?: number;
@@ -92,6 +108,39 @@ function toNumber(d: Dec, places: number): number {
 
 export class CarbonCalc {
   /**
+   * 后台下行的每日封顶**内存镜像**（`undefined` = 没有下行值，用内置 200）。
+   *
+   * 为什么是静态字段而不是构造参数：本文件是纯函数核，调用链（`CarbonService.calculate`
+   * → `CarbonCalc.evaluate` → `actualPointOf`）不持有任何 Service 引用，而这三个文件
+   * 都不在 t18 的写入范围内。用「接线层安装一次、纯函数读取」的方式，才能在不改调用点的
+   * 前提下让下行封顶真正生效，同时保持 `effectiveDailyCap()` 的默认值 = 内置 200。
+   */
+  private static downlinkDailyCap: number | undefined = undefined;
+
+  /**
+   * 安装（或清除）后台下行的每日封顶值。只由接线层 `ServiceHub` 调用：
+   * 冷启动读到 `app_config['server_config']` 时安装，读到失败/非法配置时清除（回落 200）。
+   * @param cap 下行封顶值；`undefined` 或非法（非整数 / 负数）→ 清除，回落内置常量
+   */
+  static installDailyCap(cap: number | undefined): void {
+    if (cap === undefined || !Number.isInteger(cap) || cap < 0) {
+      CarbonCalc.downlinkDailyCap = undefined;
+      return;
+    }
+    CarbonCalc.downlinkDailyCap = cap;
+  }
+
+  /**
+   * 当前生效的每日封顶值：下行镜像优先，没有则回落 `AppConstants.DAILY_RECORD_CAP`（200）。
+   * 展示侧（`PointService.dailyCap()`）与计算侧取的是**同一个键、同一套校验**，
+   * 不存在两处口径不一致的可能。
+   */
+  static effectiveDailyCap(): number {
+    const down: number | undefined = CarbonCalc.downlinkDailyCap;
+    return down === undefined ? AppConstants.DAILY_RECORD_CAP : down;
+  }
+
+  /**
    * ① 减排量：`round_half_up(活动量 × 因子值, 4)`。
    * @param amount 活动量（>0 由调用方保证；0/负数在 UI 层被禁用保存）
    * @param factorValue 因子值
@@ -119,10 +168,11 @@ export class CarbonCalc {
    * ③ 实入积分 A：`max(0, min(C, cap − D))`。
    * @param expectedPoint 应得 C
    * @param todayRecordPoint 今日已得 D
-   * @param dailyCap 日上限，缺省 200
+   * @param dailyCap 日上限；**显式传参优先**，缺省取 `effectiveDailyCap()`
+   *                 （后台下行值，取不到即内置 200）
    */
   static actualPointOf(expectedPoint: number, todayRecordPoint: number, dailyCap?: number): number {
-    const cap: number = dailyCap === undefined ? AppConstants.DAILY_RECORD_CAP : dailyCap;
+    const cap: number = dailyCap === undefined ? CarbonCalc.effectiveDailyCap() : dailyCap;
     const remain: number = cap - todayRecordPoint;
     const limit: number = remain < 0 ? 0 : remain;
     return expectedPoint < limit ? expectedPoint : limit;

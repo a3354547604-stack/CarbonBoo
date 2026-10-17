@@ -39,6 +39,8 @@ import { DemoService } from './DemoService';
 import { ShareService } from './ShareService';
 import { HttpClient, HttpPort } from './net/HttpPort';
 import { ShopPriceFetcher, ShopPriceOutcome } from './net/ShopPriceFetcher';
+import { ServerConfigFetcher, ServerConfig, ServerConfigOutcome } from './net/ServerConfigFetcher';
+import { CarbonCalc } from '../service/CarbonCalc';
 
 /** 可注入的端口（用例替换副作用边界）。 */
 export interface HubPorts {
@@ -77,6 +79,8 @@ export class ServiceHub {
   readonly shop: ShopService;
   /** 商品取价（冷启动拉一次并整份覆盖目录；铁律 1 的例外之一）。 */
   readonly shopPrices: ShopPriceFetcher;
+  /** 后台系统配置下发（冷启动拉一次并整份覆盖 `app_config['server_config']`；免 token）。 */
+  readonly serverConfig: ServerConfigFetcher;
   readonly science: ScienceService;
   readonly include: IncludeService;
   readonly appearance: AppearanceService;
@@ -107,6 +111,7 @@ export class ServiceHub {
     this.records = new RecordService(store, state, this.points, this.reward, factors);
     this.shop = new ShopService(store, state, this.points, cfg);
     this.shopPrices = new ShopPriceFetcher(http, cfg);
+    this.serverConfig = new ServerConfigFetcher(http, cfg, store);
     this.science = new ScienceService(store, state, resources);
     this.include = new IncludeService(store, state, this.points);
     this.appearance = new AppearanceService(store, state);
@@ -130,6 +135,9 @@ export class ServiceHub {
     const store: StorePort = new RdbStore(`${context.databaseDir}/rdb`);
     const cfg: AppConfig = new AppConfig(store);
     const state: AppState = await AppState.create(store, cfg, now);
+    // 冷启动**先装**上一次成功拉到的下行封顶值：无网络时后台配置照样生效
+    // （本机 `app_config` 是唯一真相源，铁律 1）。失败/无配置 → 镜像清除 → 回落内置 200。
+    await ServiceHub.installDownlinkCap(store);
     const resources: ResourcePort = ports !== undefined && ports.resources !== undefined ? ports.resources : new ContextResources(context);
     const files: FilesPort = ports !== undefined && ports.files !== undefined ? ports.files : new ContextFiles(context);
     const engine: AiEngine = ports !== undefined && ports.engine !== undefined ? ports.engine : new MockAiEngine();
@@ -193,6 +201,53 @@ export class ServiceHub {
       const msg: string = e instanceof Error ? e.message : `${e}`;
       return fail<ShopPriceOutcome>('SHOP_FETCH_THREW', `取价异常已吞掉（不影响本地功能）：${msg}`);
     }
+  }
+
+  /**
+   * 冷启动拉取后台系统配置（附录 B §5.5）：拉一次 `GET /api/v1/config`，成功则**整份覆盖**
+   * `app_config['server_config']`，失败/非法/超时则**整份丢弃**、保留上一份有效配置。
+   *
+   * 与 `fetchShopPrices` 同款：刻意再包一层 try/catch，即使 `ServerConfigFetcher`
+   * 将来引入了未捕获异常，也**绝不能**中断冷启动（铁律 1：配置拉取失败不阻塞任何本地功能）。
+   * 两条链路（取价 / 配置）各自独立：一个失败不影响另一个（附录 B §5.5 口径第 6 条）。
+   * @returns 结果摘要；永不抛错
+   */
+  async fetchServerConfig(): Promise<AppResult<ServerConfigOutcome>> {
+    try {
+      const res: AppResult<ServerConfigOutcome> = await this.serverConfig.fetchAndStore();
+      if (res.ok && res.data !== undefined && res.data.applied) {
+        // 本份配置已整份落库 → 立刻让封顶值对**后续每一笔保存**生效（无需重启）。
+        CarbonCalc.installDailyCap(res.data.pointsDailyCap);
+      } else {
+        // 整份丢弃 / 与上一份同版本 → 镜像跟着"库里那一份"走（未拉到过则清除，回落 200）。
+        await ServiceHub.installDownlinkCap(this.store);
+      }
+      return res;
+    } catch (e) {
+      const msg: string = e instanceof Error ? e.message : `${e}`;
+      return fail<ServerConfigOutcome>('CONFIG_FETCH_THREW', `配置拉取异常已吞掉（不影响本地功能）：${msg}`);
+    }
+  }
+
+  /**
+   * 把 `app_config['server_config'].pointsDailyCap` 装进 `CarbonCalc` 的下行镜像。
+   *
+   * 这是「后台改每日封顶值 → 客户端真的按新值封顶」的**唯一接线点**：
+   * 保存链路（`RecordService.doSave` → `CarbonService.calculate` → `CarbonCalc.actualPointOf`）
+   * 只传 `todayRecordPoint`，`cap` 缺省时由 `CarbonCalc.effectiveDailyCap()` 给出。
+   * 读写两侧共用 `ServerConfigFetcher` 的整份校验；读不到 / 解析不过 / 表不可用 → 清除镜像，
+   * 回落 `AppConstants.DAILY_RECORD_CAP`（200，与 `tests/cases/carbon-calc.json` 封顶样例同口径）。
+   * @param store 数据端口
+   */
+  private static async installDownlinkCap(store: StorePort): Promise<void> {
+    let effective: ServerConfig | undefined = undefined;
+    try {
+      effective = await ServerConfigFetcher.effectiveFrom(store);
+    } catch (e) {
+      // `app_config` 读失败（建表未完成 / 库不可用）绝不能中断冷启动：当作"没有下行值"
+      effective = undefined;
+    }
+    CarbonCalc.installDailyCap(effective === undefined ? undefined : effective.pointsDailyCap);
   }
 
   /** 「保存强制抛错」开关（验收 C4/C5）；落 `app_config`，重启后保留但默认关。 */

@@ -20,6 +20,7 @@ import { FactorRepository } from '../service/FactorRepository';
 import { AppConstants } from '../util/AppConstants';
 import { ServiceHub } from '../viewmodel/ServiceHub';
 import { ShopPriceOutcome } from '../viewmodel/net/ShopPriceFetcher';
+import { ServerConfigOutcome } from '../viewmodel/net/ServerConfigFetcher';
 import { AppResult } from '../model/Result';
 
 const DOMAIN: number = 0x0001;
@@ -41,8 +42,9 @@ export default class EntryAbility extends UIAbility {
 
   /**
    * 数据地基启动：`RdbHelper.open`（建 19 张表）→ `SeedRepository.seedStatic`（写种子）
-   * → **冷启动取价**（`ServiceHub.fetchShopPrices`，附录 B §5.4）。
-   * 各步都幂等，重复冷启动不会重复建表或产生重复种子行；取价失败只记日志，绝不中断启动。
+   * → **冷启动取价**（`ServiceHub.fetchShopPrices`，附录 B §5.4）
+   * → **冷启动配置下发**（`ServiceHub.fetchServerConfig`，附录 B §5.5）。
+   * 各步都幂等，重复冷启动不会重复建表或产生重复种子行；取价/配置失败只记日志，绝不中断启动。
    */
   private bootstrapDataFoundation(): void {
     RdbHelper.get()
@@ -67,6 +69,9 @@ export default class EntryAbility extends UIAbility {
         // 取价必须在**种子之后**：商品基线要先由 rawfile 播种进 `shop_item`，
         // 后台目录只是对同 id 商品的价格/文案叠加（"从未拉到过 → 用内置默认价"由此成立）。
         await this.bootstrapShopPrices();
+        // 配置下发同样在种子之后：`goalRewards` 的"未知 goalId 整条忽略"要靠 `goal_def`
+        // 里已播种的 11 条目标来判定（见 `ServerConfigFetcher.knownGoalIds`）。
+        await this.bootstrapServerConfig();
       })
       .catch((err: BusinessError) => {
         hilog.error(
@@ -105,6 +110,35 @@ export default class EntryAbility extends UIAbility {
       // 兜底：连 Hub 初始化都失败也不能影响启动（页面会走单机路径）
       const msg: string = e instanceof Error ? e.message : `${e}`;
       hilog.warn(DOMAIN, TAG, '商品取价链路异常已吞掉（不影响本地功能）：%{public}s', msg);
+    }
+  }
+
+  /**
+   * 冷启动拉取后台系统配置（附录 B §5.5，验收 D10-5；`GET /api/v1/config` **免 token**）。
+   *
+   * 契约：「启动时拉一次；`version` / `pointsDailyCap` / `badgesEnabled` / `goalRewards` /
+   * `serverTime` 五项任一非法 → **整份丢弃**，保留上一份有效配置；从未拉到过 → 用 App 内置
+   * `rawfile` 种子（内置封顶 200 + 徽章启用 + `goal-defs.json` 的 reward）。」
+   *
+   * 三层兜底（与取价同款）：① `ServerConfigFetcher` 内部从不抛错；
+   * ② `ServiceHub.fetchServerConfig` 再包一层 try/catch；③ 本方法第三层兜底，
+   * 连 `ServiceHub.init` 失败也只是少一次下发 —— **绝不阻塞启动**，全程只记一行日志。
+   * `ServiceHub.init` 已在冷启动时把上一次的下行封顶值装进 `CarbonCalc` 的内存镜像，
+   * 所以"离线冷启动"同样按上一份有效配置封顶。
+   */
+  private async bootstrapServerConfig(): Promise<void> {
+    try {
+      const hub: ServiceHub = await ServiceHub.init(this.context, Date.now());
+      const res: AppResult<ServerConfigOutcome> = await hub.fetchServerConfig();
+      if (res.ok && res.data !== undefined && res.data.applied) {
+        hilog.info(DOMAIN, TAG, '后台配置下发成功：整份覆盖 app_config[server_config]（version=%{public}s，封顶=%{public}d，徽章=%{public}s，目标奖励覆盖=%{public}d 条）',
+          res.data.version, res.data.pointsDailyCap, `${res.data.badgesEnabled}`, res.data.goalRewardCount);
+      } else {
+        hilog.warn(DOMAIN, TAG, '后台配置未生效，沿用上一份/内置默认值：%{public}s', res.message === undefined ? 'unknown' : res.message);
+      }
+    } catch (e) {
+      const msg: string = e instanceof Error ? e.message : `${e}`;
+      hilog.warn(DOMAIN, TAG, '配置下发链路异常已吞掉（不影响本地功能）：%{public}s', msg);
     }
   }
 

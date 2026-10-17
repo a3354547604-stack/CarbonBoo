@@ -53,6 +53,16 @@ export class ConfigKeys {
   /** 上次同步下来的商品目录版本（取价整份覆盖用）。 */
   static readonly SHOP_ITEMS: string = 'shop_items';
   /**
+   * 后台下发的系统配置（`server_config`）——整份 JSON 同存一处
+   * （`version` + `pointsDailyCap` + `badgesEnabled` + `goalRewards` + `serverTime`）。
+   *
+   * 与 `SHOP_ITEMS` 同款理由：把"版本号"与"内容"存进同一个键，避免出现
+   * "版本已更新、内容还是旧的"这种不一致窗口（附录 B §5.5 客户端落地口径第 4 条）。
+   * **本键只由 `ServerConfigFetcher` 写入**；消费方（`PointService` / `RewardService`）
+   * 一律经 `ServerConfigFetcher.effectiveFrom(store)` 读取，取不到即回落内置常量（铁律 1）。
+   */
+  static readonly SERVER_CONFIG: string = 'server_config';
+  /**
    * 云端恢复**前**的云端原状快照（`preRestore` + `preRestoreAt` 的 JSON）。
    *
    * 为什么由客户端落盘：附录 B §5.3:819 规定覆盖前原状随响应 `preRestore` 返回，

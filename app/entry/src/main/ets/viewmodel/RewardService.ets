@@ -25,6 +25,7 @@ import { PeriodSpan, PeriodWindow } from './domain/PeriodWindow';
 import { StorePort, firstOf, numOf, optNumOf, textOf } from './store/StorePort';
 import { RowMapper } from './store/RowMapper';
 import { PointService } from './PointService';
+import { ServerConfig, ServerConfigFetcher } from './net/ServerConfigFetcher';
 import { StatsService } from './StatsService';
 import { AppState } from './AppState';
 import { IdUtil } from './domain/IdUtil';
@@ -67,12 +68,74 @@ export class RewardService {
   }
 
   /**
+   * 当前生效的后台系统配置（附录 B §5.5 的下行值）。
+   *
+   * 只影响三个**下行默认值**，不改任何本地真相源（铁律 1）：
+   *  ① `badgesEnabled`：自动发徽章的总开关（`false` = 不发**新**徽章）；
+   *  ② `goalRewards`：按 `goalId` 覆盖内置 `rawfile/goals/goal-defs.json` 的 reward；
+   *  ③ `pointsDailyCap`：每日记录分封顶（由 `PointService.dailyCap()` 消费）。
+   * 取不到 / 配置损坏 → `undefined`，各调用点回落到内置语义。
+   */
+  private async serverConfig(): Promise<ServerConfig | undefined> {
+    return ServerConfigFetcher.effectiveFrom(this.store);
+  }
+
+  /**
+   * 把下行的目标奖励**按 `goalId` 覆盖**到内置定义上（附录 B §5.5 客户端口径第 3 条）。
+   *
+   * 只改 `reward` 一项：`name` / `threshold` / `period` / `metric` 都是本地口径，服务端不下发、也不许改。
+   * 未知 `goalId` 在**写入侧**（`ServerConfigFetcher` 整份校验时）就已被整条剔除，
+   * 此处再判一次 `def` 是否存在，做到"未知 id 静默忽略、其余条目照常生效"。
+   * @param defs 内置目标定义
+   * @param cfg 下行配置（`undefined` = 无覆盖）
+   */
+  private static withRewardOverride(defs: GoalDef[], cfg: ServerConfig | undefined): GoalDef[] {
+    if (cfg === undefined || cfg.goalRewards.length === 0) {
+      return defs;
+    }
+    const rewardOf = new Map<string, number>();
+    let k: number = 0;
+    while (k < cfg.goalRewards.length) {
+      rewardOf.set(cfg.goalRewards[k].goalId, cfg.goalRewards[k].reward);
+      k = k + 1;
+    }
+    const out: GoalDef[] = [];
+    let i: number = 0;
+    while (i < defs.length) {
+      const def: GoalDef = defs[i];
+      const reward: number | undefined = rewardOf.get(def.id);
+      if (reward === undefined) {
+        out.push(def);
+      } else {
+        // 复制一份再改：`defs` 是每次现读库得到的数组，但仍避免就地改共享引用
+        out.push({
+          id: def.id,
+          name: def.name,
+          tier: def.tier,
+          period: def.period,
+          metric: def.metric,
+          category: def.category,
+          subTypes: def.subTypes,
+          unit: def.unit,
+          threshold: def.threshold,
+          reward,
+          icon: def.icon,
+          order: def.order,
+        });
+      }
+      i = i + 1;
+    }
+    return out;
+  }
+
+  /**
    * 重建目标进度（只写 `user_goal`，不结算）。
    * @param userId 用户
    * @param now 当前时刻
    */
   async refreshProgress(userId: string, now: number): Promise<GoalCard[]> {
-    const defs: GoalDef[] = await this.goalDefs();
+    const cfg: ServerConfig | undefined = await this.serverConfig();
+    const defs: GoalDef[] = RewardService.withRewardOverride(await this.goalDefs(), cfg);
     const registerDayMs: number = await this.state.registerDayMs(userId, now);
     const records: CarbonRecord[] = await this.stats.allRecords(userId);
     const progressMap = new Map<string, number>();
@@ -106,7 +169,8 @@ export class RewardService {
    * @param now 当前时刻
    */
   async settle(userId: string, now: number): Promise<SettleDecision[]> {
-    const defs: GoalDef[] = await this.goalDefs();
+    const cfg: ServerConfig | undefined = await this.serverConfig();
+    const defs: GoalDef[] = RewardService.withRewardOverride(await this.goalDefs(), cfg);
     const registerDayMs: number = await this.state.registerDayMs(userId, now);
     const rewardOf = new Map<string, string>();
     const nameOf = new Map<string, string>();
@@ -171,11 +235,23 @@ export class RewardService {
 
   /**
    * 刷新徽章进度并解锁达标徽章（幂等；不发分）。
+   *
+   * `badgesEnabled = false`（后台下发）时**提前返回、什么都不写**：不再自动发放**新**徽章。
+   * 按铁律 3/4 与验收 D10-5 的口径，关开关**只影响今后**：
+   *  ① 已解锁的 `user_badge` 行一行不动（不删除、不改 `unlocked`/`unlocked_at`）；
+   *  ② 不写任何补偿流水、不回写历史 `point_record`；
+   *  ③ 只是连"进度推进"也一并停下——因为进度列属于同一张 `user_badge` 表，
+   *     若继续 UPDATE 就构成对已有徽章行的写入，与"关闭即冻结"的语义冲突。
+   * 徽章墙展示（`badgeRows`）不经过本方法，照旧显示已解锁徽章，所以关开关不会让页面变空。
    * @param userId 用户
    * @param now 当前时刻
-   * @returns 本次新解锁的徽章定义
+   * @returns 本次新解锁的徽章定义；开关关闭时恒为空数组
    */
   async unlockBadges(userId: string, now: number): Promise<BadgeDef[]> {
+    const cfg: ServerConfig | undefined = await this.serverConfig();
+    if (cfg !== undefined && !cfg.badgesEnabled) {
+      return [];
+    }
     const defs: BadgeDef[] = await this.badgeDefs();
     const stats: BadgeStats = await this.stats.badgeStats(userId, now);
     const rows = await this.store.query(

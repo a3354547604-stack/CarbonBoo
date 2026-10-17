@@ -21,6 +21,7 @@ import { AppConstants } from '../util/AppConstants';
 import { DateUtil } from '../util/DateUtil';
 import { IdUtil } from './domain/IdUtil';
 import { AppState } from './AppState';
+import { ServerConfig, ServerConfigFetcher } from './net/ServerConfigFetcher';
 
 /** 追加一条流水所需的最小信息。 */
 export interface PointAppendInput {
@@ -56,6 +57,32 @@ export class PointService {
     this.state = state;
   }
 
+  /**
+   * 当前生效的**每日记录分上限**（后台可下发；铁律 1 的"下行默认值"）。
+   *
+   * 取数优先级（附录 B §5.5 + 验收 D10-5）：
+   *  ① `app_config['server_config'].pointsDailyCap`（整份校验通过的那一份，写入侧
+   *     `ServerConfigFetcher` 保证其为非负整数）；
+   *  ② 取不到（未拉到过 / 无网络 / 未登录 / 服务端 500 / 配置已损坏）→ **内置常量 200**
+   *     （`AppConstants.DAILY_RECORD_CAP`）。
+   *
+   * 为什么读 `app_config` 而不是把值缓存在内存：铁律 1 规定**本机库是唯一真相源**，
+   * 服务端只提供下行默认值；读库能让"后台改小封顶值 → 下次冷启动起新写入按新值封顶"自然成立，
+   * 也让本方法在任何一层（保存链路 / 页面展示 / 用例）都得到同一个答案。
+   *
+   * 铁律 3/4 不受影响：本值只影响**新写入**的实入 A（`CarbonCalc.actualPointOf` 的 `dailyCap`），
+   * 不回溯历史流水、不改已得的 D、不动任何已结算的目标分（目标奖励本就不封顶）。
+   * 数值基准不变：从未下发过配置时，本方法恒等于 200（= `tests/cases/carbon-calc.json`
+   * 5 组封顶样例的 `todayEarnedD` / `expectedActualA` 语义）。
+   */
+  async dailyCap(): Promise<number> {
+    const effective: ServerConfig | undefined = await ServerConfigFetcher.effectiveFrom(this.store);
+    if (effective === undefined) {
+      return AppConstants.DAILY_RECORD_CAP;
+    }
+    return effective.pointsDailyCap;
+  }
+
   /** 余额与今日数字（附录 C §16 顶部）。 */
   async balance(userId: string, now: number): Promise<PointBalance> {
     const rows = await this.store.query(
@@ -76,7 +103,9 @@ export class PointService {
       totalSpent: spent,
       todayEarned,
       todayRecordPoint: today,
-      cap: AppConstants.DAILY_RECORD_CAP,
+      // 展示的上限与保存时真正使用的上限同源（都走 dailyCap()），
+      // 避免出现"进度条说还剩 50 分、保存却按 200 给分"这类两处口径不一致
+      cap: await this.dailyCap(),
       carbonCoin: Math.floor(balance / AppConstants.CARBON_COIN_RATE),
     };
   }
