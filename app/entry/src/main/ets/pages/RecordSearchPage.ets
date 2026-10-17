@@ -14,6 +14,7 @@ import { DateUtil } from '../util/DateUtil';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyView } from '../components/EmptyView';
 import { categoryIcon } from '../components/RecordItem';
+import { CategoryTag } from '../components/CategoryTag';
 
 @Component
 export struct RecordSearchPage {
@@ -99,16 +100,25 @@ export struct RecordSearchPage {
 
   @Builder
   chipItem(key: string) {
-    Text(this.chipLabel(key))
-      .fontSize(AppTheme.FONT_CAPTION)
-      .fontColor(this.category === key ? AppTheme.COLOR_SURFACE : AppTheme.COLOR_TEXT_SECONDARY)
-      .backgroundColor(this.category === key ? AppTheme.COLOR_PRIMARY : AppTheme.COLOR_SURFACE)
-      .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-      .borderRadius(AppTheme.BTN_RADIUS)
-      .onClick(() => {
-        this.category = key === 'all' ? 'all' : RecordSearchPage.toCategory(key);
-        this.search();
-      })
+    // 分类项走 CategoryTag（分类色胶囊，附录 C §4）；「全部」没有分类色，仍自绘。
+    if (key === 'all') {
+      Text(this.chipLabel(key))
+        .fontSize(AppTheme.FONT_CAPTION)
+        .fontColor(this.category === key ? AppTheme.COLOR_SURFACE : AppTheme.COLOR_TEXT_SECONDARY)
+        .backgroundColor(this.category === key ? AppTheme.COLOR_PRIMARY : AppTheme.COLOR_SURFACE)
+        .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+        .borderRadius(AppTheme.BTN_RADIUS)
+        .onClick(() => {
+          this.category = 'all';
+          this.search();
+        })
+    } else {
+      CategoryTag({ category: RecordSearchPage.toCategory(key), compact: false, selected: this.category === key })
+        .onClick(() => {
+          this.category = RecordSearchPage.toCategory(key);
+          this.search();
+        })
+    }
   }
 
   private static toCategory(key: string): CategoryKey {
