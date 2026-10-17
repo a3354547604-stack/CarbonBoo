@@ -92,6 +92,17 @@
 - **范围**：只改 `AGENTS.md §5.1`（新增第 4 条）与 §10（补一行）；§1.4 的 B 编号区间、§2 的五类例外**一字未动**（那是 t21 刚定的口径）。**不新开 B 编号**——不是新缺陷，是证据判据的补充。
 - **门禁**：`python3 tests/tools/check_l0.py --strict` → EXIT=0。
 
+### 9. 补记 `7e3e969` 与例外集五类收尾（t28，2026-11-07）
+
+> 本节处理两类**漏记**：一条已合入 main 但从未在本文件留痕的测试改动，以及 t21 把例外集从四类补为五类后、`PLAN` / `ADR-0001` / 基准正文未跟进的残留。**只改文档，不改任何实现与测试代码，不改基准数值。**
+
+- **补记 `7e3e969`（`test(server)`，2026-10-16）**：该提交移除会给 t5/t6 埋雷的跨切片断言与恒真断言 —— ① 删掉 `server/tests/test_authz.py` 里断言 `app/api/v1/{sync,shop,backup}.py` 与 `admin_web/mount.py`「不存在」的用例（t5/t6 正要创建这些文件，该断言会让下游切片的 verify 必红），改为只自检本切片唯一身份实现 `auth_provider.py` 存在；② 删掉 `assert ... or True` 恒真断言，改为断言调用次数 `len(calls) == 6`（六个接口全部经抽象转发）。**理由**：跨切片断言会让 t5/t6 的 verify 必红。提交时自检 `cd server && .venv/bin/python -m pytest tests/ -q` → 69 passed，并做了反脆弱自检（临时创建 t5/t6 目标文件后重跑仍 69 passed，随后删除模拟文件）。此前该提交只在 `git log` 里可查、本文件无痕，属漏记（评审 R6）。
+- **例外集口径统一为五类（收尾 R1）**：`AGENTS.md` 于 t21 已把 §2 铁律 1 / §5 L2 / §6 三处统一为**五类**（第五类 = 配置下发 `GET /api/v1/config`，免鉴权、与取价同组），但 `docs/PLAN.md` 七处与 `docs/adr/0001-account-and-sync.md` 一处仍是「四类」。本轮逐处改为五类并补「失败降级」半句（取价失败 → 内置默认价，配置下发失败 → 内置种子）：`PLAN.md:95` / `:118` / `:143` / `:620` / `:935` / `:1046`（**A2 验收标准原文**）/ `:1071`、`ADR-0001:17`。`PLAN.md:375`（F2-2 柱状图「四类并列」）与附录 D/E 的相关表述属**减排分类**语境、非例外集语境，未动。**口径唯一来源仍是 `AGENTS.md §2` 铁律 1**，本行只做收尾登记，不新开 B 编号。
+- **落盘路径勘误（收尾 R4 + B43 同型漏网）**：`APPENDIX-C:158` 的 `app/entry/src/main/ets/view/components/` → `app/entry/src/main/ets/components/`（仓库无 `view/` 目录）；`PLAN.md:143` 的 `common/HttpClient.ets` → `app/entry/src/main/ets/viewmodel/net/HttpPort.ets`（`HttpClient` 是该文件内的类名，`HttpPort.ets:62`；仓库无 `common/` 目录）。
+- **`tests/README.md` 因子口径与套件表勘误（R5/R8）**：「21 个因子」→ **31 项**（30 条因子 = 20 条 `recording:true` + 10 条 `recording:false` 对照镜像，+ `CAR_OWN_FACTOR` 1 条），与附录 A §2.5 的镜像关系一致；`PointCap` 行改为「封顶 5 组（无独立套件，由 `CalcSamples.test.ets` + `CalcBaselineValidator.ets` 承载）」。**未改任何基准数值**。
+- **`docs/VERIFICATION.md` 判据勘误（R2/R3）**：V9 的判据由窄模式 `grep "四类网络例外\|四类例外"` 改为**语义覆盖**宽口径 `grep -rn "四类"` 并逐条判语境；新增未运行项 **N8 视觉走查**（本机无 hdc / 无真机 / 无模拟器、Previewer 崩于 glibc 2.43 ⇒ 18 个页面一张截图都产生不出来；`ARK_API_KEY` 在本会话不存在 ⇒ 视觉模型亦不可用）。用户 m00004 的「前端子代理须有视觉模型」一条**未满足，须在最终交付说明中显式告知**。
+- **门禁**：`python3 tests/tools/check_l0.py --strict` → EXIT=0。
+
 ---
 
 ## v4.1（2026-11-06）· 文档契约冻结
