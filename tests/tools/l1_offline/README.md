@@ -121,6 +121,7 @@ const A = c.countsTowardCap === false ? C : CarbonCalc.actualPointOf(C, D);
   两个 runner 分别报 `RESULT: PASS=53 FAIL=2` 与 `mismatches=3`，退出码均为 1。
 - **失败就是发现**：不许为了让这里变绿而改基准、删断言、跳过用例（`AGENTS.md` §5、`tests/README.md` §4）。
   若确认是基准写错了，那是一次需要理由的决策，要按 `AGENTS.md` §3 同步改文档并在提交信息里写明。
+- **注入-还原用 `git show`，别用 `cp` 备份**（t42 实测陷阱）：做「改一个真实常数 → 应报错 → 还原」的自证时，`cp 原文件 /tmp/备份` 的备份会被后续 shell 重放污染（备份内容也跟着变成被改后的值），于是「还原」实际是把**污染版**写回去，症状是还原后**仍然 FAIL**。正确做法：`git show HEAD:<path> > <path>`，或用 `git archive HEAD | tar -x` 解出的干净副本里的原文件；还原后校验 `git diff --stat <path>` 为空（或与 `git show HEAD:<path>` 逐字节相同）。
 - 新增/替换被消费的源文件：改 `run.sh` 顶部的 `MAIN_SRC` / `TEST_SRC` 列表，并同步 §3 的 `expected` 清单
   （纯类型文件会被 TS 擦除、不会出现在 metafile 的 inputs 里，需放进 `typeOnly` 集合）。
 - 若某个 `app/` 下的纯逻辑文件开始 import ArkTS 运行时 API（如 `@ohos.*`），它会在这里直接转译失败——
