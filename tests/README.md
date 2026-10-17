@@ -89,10 +89,19 @@ python3 tests/tools/check_l0.py --strict
 | `test_auth.py` | 注册/登录/me/登出；用户名与密码规则；重复用户名 409 |
 | `test_authz.py` | 客户端 token 访问 `/admin/*` 必须 403；两套密钥互不通用 |
 | `test_shop.py` | 取价接口契约；非法数据整份丢弃 |
-| `test_sync.py` | push/pull 幂等；LWW 结果与服务端一致；冲突计数正确 |
+| `test_sync.py` | push/pull 幂等；LWW 结果与服务端一致；冲突计数正确；**另含云端备份三端点的 7 个用例**（`test_backup.py` 不存在，归属见下方 ⚠️ 说明） |
 | `test_admin.py` | **Web 后台管理端（`/admin`，t6）**：模块头写明覆盖 PLAN §13.2 的 **7 项功能 + 管理侧独立 JWT 隔离**，把附录 D §1.10（D10-1…D10-8）逐条可执行化（真实 MySQL 8 + `TestClient`，**无 mock、不 skip**；用例数随 t6 续写增长，2026-11-06 复核时 50+）。按 D10 分组：① 登录/引导/改密码（D10-1：`adminToken` 与 bcrypt 落库、`admin_op_log` 审计、错口令 401 不泄漏密钥/哈希/明文、不区分"用户不存在"与"口令错"、强口令在引导路径也生效、表单登录 303 + HttpOnly/SameSite Cookie、`next` 开放重定向防护、未登录时 JSON→401 / HTML→303 分流）② 商品管理（D10-2/D10-3：价目表与客户端取价同源、改价写通到 `/api/v1/shop/items` 并记前后值、PATCH 只改传入字段、上下架、新增与重复编码 400、空改动幂等不写日志、图标上传三路径 + 大小上限 + 路径穿越与伪装图片防线、静态资源白名单）③④⑤ 用户列表/数据总览/订单（D10-4）⑥ 系统配置（D10-5）⑦ 操作日志（D10-6）；另有鉴权隔离组（客户端 token 在 `/admin/*` 全部路径与写方法上 403、管理 token 不被客户端 API 接受、两套密钥与受众不同、登录限流 429、日志详情不落密钥）、工程约束组（SSR 页面不是占位、无前端框架/无构建链、挂载幂等只加 `/admin` 路由）与 `admin_web.cli create-admin` |
 | `test_config.py` | **配置下发通道（免鉴权 `GET /api/v1/config`，附录 B §5.5 / 验收 D10-5，t17）**：**无需令牌**（与 §5.4 取价同组，未登录也要能读到）；响应形状逐字对齐 §5.5（camelCase、**不泄漏 snake_case 列名**）；**`badgesEnabled` 是 JSON 布尔** —— 断言**原始响应文本**里为 `true`/`false`（`is True` 会被整数 `1` 骗过）；三项配置**真的来自库**（改库后端点读回新值 = D10-5 闭环证据）；`goalRewards` 来自既有 `goal_def`（按 `id` 升序、11 条，**未新增任何表**）；缺键回落（`config_version` → `"0.0.0"`、`points_daily_cap` → `200`、`badges_enabled` → `true`）且**回落时都不改写库**；非法封顶值（`abc` / 空串 / `12.5` / 纯空白 / `null` / 负数）一律回落而不是污染客户端；后台 `PUT /admin/config` 的写入**对客户端端点可见**；库异常 → 500 + `{ok:false,code:"SERVER_ERROR"}`（客户端据此整份丢弃）；只读端点**不写 `admin_op_log` / `sync_log`** |
 
+> **⚠️ 云端备份用例的归属（t21 澄清，原验证 F6）**：历史上若有任务书把 L3 写成
+> 「`test_auth / test_authz / test_shop / test_sync / test_backup / test_admin`」六个文件，
+> 请注意 **`test_backup.py` 并不存在，也不是漏建**——云端备份三端点
+> （`POST/GET /api/v1/sync/backup`、`POST /api/v1/sync/backup/restore`，附录 B §5.3）的 **7 个用例写在 `test_sync.py` 内**：
+> 备份与同步共用同一组夹具与同一张库表快照，拆成两个文件会各自重建库、把 7 个用例的固件成本翻倍，
+> 而它们断言的是「备份走独立三端点、**绕开** LWW 合并」（与同步用例的对照关系需要同文件并列才读得懂）。
+> 故**按文件点检时请把备份用例算进 `test_sync.py`**；t21 已核查：`ls server/tests/test_*.py` = `test_admin` / `test_auth` /
+> `test_authz` / `test_config` / `test_shop` / `test_sync` 计 **6 个**，无 `test_backup.py`。
+>
 > **清单与仓库一致（2026-11-07 复核）**：上表为 **6 个用例文件**，与 `ls server/tests/test_*.py` 实测一致
 > （同一目录下的 `conftest.py` 是 **pytest 夹具**——`mysql_conn`/`clean_database`/`settings`/`db_session`/`app`/`client`
 > 与 `register_user`/`auth_header`/`unique_username` 等辅助函数，**不是用例文件**，不计入上表）。

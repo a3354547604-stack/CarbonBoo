@@ -333,7 +333,16 @@ export class SyncService {
     return ok<number>(restored + removed);
   }
 
-  /** 家庭碳积分（只读合并；单设备时返回空 members，页面显示空态）。 */
+  /**
+   * 家庭碳积分（只读合并；单设备时返回空 members，页面显示空态）。
+   *
+   * **积分口径（t21 勘误）**：家庭成员与合计两处都用 `SUM(points)` —— `point_record.points`
+   * **本身已带符号**（`PointService.append` 写的 primary 是正额、`reverse()` 写的 reverse 是负额），
+   * 故净额 = 直接相加，与 `PointService.balance()` 的 `SUM(points)` 口径**逐字一致**。
+   * 此前合计写的是 `CASE WHEN flow_kind = 'primary' THEN points ELSE -points END`，会把 reverse 行
+   * **翻回正数**（本机 −96 记成 +96），导致协同页「家庭积分合计」与「我的」页余额对不上；成员口径此前
+   * 又只算 primary 行，同一条 reverse 会让成员之和 ≠ 合计。两处一并按净额修正（§18.2「只读求和」）。
+   */
   async family(userId: string): Promise<FamilySummary> {
     const rows: RowShape[] = await this.store.query(
       'SELECT device_id AS did, COUNT(*) AS n, COALESCE(SUM(reduction_kg), 0) AS kg FROM carbon_record ' +
@@ -347,7 +356,7 @@ export class SyncService {
       const did: string = textOf(rows[i], 'did');
       const kg: number = numOf(rows[i], 'kg');
       const earned: RowShape[] = await this.store.query(
-        "SELECT COALESCE(SUM(points), 0) AS p FROM point_record WHERE user_id = ? AND is_deleted = 0 AND flow_kind = 'primary' AND COALESCE(device_id, '') = ?",
+        "SELECT COALESCE(SUM(points), 0) AS p FROM point_record WHERE user_id = ? AND is_deleted = 0 AND COALESCE(device_id, '') = ?",
         [userId, did]
       );
       const earnedRow: RowShape | undefined = firstOf(earned);
@@ -362,7 +371,7 @@ export class SyncService {
       i = i + 1;
     }
     const totalPointsRows: RowShape[] = await this.store.query(
-      "SELECT COALESCE(SUM(CASE WHEN flow_kind = 'primary' THEN points ELSE -points END), 0) AS p FROM point_record WHERE user_id = ? AND is_deleted = 0",
+      "SELECT COALESCE(SUM(points), 0) AS p FROM point_record WHERE user_id = ? AND is_deleted = 0",
       [userId]
     );
     const tp: RowShape | undefined = firstOf(totalPointsRows);

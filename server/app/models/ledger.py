@@ -66,7 +66,8 @@ class PointRecord(Base):
     __table_args__ = (
         # 业务唯一键；**含 user_id** —— 服务端多账号共库，而 source_id 取值口径不含账号
         # （附录 B §2:135-138），少了 user_id 会让两个账号的同名目标互相顶掉。
-        # 附录 B §2:142 需同步修正；迁移见 sql/migrations/001_uq_pr_source_user_id.sql。
+        # 已于 B40 勘误闭环（附录 B §2:149 已含 user_id）；
+        # 老库升级迁移见 sql/migrations/001_uq_pr_source_user_id.sql。
         UniqueConstraint("user_id", "source_type", "source_id", "flow_kind", name="uq_pr_source"),
         Index("idx_pr_user_time", "user_id", text("occurred_at DESC")),
         Index("idx_pr_cap", "user_id", "occurred_at", "source_type", "is_deleted"),

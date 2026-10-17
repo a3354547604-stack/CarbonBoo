@@ -57,7 +57,7 @@ import { FakeHttpClient } from '../../../main/ets/viewmodel/net/HttpPort';
 import { MemoryFiles } from '../../../main/ets/viewmodel/store/FilesPort';
 import { HubPorts, ServiceHub } from '../../../main/ets/viewmodel/ServiceHub';
 import { ConfigKeys } from '../../../main/ets/viewmodel/AppConfig';
-import { SyncOutcome } from '../../../main/ets/viewmodel/net/SyncService';
+import { FamilySummary, SyncOutcome } from '../../../main/ets/viewmodel/net/SyncService';
 import { AuthOutcome, ServerAuthProvider } from '../../../main/ets/viewmodel/AuthService';
 import { AppResult } from '../../../main/ets/model/Result';
 import { StorePort, RowShape, SqlValue, firstOf, numOf, textOf } from '../../../main/ets/viewmodel/store/StorePort';
@@ -615,6 +615,62 @@ export default function lwwMergeTest(): void {
       expect(numOf(after3 === undefined ? {} : after3, 'amount')).assertEqual(66);
     });
 
+    it('⑦ 家庭合并净额：family().totalPoints = SUM(points)（primary 已正、reverse 已负，不再翻回正）', 0, async () => {
+      // 编号 ⑦ 的来历（t21 说明，避免后续按编号点检出错）：
+      //   t11 原第 ⑦ 条是「`since` 形参被忽略 → conflicts 恒为 0」的告警断言；t13 修好实现后，
+      //   该断言与 ⑧（真冲突计数）是同一件事 → **已并入 ⑧**。本用例占用 ⑦ 这个空缺编号，
+      //   承载 t21 新增的「家庭合并积分口径」回归，编号自此连续 ①–⑩。
+      // 被测口径：附录 C §18.2「同一账号下多设备按 device_id 去重后只读求和」，
+      //   而 `point_record.points` 本身已带符号（primary 正 / reverse 负）→ 净额 = SUM(points)，
+      //   与 `PointService.balance()` 的 sum 口径逐字一致（铁律 4：余额 = 收入合计 − 支出合计）。
+      const fx: Fixture = await setup();
+      const hub: ServiceHub = fx.hub;
+      const userId: string = hub.state.userId();
+      const now: number = Date.now();
+
+      // 先落一条碳记录：family() 的成员分组来自 carbon_record.device_id，成员口径才有可断言的一行
+      await seedLocal(hub, userId, now);
+
+      const sourceId: string = `rec-fam-${now}#0`;
+      await hub.points.append(userId, {
+        type: 'record',
+        points: 96,
+        sourceType: 'carbon_record',
+        sourceId: sourceId,
+        title: '减排记录',
+        occurredAt: now,
+      });
+      // 冲正：写 flow_kind='reverse' 的**负额**行（`PointService` 唯一入口；source_id 与入账同值，靠 flow_kind 区分）
+      await hub.points.reverse(userId, 'record', 96, sourceId, '调整', now);
+
+      // 独立取一次纯 SUM(points) 作为口径参照（与 balance() 的 sum 同源）
+      const sums: RowShape[] = await hub.store.query(
+        'SELECT COALESCE(SUM(points), 0) AS p FROM point_record WHERE user_id = ? AND is_deleted = 0',
+        [userId]);
+      const netRow: RowShape | undefined = firstOf(sums);
+      const net: number = netRow === undefined ? 0 : numOf(netRow, 'p');
+      expect(net).assertEqual(0);   // +96 − 96
+
+      const summary: FamilySummary = await hub.sync.family(userId);
+      // 修前的 `CASE WHEN flow_kind='primary' THEN points ELSE -points END` 会得到 +192 → 本行失败
+      expect(summary.totalPoints).assertEqual(net);
+      // 成员口径同为净额：修前只算 primary 行 → 本机成员 +96，与合计对不上 → 本行失败
+      expect(summary.members.length).assertEqual(1);
+      expect(summary.members[0].points).assertEqual(net);
+
+      // 再加一笔正额：净额随之上升，且仍等于 SUM(points)
+      await hub.points.append(userId, {
+        type: 'record',
+        points: 200,
+        sourceType: 'carbon_record',
+        sourceId: `rec-fam-${now}#1`,
+        title: '减排记录',
+        occurredAt: now + 1,
+      });
+      const after: FamilySummary = await hub.sync.family(userId);
+      expect(after.totalPoints).assertEqual(200);
+    });
+
     it('⑧ 真冲突计数：仅当两端自上次同步后都改过（§6.3；t13 已补齐）', 0, async () => {
       // §6.3：`l.updatedAt > since && r.updatedAt > since`（r 用**原始**对端时间戳）。
       // t11 时 `since` 形参被完全忽略 → conflicts 恒为 0；t13 起按条件计数。
@@ -646,7 +702,7 @@ export default function lwwMergeTest(): void {
       expect(resB.data === undefined ? -1 : resB.data.conflicts).assertEqual(0);
     });
 
-    it('⑩ 云端备份走独立三端点，且绕开 LWW（附录 B §5.3:807/817-819）', 0, async () => {
+    it('⑨ 云端备份走独立三端点，且绕开 LWW（附录 B §5.3:807/817-819）', 0, async () => {
       // 备份 = 快照（`POST/GET /sync/backup` + `POST /sync/backup/restore`），
       // **不是**"复用 push/pull 的 since=0"——后者会走 §6.3 的 LWW 合并（文档明文禁止）。
       const fx: Fixture = await setup();
@@ -710,7 +766,7 @@ export default function lwwMergeTest(): void {
       expect((pre === undefined ? '' : pre).indexOf('555') >= 0).assertTrue();
     });
 
-    it('⑨ 备份/恢复日志：恢复不产生 conflicts（备份路径与 LWW 无关）', 0, async () => {
+    it('⑩ 备份/恢复日志：恢复不产生 conflicts（备份路径与 LWW 无关）', 0, async () => {
       // 口径来源：附录 B §6.3「真冲突 = 两端自上次同步后都改过这一行」。
       // ⚠️ 注意：`applyRow()` 的 `since` 形参在 :461-497 内**未被使用**，
       //    故"两端自上次同步后都改过"这一条件在当前实现里**不可判**；

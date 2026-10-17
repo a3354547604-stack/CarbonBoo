@@ -9,6 +9,15 @@
  *
  * 这里同时是该模块的编译图入口：所有页面、组件、ViewModel、数据层都由本文件可达
  * （t2 实测证明：ArkTS 只编译 entry 可达模块，未 import 的业务代码不参与编译）。
+ *
+ * ⚠️ 末尾两条 **S1 表 Dao 的 import 是刻意的编译图锚点**（`CarbonRecordDao` / `ResultSetMapper`）：
+ *   t4 重写本页时它们一度不在编译图里（`docs/VERIFICATION.md` 的 F2 实测：向这两个文件注入未定义引用，
+ *   build 仍 SUCCESS），于是 t2 自述的「缺陷 A（`ResultSet.getColumnName(0)`）修复」**从未被编译器校验过**。
+ *   t21 按验收要求把它们显式接入本页（附录 B §7 的 12 个表 Dao 里目前落地的就是这两者），
+ *   并**用注入探针复验**：向 `CarbonRecordDao.ets` 注入未定义常量 → BUILD FAILED；
+ *   撤回 → BUILD SUCCESSFUL。锚点因此不是"顺手留的 import"，而是有门禁背书的可达性约束。
+ *   业务路径上它们仍**不作为**数据通道使用（t4 起数据层是 `viewmodel/store/*`），
+ *   删除它们等于让 §7 的表 Dao 契约在代码侧归零，故保留而非删除。
  */
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -34,6 +43,9 @@ import { IncludePage } from './IncludePage';
 import { AppearancePage } from './AppearancePage';
 import { SettingsPage } from './SettingsPage';
 import { AboutPage } from './AboutPage';
+// 编译图锚点（见文件头 ⚠️）：S1 表 Dao —— 仅 import、不经业务路径调用，防止其再次掉出编译图。
+import { CarbonRecordDao } from '../data/dao/CarbonRecordDao';
+import { ResultSetMapper } from '../data/dao/ResultSetMapper';
 
 const DOMAIN: number = 0x0001;
 const TAG: string = 'CarbonBoo';

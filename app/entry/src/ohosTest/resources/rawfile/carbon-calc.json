@@ -930,6 +930,70 @@
       "bad": "ADR-0001 遗留四项「未决」，与 PLAN/附录的服务端、同步、注销口径悬空",
       "correct": "【已闭环·用户拍板 2026-11-06】ADR 新增 Decisions 表：① 首次登录时本机历史数据全部改挂账号并全量上传；② 鸿蒙分布式协同保留为近场演示层；③ 注销后云端数据软删除保留 30 天、期间可恢复，本机数据不删；④ 云服务器规格/地区/域名仍是唯一未决项（不阻塞编码，地址经配置注入）",
       "status": "closed"
+    },
+    {
+      "id": "B40",
+      "file": "docs/APPENDIX-B-data-and-api.md + docs/PLAN.md",
+      "locator": "APPENDIX-B:134-142（`uq_pr_source` + 幂等约束注释）、PLAN §9.5 第 2/3 条、APPENDIX-B §10 变更索引",
+      "bad": "唯一键 `uq_pr_source(source_type, source_id, flow_kind)` **缺 `user_id`**，而 `source_id` 取值口径（`goal → '<goalId>:<periodKey>'`、`shop_item → '<shop_item.id>'`）不含账号维度 → 本机 `local-guest` / `demo-user` / 账号 userId 并存、服务端多账号共库时，两个账号同一天达成同名目标会得到同一组键值，**后入账者被唯一索引挡下、合法积分流水丢失**",
+      "correct": "【已闭环·2026-11-06 文档对齐实现】`uq_pr_source(user_id, source_type, source_id, flow_kind)`：APPENDIX-B §2 建表 SQL 与幂等约束注释改为含 `user_id`（并写清「跨账号互不影响」、同步判重一律按 `(user_id, 业务键)` 组合）；PLAN §9.5 第 2/3 条与 §10 变更索引同步。服务端 `server/sql/schema.sql` + `sql/migrations/001_uq_pr_source_user_id.sql` 与客户端 `app/entry/src/main/ets/data/schema/ClientSchema.ets` **此前已按含 `user_id` 的口径实现并验证**，本条目只修文档侧分叉",
+      "status": "closed"
+    },
+    {
+      "id": "B41",
+      "file": "docs/APPENDIX-B-data-and-api.md + docs/APPENDIX-D-acceptance.md",
+      "locator": "APPENDIX-B:748（§5.2 端点表）、:792 / :794-798（§5.3 端点表）、:801-814（push 请求/响应示例）、:894-935（§6.3 伪码与写回块）、:939-942（§6.4-3）、:945（§6.4-6）、:953-954（§6.5）；APPENDIX-D D5-12",
+      "bad": "同步契约与已实现并验证的口径分叉七处：① §6.3 伪码的 `appendOnly` 只按 `id` 去重，业务唯一键兜底只写在散文注释里 → 伪码自身不自洽（照抄即跨设备重复发放）；② §5.3 端点表只有 pull/push/status，**云端备份三端点缺行**；③ push 请求体没有客户端时钟字段，而 §6.4-6 要求测得 `offsetMs = 本机时钟 − 对端时钟`，服务端无从测得；④ §6.4-3 把 `ignored` 与 `conflicts` 混写在一条里（容易被实现成「去重也计冲突」）；⑤ §6.5 `user_purchase` 行没写「忽略远端购买行不产生任何流水」；⑥ §6.5 `user_profile` 行没写按 `user_id` 收敛到一行、`id` 取胜者的；⑦ §5.2/§5.3 都没写明哪些端点需要 `Authorization: Bearer <userToken>`（账号已注销者 401）",
+      "correct": "【已闭环·2026-11-06 文档对齐实现】① §6.3 伪码新增 `businessKeyOf` / `keys` 集合，`appendOnly` 分支同时判 `id` 与业务唯一键（命中即 `ignored++`，不计 `conflicts`），并写明写回 `INSERT OR IGNORE` 是第二道兜底；② §5.3 补三行端点 `POST /api/v1/sync/backup`（上传快照）/ `GET /api/v1/sync/backup`（下载快照）/ `POST /api/v1/sync/backup/restore`（覆盖式恢复，返回 `preRestore`），并写明「备份是独立三端点、不是复用 push/pull 的 since=0」（t5 的 test_backup 钉住三条）；③ push 请求体补可选 `clientNow`（毫秒），响应补 `ignored`/`rejected`/`offsetMs`/`clockWarning`，并写明 `skipped = ignored + rejected`、`offsetMs = 服务端时钟 − 客户端时钟`、`clientNow` 缺失即按「无偏移」处理；④ §6.4-3 明确 `ignored` **不计入** `conflicts`；⑤ §6.5 明确忽略远端购买行**不产生任何流水**（无 `reverse`、无 `adjust` 枚举值）；⑥ §6.5 明确 `user_profile` 合并按 `user_id` 收敛到一行、`id` 取「保存下来的那一行」的 id；⑦ §5.2 加「鉴权」列、§5.3 表头写明本组全部端点（含备份三端点）均需客户端令牌、账号已注销者 401；另 D5-12 的判据指向附录 B §5.3 的三端点",
+      "status": "closed"
+    },
+    {
+      "id": "B42",
+      "file": "AGENTS.md",
+      "locator": "AGENTS.md §6「服务端、账号与同步（ADR-0001）」第 2 条",
+      "bad": "「**未登录 = 纯单机**：不上传任何数据；除\u300c登录/同步/取价\u300d外全功能可用。」只列**三项**网络例外，与本文件 §2 铁律 1（四项：登录/注册、多设备同步、商品取价、云端备份）、§5 L2 飞行模式验收（四项）、附录 D §1.6（四项）不一致 —— B21 口径统一的漏网点，会误导实现者把「云端备份」也做成未登录可用",
+      "correct": "【已闭环·2026-11-06】§6 第 2 条改为「除\u300c登录/注册、多设备同步、商品取价、云端备份\u300d**四类网络例外**（与 §2 铁律 1、§5 L2、附录 D §1.6 同一口径）外全功能可用」",
+      "status": "closed"
+    },
+    {
+      "id": "B43",
+      "file": "docs/APPENDIX-C-ui-screens.md",
+      "locator": "APPENDIX-C:84（§3 设计令牌落盘路径）、:908（§25 界面自检第 2 条）",
+      "bad": "文档写的落盘路径 `app/entry/src/main/ets/common/AppTheme.ets` 在仓库里不存在（`app/entry/src/main/ets/` 下没有 `common/` 目录）；§25 自检第 2 条提到的例外文件 `LiteralConstants.ets` 也不存在——真实情况是设计令牌唯一来源在 `util/AppTheme.ets`，且 `LiteralConstants` 是**同一个文件里的类**（同文件 `export class AppTheme` / `export class LiteralConstants`）",
+      "correct": "【已闭环·2026-11-06 队长实测 + find 复核】§3 落盘路径改为 `app/entry/src/main/ets/util/AppTheme.ets`（并加一行 v4.2 勘误，点名旧路径不存在、无 `common/` 目录）；§25 自检第 2 条改为「例外集中在 `util/AppTheme.ets` 里的 `LiteralConstants` 类，没有 `LiteralConstants.ets` 这个文件」。复核命令：`find app/entry/src/main/ets -name 'AppTheme.ets'` → `app/entry/src/main/ets/util/AppTheme.ets`；`ls app/entry/src/main/ets/` → components/dao/data/entryability/infra/model/pages/service/util/viewmodel（无 common）",
+      "status": "closed"
+    },
+    {
+      "id": "B44",
+      "file": "docs/APPENDIX-D-acceptance.md + docs/APPENDIX-C-ui-screens.md",
+      "locator": "APPENDIX-D:441-463（§9 演示数据规格表与分布要求 3/4）、:524-539（§10.3 summary.csv 示例）；APPENDIX-C:148-152（§3.4 数字格式）",
+      "bad": "§9 的四个约束互斥：「约 260 条 / 90 天」×「出行 0.8 条/天 ≈72 条」×「典型值 骑行 5 km = 0.9600」已经是 69.12 kg ≈ 6,912 分，再加水电/回收/光盘会到 300 kg 以上，与 §9 第 3 条「累计减排约 60–90 kgCO₂e」和第 4 条「积分余额约 4000–6000 分」不可能同时成立；§10.3 的 `summary.csv` 示例（总减排 76.3800 = 出行 32.4000 + 水电燃气 28.6000 + 旧物回收 14.9800 + 光盘 0.4000，光盘只有 0.4 kg ≈ 1 餐）与 §9 表也不同源，同一份演示数据出现两个总减排；附录 C §3.4/§9 示意图的 12.4800 kg 与 4,820 分容易被当成演示数据规格",
+      "correct": "【已闭环·择一为准·2026-11-06】以 §9 为唯一求和来源并新增「§9.1 汇总口径」把四者算通：单条量级改为按「日均新增减排 ≈0.7 kg」缩放后的每条约值（出行 ≈0.30 / 水电燃气 ≈0.13 / 旧物回收 ≈0.30 / 光盘 0.35 kg，与 DemoService 的 dayPlan 逐条一致）；条数 72+108+45+36 = 261（规格仍表述「约 260 条」）；累计减排 **61.7400 kgCO₂e**（= 21.6000+14.0400+13.5000+12.6000，落 60–90 区间且 < 100 kg 硬上限）；记录类毛收益 ≈6,174 分（日均 68.6 < 200 封顶不生效），**最终余额由收尾兑换收敛到 4,820–4,919**（`TARGET_BALANCE = 4820`，仍在 4,000–6,000 区间内）；§10.3 的 `summary.csv` 示例全部改为与 §9.1 逐字一致（总减排 61.7400、四类 21.6000/14.0400/13.5000/12.6000、记录数 260、积分 4,820、徽章 6）；附录 C §3.4 补一行说明「表内 12.4800 / 4,820 / 48 是格式示例，不是演示数据规格，规格唯一来源是附录 D §9/§9.1」。数值仍是文档级规格值，`tests/cases/carbon-calc.json` 的 constants/factors/samples 无对应字段、未改动（本次只登记本条目）",
+      "status": "closed"
+    },
+    {
+      "id": "B45",
+      "file": "AGENTS.md + docs/README.md",
+      "locator": "AGENTS.md 头部状态行（引用块第 2 条）、docs/README.md「一页速览」的「当前阶段」",
+      "bad": "两份文档都写着与仓库现实不符的进度：「当前阶段：只做计划与开发文档，暂不编码」+「`app/`、`server/` **尚未创建**」/「计划已定稿，**尚未开始编码**」；而 `app/`（ArkTS + API 12，19 张表 + 18 个页面）与 `server/`（FastAPI + MySQL 8，21 张表 + 账号/多设备同步/取价/云端备份 + L3 pytest）都已落库，`/admin` 在实现中——后续 agent（连队长都要靠实测）会据此误判仓库现状",
+      "correct": "【已闭环·2026-11-06 队长复核】AGENTS.md 头部改为「S1–S6 已实现并落库（`app/` 19 张表 + 18 个页面；`server/` 21 张表 + 账号/多设备同步/取价/云端备份 + L3 pytest），S7 创新项与 `/admin` 后台收尾中；规划 v4.2 定稿（2026-11-06 文档契约勘误）」；docs/README.md「当前阶段」改为同一口径（含 v4.2）。复核依据：`app/entry/src/main/ets/data/schema/ClientSchema.ets` TABLES=19 / SYNCED_TABLES=9；`ls app/entry/src/main/ets/pages` 19 个 .ets；`grep -c __tablename__ server/app/models/*.py` = 21；`ls server/tests` 有 test_auth/test_authz/test_shop/test_sync",
+      "status": "closed"
+    },
+    {
+      "id": "B46",
+      "file": "docs/APPENDIX-B-data-and-api.md",
+      "locator": ":824/:996-999（§5.3 push 请求体、§6.3 伪码头注释）、:1043/:1050（§6.3 真冲突与平局分支）、:1075（§6.4-3 ignored 计数）、:1081-1092（§6.4-6 lastSyncAt 的基准）",
+      "bad": "`offsetMs` 一个名字被两端各自复用却没有写出客户端那一次取反：§5.3 响应里的 `offsetMs` 是**服务端视角**（服务端 − 客户端），而 §6.3 伪码要的是**客户端视角**（客户端 − 服务端）——照字面把响应值直接相加，在服务端快 60 秒时会把对端时间戳算**新** 60 秒，对端更旧的行反而覆盖本机，得到与 §6.4-6 **相反**的收敛结论（双机演示才暴露、极难定位）。同类且更严重的是 `lastSyncAt`：既被定义为「上次成功同步的时刻（服务端时钟基准，落 `device_info.last_sync_at`）」，又在 §6.3 的冲突条件 `l.updatedAt > lastSyncAt && r.updatedAt > lastSyncAt` 里与**本机**行的 `updatedAt` 直接比较 —— 同名不同基准",
+      "correct": "【已闭环·2026-11-06】① `offsetMs` 消歧（t15，提交 `67f363b`）：§5.3 补明文「响应里的 `offsetMs` 是服务端视角，客户端必须 `const clientOffsetMs = -respOffsetMs;`」并给自证判据（`respOffsetMs = +60000` ⇒ 服务端 `updatedAt = T` 的行换算到客户端必须是 **`T − 60000`**，即显得更旧；服务端侧与自己的基准同向、不取反）；§6.3 伪码参数由 `offsetMs` 更名 `clientOffsetMs` 并注明「它不是 §5.3 响应里的 `offsetMs`（互为相反数）」。② `lastSyncAt` 基准单一化（t16，提交 `bfd5090`）：冻结为**唯一服务端基准** = 响应 `serverTime`（落 `device_info.last_sync_at`，也用于 push 请求体与 pull 的 `since`）；§6.3 真冲突与平局分支改用派生锚点 `lastSyncAtLocal ≝ lastSyncAt + clientOffsetMs = lastSyncAt − respOffsetMs`（本机行与换算后的锚点同基准，对端行保持原值），等价写法 `l.updatedAt + respOffsetMs > lastSyncAt`；§6.4-6 新增「lastSyncAt 的基准」给出客户端/服务端两侧比较式表（服务端侧 `int(values[\"updated_at\"]) + offset_ms > last_sync_at`）+ 自证判据（`respOffsetMs = 0` 时两式退化为同一个数）+「凡跨端时间戳必须能说清在哪个基准上」的字段归属表。③ 选服务端基准而否决「客户端单锚点」的理由写进 §6.4-6：`GET /sync/pull?since=` 没有 `clientNow`，服务端在 pull 路径上拿不到 `offset_ms`，增量边界会随时钟偏移漂移。门禁：`python3 tests/tools/check_l0.py --strict` → EXIT=0",
+      "status": "closed"
+    },
+    {
+      "id": "B47",
+      "file": "docs/APPENDIX-B-data-and-api.md + docs/APPENDIX-D-acceptance.md",
+      "locator": "APPENDIX-B §5.4 端点表（:866）与新增 §5.5（:900-975）；APPENDIX-D D10-5（:209）；PLAN §13.3",
+      "bad": "验收 **D10-5** 的判据含「改目标奖励分值 / 每日封顶值 / 徽章开关 → **App 侧能读到**」，但附录 B §5.4 与 `PLAN §13.3` 只定义了商品目录下发（`GET /api/v1/shop/items`），**没有任何 `app_config` / `goal_def` 下发通道** —— 后台的系统配置是「只写不读」的死功能，D10-5 没有可执行路径（t6 交付时报出的 STOP）",
+      "correct": "【已闭环·2026-11-06 文档侧；实现跟进任务：**t17 服务端 / t18 客户端**】① 附录 B §5.4 端点表新增 `GET /api/v1/config`（鉴权「**无**」，与 `GET /api/v1/shop/items` 同组 —— 未登录也要能读到公共配置，后端不可用时照常用本地值，D10-8 / 铁律 1）。② 新增 **§5.5 config（客户端可读配置，免鉴权）** 冻结响应体契约 `{ ok: true, data: { version: 非空字符串, pointsDailyCap: 非负整数, badgesEnabled: 布尔, goalRewards: [{ goalId, reward }] 可缺省, serverTime: 毫秒整数 } }`、服务端生成规则表（`version` ← 服务端 `app_config['config_version']`，**独立键名**不与 `shop_items_version` 互相顶替、缺省 `\"0.0.0\"`；`pointsDailyCap` ← `points_daily_cap` 缺省 `200`；`badgesEnabled` ← `badges_enabled` 的 `1`/`0` **必须序列化为 JSON 布尔**、缺省 `true`；`goalRewards` ← `goal_def` 按 `id` 升序、表空可省略）与客户端校验落地口径（整份校验、**任一字段非法即整份丢弃**、`goalId` 必须能在 `rawfile/goals/goal-defs.json` 找到否则**整条忽略**、整份落 `app_config['server_config']`、**冷启动**生效、`version` 与上一份相同由客户端自行决定、只读不写 `admin_op_log`/`sync_log`）。③ D10-5 补可执行口径：冷启动后本机 `app_config['server_config']` 内 `pointsDailyCap` / `badgesEnabled` / `goalRewards` 三项**与后台一致**即为通过。④ 铁律 1 边界写明：服务端只提供**下行默认值**（搬运），本机 `app_config` 仍是唯一真相源；§1.1/§1.2 的表清单与「`app_config` 不参与同步」**未动**。提交：`d719c45`；门禁 `python3 tests/tools/check_l0.py --strict` → EXIT=0。⑤ 收尾回写（2026-11-07，t20）：`server/admin_web/README.md §7` 的 **STOP-1 已回写为「已闭环」**（当初报 STOP 的原文逐字保留在下方，历史不抹），指向附录 B §5.5 与三个实现提交 `0f320c2`（t17 服务端免鉴权端点）/ `18db1db`（t18 客户端消费）/ `87a055d`（t19 后台**有改动才** bump `app_config['config_version']`）；附录 B §5.5 的版本条款已**消歧**为「有实际改动 → 必须 bump 并照常写一条 `update_config` 审计；无改动（幂等保存）→ 幂等成功、不 bump、不写第二条审计；保存失败 → 整体回滚」，裁决依据是该条款自身的立法意图（防「内容变了却感知不到」）。同批回写还包括 `tests/README.md` 的 L1 / L3 清单计数（10 / 6）与 `LwwMerge` 行的失效 STOP 反转。",
+      "status": "closed"
     }
   ]
 }
