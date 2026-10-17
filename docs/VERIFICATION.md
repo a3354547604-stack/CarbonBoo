@@ -1,10 +1,470 @@
-# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；**最新 round 5 = t38 L1 表述修正见 §R5**）
+# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；**最新 round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`**）
 
-> **最新一轮（round 5 / t38）只做 L1 表述修正，不新增门禁结论。** 起因：t37 把「用 esbuild 转译仓库
+> **最新一轮是 §R6（round 6 / t40 最终独立验证，绑定 HEAD `a8b78ef`）。** 下面这段说的是上一轮：
+> **round 5 / t38 只做 L1 表述修正，不新增门禁结论。** 起因：t37 把「用 esbuild 转译仓库
 > **真实 ArkTS 实现**并在 Node 里离线执行」的链路固化进了仓库（`tests/tools/l1_offline/`），于是本文件里
 > 「**替代证据为零**」一类断言从「当时的真话」变成了「**漏报已完成的工作**」。§R5 把这类断言逐处改为准确陈述，
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
+
+## §R6 round 6（t40 最终独立验证 · 结论绑定 HEAD `a8b78ef` 的字节）
+
+> **本节是本文件最前面新增的一节，也是当前唯一绑定最新字节的结论。** §R4（`e211ae1`）、§R5（`300a89d`）
+> 以及 §0 起的 round 3 正文**一字未删**：它们的门禁原始输出仍然有效，只是各自绑定在**更早的 HEAD** 上。
+> 本轮把 L0 / L3 全量 / 编译门禁成对自证 / 离线 L1 执行器 / 数值真相源 / 四条铁律 / 规约红线
+> **全部在 `a8b78ef` 上重跑**；未运行项（hypium、L2、`server/deploy/` 实跑、`/admin` 浏览器交互、视觉走查）
+> 如实单列，**一条都不算通过**。
+>
+> 之所以要重绑：本团队有旧 verdict（t7 / t24 / t27 / t29 / t32）因其后仍有提交改动被测文件，被判
+> 「verdict 覆盖的 revision 已不存在」，Delivery 因此为 blocked。判据是**字节绑定** —— 那几份结论确实
+> 没有审过 `a8b78ef` 的字节。本轮即为此补上一次绑定当前字节的独立验证；**本轮不改任何被测字节**，
+> 只新增本节（连同文件首行标题与轮次索引一行）。
+
+### R6.1 基准字节（开工第一步，四条原始输出）
+
+```
+$ git rev-parse HEAD
+a8b78efa505d7643bf20e13674305a332e6925e6
+
+$ git ls-remote origin main
+a8b78efa505d7643bf20e13674305a332e6925e6	refs/heads/main
+
+$ md5sum tests/cases/carbon-calc.json app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+e096b2db77bbcc9a43ee8728cbd883e9  tests/cases/carbon-calc.json
+e096b2db77bbcc9a43ee8728cbd883e9  app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+
+$ git status --short
+（空 —— 工作树干净；不干净就不开工的前置条件成立）
+$ git log --oneline -1
+a8b78ef docs: t38 历史段（§10/§13/§14/C-收尾）加 t38 补记 + §R5.7 逐处改动清单
+```
+
+- **基准 commit = `a8b78efa505d7643bf20e13674305a332e6925e6`**（完整 40 位，AGENTS.md §5.1-1），
+  与任务书给出的 `a8b78ef` 一致。
+- 与 `git ls-remote origin main` **双向一致** —— 这是 §5.1-4 规定的「已推送」唯一合格证据
+  （向远端要引用、只读、不碰本地缓存）。
+- 数值唯一真相源现场实测 md5 = `e096b2db77bbcc9a43ee8728cbd883e9`，根基准与 ohosTest 副本**同值**。
+  按 §5.1-2，该值**只作现场留痕、不作门禁期望值**；「本轮有没有动数值」一律以 `git diff` 为准（见 R6.4）。
+- **关于「报告入库后 HEAD 会前进」**：本轮的提交只新增本文件 `docs/VERIFICATION.md`；提交后 HEAD 会比
+  `a8b78ef` 前进一次，`git diff --name-only a8b78ef..HEAD` 只会出现这一行。所有门禁都是在 `a8b78ef`
+  的工作树上实跑的，被测路径自那以后零改动；复现者照 R6.2 的命令在 `a8b78ef` 上重跑即得同样结果。
+
+### R6.2 本轮实跑（六条门禁，逐条原始结果）
+
+| # | 门禁 | 命令 | 结果 |
+|---|---|---|---|
+| **R6-a** | L0 文档与数值一致性 | `python3 tests/tools/check_l0.py --strict`（`$?` 单独取） | **EXIT=0** |
+| **R6-b** | L3 服务端全量 | `cd server && CARBONBOO_TEST_DB=carbonboo_test_final .venv/bin/python -m pytest tests/ -q` | **237 passed / EXIT=0**，218.64s |
+| **R6-c** | 编译门禁基线 | `cd app && source ~/harmony-toolchain/env.sh && export OHOS_BASE_SDK_HOME=$DEVECO_SDK_HOME && hvigorw --no-daemon assembleHap` | **BUILD SUCCESSFUL / EXIT=0** |
+| **R6-d** | 编译门禁注入（未定义**引用**） | 同上（注入一行未定义引用后） | **BUILD FAILED / EXIT=255**，自定位 `SyncService.ets:39:32` |
+| **R6-e** | 编译门禁撤回 | 同上（`cp` 备份还原后） | **BUILD SUCCESSFUL / EXIT=0**，`CompileArkTS` 真实重编 25s947ms |
+| **R6-f** | 离线 L1 执行器（t37 入库） | `bash tests/tools/l1_offline/run.sh` | **RUN_EXIT=0**，`RESULT: PASS=55 FAIL=0`；`checked = 323 / passed = true` |
+
+#### R6-a · L0（`$?` 单独取值，不读管道尾值）
+
+```
+$ python3 tests/tools/check_l0.py --strict > /tmp/t40_l0.txt 2>&1; echo "L0_EXIT=$?"
+L0_EXIT=0
+
+$ cat /tmp/t40_l0.txt
+========================================================================
+L0-1 数值基准自检（tests/cases/carbon-calc.json）
+========================================================================
+检查项：28    错误：0
+  OK：18 组正向样例 / 5 组封顶 / 边界样例全部自洽
+
+========================================================================
+L0-2 文档已知冲突扫描（docs/）
+========================================================================
+扫描文件：89    命中：0
+
+L0-3 人工待修清单（tests/cases/carbon-calc.json → docConflicts）：0 条
+
+========================================================================
+结论：PASS —— 基准自洽，文档无已知冲突
+```
+
+三项原值：**L0-1 检查项 28 / 错误 0**、**L0-2 扫描文件 89 / 命中 0**、**L0-3 待修 0 条**；退出码由 `$?`
+**单独取得**（未经过任何管道，避免「读管道尾值」的假绿）。
+
+#### R6-b · L3 全量（R6-b）
+
+```
+$ cd server && CARBONBOO_TEST_DB=carbonboo_test_final ./.venv/bin/python -m pytest tests/ -q
+........................................................................ [ 30%]
+........................................................................ [ 60%]
+........................................................................ [ 91%]
+.....................                                                    [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.11/site-packages/fastapi/testclient.py:1
+  .../fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+237 passed, 1 warning in 218.64s (0:03:38)
+L3_EXIT=0
+```
+
+逐文件用例数（`pytest <file> --collect-only -q` 尾行原值）：
+
+```
+85 tests collected in 1.52s   tests/test_admin.py
+40 tests collected in 0.56s   tests/test_auth.py
+29 tests collected in 1.17s   tests/test_authz.py
+25 tests collected in 1.72s   tests/test_config.py
+10 tests collected in 1.98s   tests/test_shop.py
+48 tests collected in 0.40s   tests/test_sync.py
+```
+
+**85 + 40 + 29 + 25 + 10 + 48 = 237**，与 `237 passed` 完全吻合（无 skip / xfail / 收集遗漏）。
+
+环境口径（本轮实测，非转抄）：
+
+- `server/.venv/bin/python` = **Python 3.11.17**；`pytest 9.1.1`；
+  `CARBONBOO_TEST_DB=carbonboo_test_final`（**本轮验证者专属库名**，避免与他人共用库撞出
+  `1412 Table definition has changed` 或 InnoDB `1213` 死锁造成的假失败）。
+- MySQL 走 TCP `127.0.0.1:13307` → 容器 `carbonboo-mysql`。`docker ps` 原文：
+  `carbonboo-mysql	33060/tcp, 127.0.0.1:13307->3306/tcp	Up 22 hours`；
+  **不是** `13306`（那是别人的容器 `cb-mysql	0.0.0.0:13306->3306/tcp	Up 28 hours`）。
+- 凭据取自 `server/.env`（`MYSQL_HOST=127.0.0.1` / `MYSQL_PORT=13307` / `MYSQL_USER=carbonboo`，密码打码），
+  **不是**任务书历史版本里写过的 `root/cbpass123`（该组合前几轮实测 1045 被拒，见 F18）。
+- 唯一 warning 是第三方 `fastapi.testclient` 的弃用提示，**与被测代码无关**。
+
+#### R6-c / R6-d / R6-e · 编译门禁成对自证（本轮自己跑、自己注入、自己还原）
+
+注入点选在 `app/entry/src/main/ets/viewmodel/net/SyncService.ets` —— **import 区之后的有效代码区（第 39 行）**，
+不是插进 `/** */` 注释块（插进注释会 BUILD SUCCESSFUL，那是假绿，前几轮已有人踩过）。
+注入前先落证据，证明该行确实在有效代码区：
+
+```
+$ sed -n '37,41p' app/entry/src/main/ets/viewmodel/net/SyncService.ets
+import { JsonArray, JsonObject, asArray, asObject, num, optNum, optStr } from '../../util/JsonUtil';
+import { AppResult, fail, ok } from '../../model/Result';
+
+/** 协同页顶部卡片的数据（附录 C §18.1）。 */
+export interface SyncStatus {
+```
+
+注入的一行（`sed -i '39i ...'`）：
+
+```
+const VFY_GATE_PROBE: number = VFY_UNDEFINED_PROBE_SYMBOL + 1;
+```
+
+**① 基线（未注入）：**
+
+```
+$ hvigorw --no-daemon assembleHap
+> hvigor UP-TO-DATE :entry:default@CompileArkTS...
+> hvigor BUILD SUCCESSFUL in 5 s 240 ms
+BASE_EXIT=0
+```
+
+> 诚实标注：这条基线是**增量构建**（`CompileArkTS` 显示 `UP-TO-DATE`、总耗时 5.2s），
+> 它只能证明「当前字节的产物是最新的」，**不足以单独证明从零全量可编译**。真正的编译段证据在 ③。
+
+**② 注入后（必须 FAILED）：**
+
+```
+> hvigor ERROR: Failed :entry:default@CompileArkTS...
+> hvigor ERROR: ArkTS Compiler Error
+1 ERROR: ArkTS:ERROR File: /mnt/c/Users/Administrator/Desktop/CarbonBoo/app/entry/src/main/ets/viewmodel/net/SyncService.ets:39:32
+ Cannot find name 'VFY_UNDEFINED_PROBE_SYMBOL'.
+COMPILE RESULT:FAIL {ERROR:2}
+> hvigor ERROR: BUILD FAILED in 21 s 228 ms
+PROBE_EXIT=255
+```
+
+判据三条全部满足：`Cannot find name 'VFY_UNDEFINED_PROBE_SYMBOL'` 出现 ✓；`BUILD FAILED` 出现 ✓；
+报错**自定位到 `文件:行:列` = `SyncService.ets:39:32`** ✓（列 32 正是那个未定义符号的起始列）。**EXIT=255** ✓。
+注意探针是**未定义引用**（`VFY_UNDEFINED_PROBE_SYMBOL + 1`）而不是纯声明 —— 纯声明是合法代码，永远不会失败。
+
+**③ `cp` 备份还原后（必须 SUCCESSFUL，且字节与 HEAD 一致）：**
+
+```
+$ cp /tmp/SyncService.ets.t40bak app/entry/src/main/ets/viewmodel/net/SyncService.ets
+$ md5sum app/entry/src/main/ets/viewmodel/net/SyncService.ets
+d0fce64796fa5d901b243cc926616980  app/entry/src/main/ets/viewmodel/net/SyncService.ets
+$ git show HEAD:app/entry/src/main/ets/viewmodel/net/SyncService.ets | md5sum
+d0fce64796fa5d901b243cc926616980  -
+$ cmp -s app/entry/src/main/ets/viewmodel/net/SyncService.ets /tmp/SyncService.ets.t40bak
+CMP_BAK=identical
+$ git status --short
+（空）
+$ hvigorw --no-daemon assembleHap
+> hvigor Finished :entry:default@CompileArkTS... after 25 s 947 ms
+> hvigor BUILD SUCCESSFUL in 30 s 556 ms
+RESTORE_EXIT=0
+```
+
+两侧 EXIT 码：**注入侧 255 / 撤回侧 0**。还原后文件 md5 与 `git show HEAD:<path>` **逐字节一致**
+（同 md5 `d0fce647…`，且 `cmp -s` 与备份副本比对通过），`git status --short` 仍为空 → **零污染**。
+③ 里 `CompileArkTS` 是**真实执行**（25s947ms，不是 UP-TO-DATE），所以「还原后的字节确实能编译」有真实编译段背书。
+探针残留核查：`grep -rn "VFY_GATE_PROBE\|VFY_UNDEFINED_PROBE_SYMBOL" app/entry/src/` → **0 命中**。
+
+#### R6-f · 离线 L1 执行器（`tests/tools/l1_offline/`，t37 入库）
+
+```
+$ bash tests/tools/l1_offline/run.sh
+== l1_offline：离线执行仓库真实 ArkTS 实现 ==
+仓库 HEAD   : a8b78efa505d7643bf20e13674305a332e6925e6
+esbuild     : /home/qinyixiang/harmony-toolchain/esbuild/bin/esbuild
+node        : .../tool/node/bin/node (v18.20.1)
+-- ① 消费仓库真实源文件（原样复制，逐字节 cmp） --
+   ok(未改写)  app/entry/src/main/ets/util/DecimalUtil.ets  ->  main/ets/util/DecimalUtil.ts
+   ok(未改写)  app/entry/src/main/ets/util/AppConstants.ets  ->  main/ets/util/AppConstants.ts
+   ok(未改写)  app/entry/src/main/ets/util/JsonUtil.ets  ->  main/ets/util/JsonUtil.ts
+   ok(未改写)  app/entry/src/main/ets/util/StringUtil.ets  ->  main/ets/util/StringUtil.ts
+   ok(未改写)  app/entry/src/main/ets/model/CarbonTypes.ets  ->  main/ets/model/CarbonTypes.ts
+   ok(未改写)  app/entry/src/main/ets/service/CarbonCalc.ets  ->  main/ets/service/CarbonCalc.ts
+   ok(未改写)  app/entry/src/main/ets/service/CarbonService.ets  ->  main/ets/service/CarbonService.ts
+   ok(仅改 import 前缀 …/test/CalcTestTypes.ets -> test/CalcTestTypes.ts)
+   ok(仅改 import 前缀 …/test/CalcBaselineValidator.ets -> test/CalcBaselineValidator.ts)
+-- ④ bundle 输入文件断言 --
+   实际输入(8): main/ets/service/CarbonCalc.ts, main/ets/service/CarbonService.ts, main/ets/util/AppConstants.ts,
+                main/ets/util/DecimalUtil.ts, main/ets/util/JsonUtil.ts, main/ets/util/StringUtil.ts,
+                test/CalcBaselineValidator.ts, test/CalcTestTypes.ts
+   ok: 8/8 运行期输入 + 1 个纯类型文件（合计 9/9）全部来自仓库真实源文件
+   ok: tests/tools/ 里没有一行算法 —— 转译产物完全由 app/ 下那 9 份 .ets 决定
+   samples(18×2)        PASS=36 FAIL=0
+   capSamples(5×2+1)    PASS=11 FAIL=0
+   conversions(2)       PASS=2 FAIL=0
+   boundary 20/21/22(6) PASS=6 FAIL=0
+RESULT: PASS=55 FAIL=0
+   消费真实实现 : .../out/validator.cjs
+   checked = 323
+   passed  = true
+   summary = 全部一致：共复算 323 个断言点
+RESULT: checked=323 passed=true mismatches=0
+RUN.SH: 全部 PASS（离线纯逻辑部分）
+RUN_EXIT=0
+```
+
+- 执行器第一行就打印**仓库 HEAD = `a8b78ef…`**，即本轮这份 L1 离线证据与该基准**同一次采样**。
+- **边界（与 §R5 同口径，不可退回旧写法）**：这条证据只覆盖**纯逻辑**（计算 / 舍入 / 封顶 / 转译执行真实实现），
+  **不覆盖** UI、DB、网络、生命周期；它**不能折算成任何 hypium `it()` 通过**。
+  因此本节 N1 的准确表述是「**hypium 未运行；纯逻辑部分另有独立离线证据 55 项 + 323 个断言点，两条证据不可互相顶替**」，
+  而**不是**已经删掉的那句失真断言「替代证据为零」。
+
+### R6.3 数值真相源零改动
+
+```
+$ git diff 300a89d..HEAD -- tests/cases/carbon-calc.json
+（空 —— 自 t37 起该文件一字未动）
+
+$ md5sum tests/cases/carbon-calc.json app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+e096b2db77bbcc9a43ee8728cbd883e9  tests/cases/carbon-calc.json
+e096b2db77bbcc9a43ee8728cbd883e9  app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+
+$ cmp tests/cases/carbon-calc.json app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+CMP_EXIT=0 字节相同
+
+$ git diff --name-only
+（空）
+
+$ git status --short
+（空）
+```
+
+- 基准 commit `300a89d` = `docs: t37 tests/README.md 登记离线执行器 —— 一行说明 + 「不能替代 hypium」边界`。
+- `git diff 300a89d..HEAD -- tests/cases/carbon-calc.json` **为空** ⇒ 自 t37 起数值真相源零改动
+  （AGENTS.md §5.1-3 的判据是 `git diff`，不是 md5 相等）。
+- 根基准与 ohosTest 副本**同 md5**（`e096b2db…`）且 `cmp` 逐字节相同 ⇒ 上一轮 `d228939` 修掉的副本漂移没有复发。
+- **本文件（`docs/VERIFICATION.md`）的 diff 单列**：本轮只**追加** §R6 一节 + 改首行标题 + 轮次索引加一行，
+  §R4 / §R5 与 §0–§15 的原文一字未删；**未触碰** `tests/cases/carbon-calc.json` / 任何 APPENDIX /
+  `AGENTS.md` / `docs/PLAN.md` / `docs/REVIEW.md` / `app/` / `server/` / `tests/`。
+
+### R6.4 规约红线（AGENTS.md §7.1：`app/` 内三项计数，均须为 0）
+
+```
+$ grep -rn ': any' --include='*.ets' app | grep -v '/build/' | grep -v '/\.test/' | wc -l
+0
+$ grep -rn '@ts-ignore' --include='*.ets' app | grep -v '/build/' | grep -v '/\.test/' | wc -l
+0
+# 非相对 import，排除 @ohos / @kit（AGENTS.md §7.1 禁止第三方包）
+$ grep -rnE "^import .* from ['\"]" --include='*.ets' app | grep -v '/build/' | grep -v '/\.test/' \
+    | grep -vE "from ['\"]\.\.?/" | grep -vE "from ['\"]@(ohos|kit)" | wc -l
+0
+```
+
+三项全 0：`: any` = **0**、`@ts-ignore` = **0**、非相对 import（排除 `@ohos`/`@kit`）= **0**。
+（第三条的逐条打印为「零命中」，即没有任何一条需要人工豁免。）
+
+### R6.5 四条铁律静态核对（各给 `文件:行`）
+
+**① 单一计算入口（铁律 2）**
+
+| 断言 | 证据 |
+|---|---|
+| 唯一 `calculate` 入口 | `app/entry/src/main/ets/service/CarbonService.ets:76` `static calculate(activity: ActivityInput, factor: FactorSnapshot, options?: CalcOptions): CarbonCalculation` |
+| 唯一因子乘法 | `app/entry/src/main/ets/service/CarbonCalc.ets:153` `const product: Dec = Dec.from(amount).mul(Dec.from(factorValue));` |
+| 全 app 的 `Dec.mul` 落点 | `CarbonCalc.ets:153`（活动量 × 因子）、`:164`（kg × 100 求 C）、`:258`（免车天数的量）、`:267`（回收件数的量）—— **四处全在同一文件**，业务乘法没有第二个文件 |
+| `pages/` + `components/` 零命中 | `grep -rnE "calculate\|Dec\.from\|DecimalUtil"` 于 `pages/` + `components/` = **0 命中** |
+| 页面只展示、不计算 | `pages/`/`components/` 里出现 `factor` 字样的全部是**格式化读取/字段声明**：`pages/RecordDetailPage.ets:141` `Formatter.number(this.record.factorValue, 'factor')`、`pages/RecordEditPage.ets:536` 同式、`components/RecordItem.ets:15` 字段声明，无乘法、无因子取值 |
+
+**② 因子快照四字段 NOT NULL（铁律 3）**
+
+`app/entry/src/main/ets/data/schema/ClientSchema.ets`（`CREATE TABLE IF NOT EXISTS carbon_record`，:76 起）：
+
+```
+:85  factor_value    REAL    NOT NULL,          -- 因子快照（铁律 3）
+:86  factor_version  TEXT    NOT NULL,
+:87  factor_source   TEXT    NOT NULL,
+:88  confidence      TEXT    NOT NULL,          -- verified | provisional
+```
+
+四列齐备且全部 `NOT NULL`。写入侧唯一构造点 `service/CarbonService.ets:187` `static snapshotOf(...)`，
+调用点 `viewmodel/RecordService.ets:149` / `:306` / `:367`（新增、编辑、补记三条链路）。
+
+**③ 流水只增不删（铁律 4 上）**
+
+```
+$ grep -rEn "(UPDATE|DELETE)[[:space:]]+(FROM[[:space:]]+)?point_record" \
+    --include='*.ets' --include='*.ts' --include='*.py' --include='*.sql' \
+    --exclude-dir=build --exclude-dir=.test --exclude-dir=node_modules --exclude-dir=oh_modules --exclude-dir=.git .
+（无输出 —— 0 命中）
+```
+
+源码树 **0 命中**（逐条计数 `UPDATE point_record` / `UPDATE FROM point_record` / `DELETE FROM point_record`
+三种口径均为 0）。唯一命中出现在 `app/entry/build/**` 与 `app/entry/.test/**` 的**编译产物/测试缓存的既有字符串**里
+（那是构建输出，不是被测源码；被测源字节由 `git status --short` 为空背书）。
+
+- 唯一写入点：`viewmodel/PointService.ets:153` `'INSERT OR IGNORE INTO point_record '`（幂等键
+  `uq_pr_source(user_id, source_type, source_id, flow_kind)`，见 `ClientSchema.ets:141`）。
+- 冲正不删行、写负额新行：`PointService.ets:190` `async reverse(...)` → `:196` `points: -points`。
+
+**④ 余额同口径 `COALESCE(SUM(points),0)`（铁律 4 下）**
+
+| # | 位置 | 作用 |
+|---|---|---|
+| 1 | `app/entry/src/main/ets/viewmodel/PointService.ets:91` | 余额（`inc` / `spent` / `bal` 同一条 SQL，`bal` = `COALESCE(SUM(points), 0)`） |
+| 2 | `app/entry/src/main/ets/viewmodel/net/SyncService.ets:362` | 家庭合并 · 单设备积分（`... AND COALESCE(device_id, '') = ?`） |
+| 3 | `app/entry/src/main/ets/viewmodel/net/SyncService.ets:377` | 家庭合并 · 合计积分 |
+
+三处**同口径**：都对 `point_record.points`（本身已带符号）直接 `SUM`，**不做** `flow_kind` 二次取负
+（round 1 的 F1 正是这个双重取负，已修）。另有同式但非「余额」语义的四处：
+`PointService.ets:121` / `:136` / `:235`、`server/admin_web/services/stats.py:90`；以及用例内的独立复算
+`app/entry/src/ohosTest/ets/test/LwwMerge.test.ets:648`（**未运行**，见 R6.6-N1）。
+
+### R6.6 未运行项（**一条都不算通过**）
+
+| 编号 | 项 | 未运行的具体原因（本轮实测原始输出） |
+|---|---|---|
+| **N1** | **L1 全部 hypium（10 套件 / 36 个 `it()`）** | 三座桥全断 + `hvigorw test` 实测超时被 `timeout` 杀掉（`TEST_EXIT=124`），见下方原文。**hypium 侧零执行**：编译通过 ≠ 用例通过，本轮不给 L1 任何通过判定。**纯逻辑部分另有一条独立离线证据**（R6-f：`RESULT: PASS=55 FAIL=0`、`checked=323 passed=true`），但**它不改变本行结论**：36 个 `it()` 仍然一条都没执行 |
+| **N2** | L2 端侧集成（云通路 + 近场通路两条链路） | 需**两条设备**（或真机 + 模拟器）。N1 的三条环境断点直接否决；本机 `command -v emulator` → **EXIT=1（无输出）**。本轮未跑 |
+| **N3** | `server/deploy/` 实跑（systemd / nginx / TLS / 定时备份） | 无部署目标：`ls -d /opt/carbonboo` → `No such file or directory`（EXIT=2）；`command -v nginx` → **EXIT=1（未安装）**。`systemctl is-system-running` → `running`、`docker ps` 可用，但部署目标与 nginx 不存在，**不能算跑过**。本轮未跑 |
+| **N4** | `/admin` 浏览器交互（SSR 渲染、`admin.js` 前端行为） | 无浏览器驱动：`chromium` / `chromium-browser` / `google-chrome` / `playwright` / `chromedriver` / `firefox` **逐个 not found**。HTTP/JSON 层由 L3 `test_admin.py`（85 例全过）覆盖，但**渲染与 JS 交互未跑** |
+| **N5** | 视觉模型走查（18 页面截图 + 判图） | 截图腿：同 N1（无设备 / 无模拟器 / Previewer 与 GLIBC 2.43 不兼容）。判图腿：`ARK_API_KEY` 在本会话**未设置**（`len=0`，`.dsh/.env` 与 `~/.dsh/.env` 均不存在），空 key 打端点得 **HTTP=400**（原文见下）。⇒ **本轮零视觉结论** |
+
+**N1 的环境断点与本轮实跑原文（逐条）：**
+
+```
+# ① PATH 里没有 hdc
+$ command -v hdc; echo "which_EXIT=$?"
+which_EXIT=1
+
+# ② SDK 里确有 hdc 二进制，但连不上设备服务端
+$ $HARMONY_TOOLCHAIN/sdk/default/openharmony/toolchains/hdc list targets
+Connect server failed
+（stdout 无任何设备行）
+
+# ③ 无模拟器：/dev/kvm 存在但当前用户不可写
+$ ls -l /dev/kvm
+crw-rw---- 1 root kvm 10, 232 Oct 14 22:10 /dev/kvm
+$ [ -w /dev/kvm ] && echo WRITABLE || echo NOT_WRITABLE
+NOT_WRITABLE
+$ id
+uid=1000(qinyixiang) gid=1000(qinyixiang) groups=1000(qinyixiang),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),100(users),1001(docker)
+$ command -v emulator; echo "EMU_EXIT=$?"
+EMU_EXIT=1
+
+# ④ Previewer 与 GLIBC 2.43 冲突
+$ ldd --version | head -1
+ldd (Ubuntu GLIBC 2.43-2ubuntu2.4) 2.43
+$ .../previewer/common/bin/Previewer
+[INFO][RichPreviewer.cpp][main][99]:RichPreviewer enter the main function.
+[ERROR][CommandParser.cpp][IsAppPathValid][319]:Launch -j parameters abnormal!
+[ERROR][CommandParser.cpp][IsCommandValid][135]:No app path specified.
+[FATAL][CommandParser.cpp][ParseArgs][1008]:Start args is invalid.
+PREVIEWER_PIPE_EXIT=11
+（按 round 1/2 留档，带 `-j <app>` 真正拉起页面时崩在 glibc 2.43 的 pthread_mutex_lock robust 断言；
+本轮无参直跑只走到参数校验段，故**无法在本条命令里复现该断言 —— 如实标注，不冒充已复现**）
+
+# ⑤ 本轮直接把 hypium 跑了一次（唯一一次，420s 上限）
+$ cd app && source ~/harmony-toolchain/env.sh && hvigorw --no-daemon test
+> hvigor Finished :entry:default@UnitTestArkTS... after 23 s 196 ms
+> hvigor Linux
+TEST_EXIT=124
+（= 被 `timeout 420` 杀死：用例档案编译成功，但设备/Previewer 拉起阶段无进展、无任何用例被执行）
+```
+
+**N1 的逐套件 `it()` 计数（`grep -oE "\bit\("`，合计 36；`describe(` 合计 10）：**
+
+```
+ 1  BackupRoundTrip.test.ets        1  BadgeIdempotent.test.ets      6  CalcSamples.test.ets
+ 1  CsvExport.test.ets             1  GoalIdempotent.test.ets      10  LwwMerge.test.ets
+ 1  NotLoggedIn.test.ets           8  ServerConfigFallback.test.ets 6  ShopPriceFallback.test.ets
+ 1  ShopPurchase.test.ets          0  List.test.ets（登记入口，不含用例）
+合计 36 个 it() / 10 个 describe —— 本轮**执行数 0**
+```
+
+**N5 判图腿的原始输出：**
+
+```
+$ echo "ARK_API_KEY=[${ARK_API_KEY:-<unset>}]"; echo "len=${#ARK_API_KEY}"
+ARK_API_KEY=[<unset>]
+len=0
+$ ls -l .dsh/.env ~/.dsh/.env
+ls: cannot access '.dsh/.env': No such file or directory
+ls: cannot access '/home/qinyixiang/.dsh/.env': No such file or directory
+$ curl -sS -m 25 -w 'HTTP=%{http_code}\n' https://ark.cn-beijing.volces.com/api/v3/chat/completions \
+    -H 'Content-Type: application/json' -H "Authorization: Bearer ${ARK_API_KEY}" \
+    -d '{"model":"doubao-vision-pro-32k","messages":[{"role":"user","content":"ping"}]}'
+HTTP=400
+{"error":{"code":"InvalidParameter","message":"The parameter `` specified in the request are not valid: invalid parameter: AuthHeader. …","param":"","type":"BadRequest"}}
+```
+
+> **未运行 = 不算通过。** 上表五项在本轮**没有任何一条**被计入「通过」。尤其不要把「`assembleHap`
+> BUILD SUCCESSFUL」说成「L1 用例通过」——那 36 个 `it()` 本轮**一个都没执行**；也不要把
+> `l1_offline` 的 55 项说成 hypium 通过（两者覆盖面不同，见 R6-f 的边界段）。
+
+### R6.7 本轮未决问题
+
+1. **hypium 仍是零执行**：无真机、无模拟器（`/dev/kvm` 不可写）、Previewer 与 GLIBC 2.43 不兼容；
+   本轮实跑 `hvigorw test` 得 `TEST_EXIT=124`（超时杀）。在拿到设备或修好兼容性前，
+   36 个 `it()` 只能算「已编写、已登记、已编译」。纯逻辑部分由 `tests/tools/l1_offline/` 独立佐证，**两证不可互相顶替**。
+2. **视觉走查仍是零达成**（N5）：`ARK_API_KEY` 缺失。这是用户明示要求，交付说明里必须写明未满足，不能沉默处理。
+3. **`/admin` 只到 HTTP 层**：85 条 `test_admin.py` 全过证明后端行为，但「浏览器里点得动」没有证据（N4）。
+4. **`server/deploy/` 未实跑**（N3）：脚本存在但无部署目标与 nginx，属「已编写未执行」。
+5. **旧 verdict 漂移**：本节的用途就是把结论重新绑到 `a8b78ef`。**本节入库后，请不要再用任何提交改动
+   `app/`、`server/`、`tests/`、`AGENTS.md`、规格文档或基准** —— 一旦改动，本节与本文件 §R4/§R5 都会再次漂移
+   （判据见 Delivery 的 sha256 比对）。
+6. **审批与推送**：本轮**只写本文件**，不 push；推送由队长执行。`ls-remote` 与本地 HEAD 现为同一 SHA。
+
+### R6.8 AGENTS.md §8 格式对照（任务 → 改了什么 → 跑了什么命令 → 结果 → 未决问题）
+
+- **任务**：对 `HEAD=a8b78ef` 的字节做一次绑定当前版本的最终独立验证（L0、L3 全量、编译门禁成对自证、
+  离线 L1 执行器、数值真相源零改动、四条铁律静态核查），并如实单列未运行项；结论写入 `docs/VERIFICATION.md`。
+- **改了什么**：**只有 `docs/VERIFICATION.md` 一个文件**（新增本节 §R6 于文件开头；首行标题补「round 6 = t40」；
+  轮次索引新增 round 6 一行）。**未改**任何被测源码 / 规格文档 / 测试基准 / `tests/cases/` / `tests/tools/`。
+- **跑了什么命令**：`git rev-parse HEAD`、`git ls-remote origin main`、`md5sum`（基准两份副本）+ `cmp`、
+  `git status --short`、`git diff 300a89d..HEAD -- tests/cases/carbon-calc.json`、
+  `python3 tests/tools/check_l0.py --strict`（`$?` 单独取）、
+  `cd server && CARBONBOO_TEST_DB=carbonboo_test_final ./.venv/bin/python -m pytest tests/ -q`、
+  `pytest <file> --collect-only -q`（6 个文件逐个数）、
+  `cd app && source ~/harmony-toolchain/env.sh && export OHOS_BASE_SDK_HOME=$DEVECO_SDK_HOME && hvigorw --no-daemon assembleHap`
+  （基线 / 注入 / 还原 三次；注入用 `sed -i '39i …'`）、`bash tests/tools/l1_offline/run.sh`、
+  各项 `grep` 计数、`hdc list targets`、`[ -w /dev/kvm ]`、`ldd --version`、`Previewer`、`hvigorw --no-daemon test`、
+  `command -v emulator/nginx/chromium/…`、`ls -d /opt/carbonboo`、`curl` ark 端点。
+- **结果**：L0 **EXIT=0**（28 项 0 错误 / 89 文件 0 命中 / docConflicts 0）；L3 **237 passed / EXIT=0**，218.64s
+  （85+40+29+25+10+48）；编译门禁 **0 → 255 → 0**（注入侧自定位 `SyncService.ets:39:32`；还原后 md5 与
+  `git show HEAD` 同值 `d0fce647…`）；离线 L1 **`RESULT: PASS=55 FAIL=0`、`checked=323 passed=true`**；
+  数值真相源 **零改动**（`git diff 300a89d..HEAD` 为空）、两副本 md5 同值且 `cmp` 相同；
+  规约红线 **0/0/0**；四条铁律**静态全部成立**（各给 `文件:行`）。
+  **未运行**：L1 全部 `it()`、L2、`server/deploy/` 实跑、`/admin` 浏览器交互、视觉模型走查 —— 五项一条都不算通过。
+- **未决问题**：见 R6.7。
+
+---
 
 ## §R4 round 4（t31 终验 · 结论绑定 HEAD `e211ae1` 的字节）
 
@@ -396,6 +856,8 @@ ohosTest 副本 app/entry/src/ohosTest/resources/rawfile/carbon-calc.json md5 �
 | round 3 | t24（本轮，`qa-verifier-wb`） | `308d09f8c1e6b0178f1480ad8c6938c6b0c1dc3a` | 2026-11-07 | **部分通过**：L0 EXIT=0、独立复算 70/70、契约 A/B/C 全等、**编译门禁四组注入自证成立且副本零污染**、铁律 1/2/3/4 全部成立、未登录态证据链成立；**F9/F12 闭环、F14 撤销、F3/F4/F5/F10/F11 复验属实**；新增 F15–F18（四条低危）；**L1 仍全部未运行**（N1–N7 环境未变，本轮补跑证据） | 本文 §0 起 |
 | round 4 | t31（`verifier-oc`，终验） | `e211ae143a04922952693adf2262cc9feae2e9b4` | 2026-11-07 | **通过（限已跑项）**：L0 EXIT=0（28 项 0 错误 / 89 文件 0 命中 / docConflicts 0）、**L3 全量 237 passed**（85+40+29+25+10+48，专属库 `carbonboo_test_vfy`）、**编译门禁成对自证 EXIT 0→255→0**（注入侧自定位 `SyncService.ets:39:32`，还原后 md5 与 `git show HEAD` 一致）、数值真相源零 diff 且两副本同 md5、规约红线 0/0/0、四条铁律静态全部成立；**L1/L2/deploy/`/admin` 浏览器/视觉走查 五项仍未运行，一条不算通过** | 本文 §R4 |
 | round 5 | t38（`fixer-oc`，**表述修正轮，不新增门禁结论**） | `300a89d900c3b38722d67747a17a08518e843665` | 2026-11-07（与 R1–R4 同口径） | **仅修正 L1 表述**：t37 已把离线执行器入库（`tests/tools/l1_offline/`，用 **9 份真实 `.ets`** 转译执行），故把「**替代证据为零**」等失真断言改为准确三态陈述；本机实跑 `RESULT: PASS=55 FAIL=0`、`checked=323 passed=true`（反证：坏基准 → `PASS=53 FAIL=2` / `passed=false`，两者 `EXIT=1`）；**hypium 36 个 `it()` 仍未运行**，N1 结论不变，两证不可互相顶替；L0 `EXIT=0` | 本文 §R5（文件末尾） |
+
+| round 6 | t40（`verifier-oc`，**最终独立验证**） | `a8b78efa505d7643bf20e13674305a332e6925e6` | 2026-11-07 | **通过（限已跑项）**：L0 EXIT=0（28 项 0 错误 / 89 文件 0 命中 / docConflicts 0）、**L3 全量 237 passed**（85+40+29+25+10+48，专属库 `carbonboo_test_final`，218.64s）、**编译门禁成对自证 EXIT 0→255→0**（注入侧自定位 `SyncService.ets:39:32`，还原后 md5 与 `git show HEAD` 同值 `d0fce647…`）、**离线 L1 执行器 `RESULT: PASS=55 FAIL=0` / `checked=323 passed=true`**、数值真相源零 diff（`300a89d..HEAD`）且两副本同 md5+`cmp` 相同、规约红线 0/0/0、四条铁律静态全部成立；**hypium 36 个 `it()` / L2 / `server/deploy/` 实跑 / `/admin` 浏览器交互 / 视觉走查 五项仍未运行，一条不算通过** | 本文 §R6（文件最前） |
 
 **F 编号规则**：跨轮累加不重用。round 1 用到 **F8**，round 2 用到 **F14**，round 3 从 **F15** 起。
 round 1 / round 2 的原始描述**一字未删** —— 本文件 §R1 转引 round 1 要点，两份备份文件完整留档（见 §15）。
