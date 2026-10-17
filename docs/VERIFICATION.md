@@ -1,11 +1,108 @@
-# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；**最新 round 7 = t41 判图腿真相更正 + 首次实跑见 §R7 —— 视觉模型通道已验证可用，页面截图腿仍不可用**）
+# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；round 7 = t41 判图腿真相更正 + 首次实跑见 §R7；**最新 round 8 = t42 全量干净构建 + 离线 L1 门禁自证（证据登记）见 §R8 与 §R7**）
 
-> **最新一轮是 §R7（round 7 / t41 判图腿真相更正 + 首次实跑，绑定 HEAD `46d2fcf`）**：视觉模型通道**已验证可用**、判图链路**已实跑**（`tests/tools/vision_check/`，`RUN_EXIT=0`），但**页面级视觉走查仍不可做**（18 页零截图）；§R7 **不新增任何门禁结论**，**门禁结论仍以 §R6（绑定 `a8b78ef`）为准**。下面这段说的是 round 5 与更早的轮次：
+> **最新一轮是 §R8（round 8 / t42 证据登记，绑定 HEAD `6a0404e`）**：队长清空 `build/` 与 `.hvigor/` 后跑出**全量干净构建**（`CompileArkTS` 真实重编 `35 s 423 ms`、`BUILD SUCCESSFUL`、`EXIT=0`、产物 2,445,614 B、工作树零污染），并在 `git archive` 干净副本里给离线 L1 执行器做了**注入→翻转→从 git 还原**的门禁自证（`POINTS_PER_KG` 100→101 ⇒ 16 处 FAIL / `EXIT=1`；还原后全绿 / `EXIT=0`）——**§R8 不新增门禁结论、不改任何被测字节**。上一轮 §R7（round 7 / t41，绑定 HEAD `46d2fcf`）：视觉模型通道**已验证可用**、判图链路**已实跑**（`tests/tools/vision_check/`，`RUN_EXIT=0`），但**页面级视觉走查仍不可做**（18 页零截图）；§R7 **不新增任何门禁结论**，**门禁结论仍以 §R6（绑定 `a8b78ef`）为准**。下面这段说的是 round 5 与更早的轮次：
 > **round 5 / t38 只做 L1 表述修正，不新增门禁结论。** 起因：t37 把「用 esbuild 转译仓库
 > **真实 ArkTS 实现**并在 Node 里离线执行」的链路固化进了仓库（`tests/tools/l1_offline/`），于是本文件里
 > 「**替代证据为零**」一类断言从「当时的真话」变成了「**漏报已完成的工作**」。§R5 把这类断言逐处改为准确陈述，
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
+
+## §R8 round 8（t42 · 证据登记：**全量干净构建通过** + 离线 L1 执行器门禁自证）
+
+> **本节是证据登记轮**（不新增门禁结论、不改任何被测字节）。两条证据均由**队长在本机实跑提供**，t42 只做登记与交叉核对。
+> 绑定基准：`HEAD = 6a0404ef1c4b6906775e19f6a92456656fb8da73`。
+> 本节解决的是一处**历轮共同的诚实局限**：此前所有轮次的 `assembleHap` 都命中增量缓存（`CompileArkTS` 显示 `UP-TO-DATE`、总耗时 5 s 级），
+> 于是「**能不能从零全量编译**」一直没有被直接验证过 —— 文档此前比事实更悲观。
+
+### R8.1 开工事实与环境（未变的那些）
+
+- 基准：`git rev-parse HEAD` = `6a0404ef1c4b6906775e19f6a92456656fb8da73`（t41 之后）；构建前后 `git status --short` **均为空**。
+- 本机环境**未变**：同一台 WSL，无真机（`hdc` 连不上设备服务端）、无模拟器（`/dev/kvm` 不可写）、SDK Previewer 崩于 **glibc 2.43**。
+- 构建命令与历次**逐字相同**：`cd app && source ~/harmony-toolchain/env.sh && export OHOS_BASE_SDK_HOME=$DEVECO_SDK_HOME && hvigorw --no-daemon assembleHap`。
+- **唯一的不同**：先把两个增量缓存目录**移走**——`mv entry/build /tmp/cb_build_backup && mv .hvigor /tmp/cb_hvigor_backup`（**只动未入库的产物缓存，没动任何源码、没动仓库跟踪文件**）。
+
+### R8.2 全量干净构建原始输出（队长实跑，逐字照抄）
+
+```
+$ cd app && mv entry/build /tmp/cb_build_backup && mv .hvigor /tmp/cb_hvigor_backup   # 移走增量缓存
+$ source ~/harmony-toolchain/env.sh && export OHOS_BASE_SDK_HOME=$DEVECO_SDK_HOME
+$ hvigorw --no-daemon assembleHap
+> hvigor Finished :entry:default@CompileArkTS... after 35 s 423 ms
+> hvigor Finished :entry:default@PackageHap... after 1 s 143 ms
+> hvigor WARN: No signingConfig found for product default
+> hvigor Found :entry:default@SignHap... after 10 ms
+> hvigor BUILD SUCCESSFUL in 49 s 850 ms
+CLEAN_BUILD_EXIT=0
+```
+
+（`CLEAN_BUILD_EXIT` 是 `hvigorw` 自身的退出码，不是管道尾值。）
+
+**对照读数（增量 vs 全量干净）**：
+
+| 读数 | 历轮增量构建 | **本轮全量干净构建** |
+|---|---|---|
+| `CompileArkTS` 段 | `UP-TO-DATE`（**未执行**） | **真实重编 `35 s 423 ms`** |
+| 总耗时 | 5 s 级（4.9 s / 5.2 s / …） | **`49 s 850 ms`** |
+| 退出码 | 0 | **`CLEAN_BUILD_EXIT=0`** |
+| 产物 | `app/entry/build/default/outputs/default/entry-default-unsigned.hap` | **同路径、`2,445,614` 字节（与增量产物同尺寸）** |
+| 工作树 | — | 构建后 `git status --short` **为空** ⇒ **源码零改动、构建未污染工作树** |
+
+两个附注（如实）：
+
+- `WARN: No signingConfig found for product default` 是**未配置签名的预期提示**（历次构建都有），不是缺陷；`SignHap` 段 10 ms 也是因此。
+- 旧缓存目录随后**删除**（不是恢复：新产物已覆盖同名路径），故本机 `entry/build` / `.hvigor` 现为本次全量构建的产物。
+
+### R8.3 这条证据消除了什么局限（以及没消除什么）
+
+**消除了**：历轮报告共同的诚实局限 ——「两次 `assembleHap` 均为**增量构建**（`UP-TO-DATE`、5 s 级），单凭增量**不能证明全量可编译**」。
+现在有了**清空缓存后的真实全量编译段**（`CompileArkTS` 35 s 423 ms）且 `CLEAN_BUILD_EXIT=0`，
+故「从零全量可编译」这一项**已由直接证据背书**（不再是靠注入失败/还原间接推断）。
+
+**没有消除**（本轮一条都没变，见 R8.5）：hypium 36 个 `it()` 未运行、L2 未运行、`server/deploy/` 未实跑、`/admin` 浏览器交互未跑、**页面级视觉走查零截图**（见 §R7）。
+**「编译通过 ≠ 用例通过」这条铁律不变。**
+
+字节绑定说明：本证据绑定 `HEAD=6a0404e`；构建只读源码、只写 `build/` 与 `.hvigor/`（两者都不入库），故不影响任何门禁结论的绑定。
+
+### R8.4 离线 L1 执行器的门禁自证（队长在 `/tmp/cbgate` 干净副本里实跑）
+
+此前 `tests/tools/l1_offline/`「**会不会自证循环**」只有成员自述；本轮由队长独立做了**基线 → 注入 → 翻转 → 从 git 还原**四步。
+环境是 `git archive HEAD | tar -x` 解出的干净副本 `/tmp/cbgate`（**不污染工作树**，也不碰仓库里任何文件）：
+
+```
+基线：bash tests/tools/l1_offline/run.sh    →  BASE_EXIT=0
+        RESULT: checked=323 passed=true mismatches=0
+注入：app/entry/src/main/ets/util/AppConstants.ets 的
+        static readonly POINTS_PER_KG: number = 100;   →   101;
+      bash tests/tools/l1_offline/run.sh    →  INJ_EXIT=1
+        samples(18×2)：PASS=20 FAIL=16
+        RESULT: PASS=39 FAIL=16  /  checked=323 passed=false mismatches=16
+还原：git show HEAD:app/entry/src/main/ets/util/AppConstants.ets > <path>   （不是 cp 备份，见下）
+      bash tests/tools/l1_offline/run.sh    →  RESTORE_EXIT=0（全绿）
+      副本与 HEAD 字节相同（diff -q 报 IDENTICAL）
+```
+
+**这条证据的意义（必须写清楚，否则不足以服人）**：把**一个真实常数**（`POINTS_PER_KG` 100→101）改掉，就有 **16 处断言翻转**、执行器 **`EXIT=1`**。
+这证明执行器**确实在读、在跑仓库里的真实实现**（`CarbonCalc.ets` / `AppConstants.ets` / `CalcBaselineValidator.ets` / `CalcTestTypes.ets` / `DecimalUtil.ets` 等被 esbuild 转译后执行），
+**不是「自己写一遍再自己判自己」的自证循环**。一个「永远绿」的摆设同样能给出 `RUN_EXIT=0`；**能变红**才是门禁。
+
+**（t42 顺带记录一个实测陷阱，队长踩到）** 用 `cp 原文件 备份` 来做还原**不可靠**：备份文件会被后续 shell 重放污染（备份内容**也跟着变成 101**），
+于是所谓「还原」实际是把**污染版**写回去 —— 症状是「还原后仍然 FAIL」。正确做法是从 git 取回：`git show HEAD:<path> > <path>`，
+或直接用 `git archive` 副本里的原文件。（已补进 `tests/tools/l1_offline/README.md`。）
+
+### R8.5 未改变的结论清单（本轮一条都没动）
+
+| 项 | 状态（与 §R6/§R7 相同） |
+|---|---|
+| hypium L1（10 套件 / 36 个 `it()`） | **未运行**（无真机 / 无模拟器 / Previewer 崩于 glibc 2.43） |
+| L2 端侧集成 | **未运行**（需两条设备） |
+| `server/deploy/` 实跑 | **未运行**（本机无部署目标） |
+| `/admin` 浏览器交互 | **未运行**（无浏览器驱动） |
+| 页面级视觉走查（18 页截图） | **未运行**（零截图；判图通道已验证可用，见 §R7） |
+| 门禁结论的字节绑定 | 仍以 **§R6（`a8b78ef`）** 为准；本轮是**证据登记**，未重跑任何门禁 |
+| `tests/cases/carbon-calc.json` | **零改动**（两份副本 md5 同值 `e096b2db…`） |
+| 推送 | **不 push**；由队长执行，「已推送」以 `git ls-remote origin main` 原文为准（AGENTS.md §5.1-4） |
+
+---
 
 ## §R6 round 6（t40 最终独立验证 · 结论绑定 HEAD `a8b78ef` 的字节）
 
@@ -162,6 +259,8 @@ BASE_EXIT=0
 
 > 诚实标注：这条基线是**增量构建**（`CompileArkTS` 显示 `UP-TO-DATE`、总耗时 5.2s），
 > 它只能证明「当前字节的产物是最新的」，**不足以单独证明从零全量可编译**。真正的编译段证据在 ③。
+>
+> **（t42 更正）** 上述局限**已消除**：队长在**移走 `entry/build` 与 `.hvigor`**（清空增量缓存）后跑出**真实全量编译** —— `CompileArkTS` 真实重编 `35 s 423 ms`、`BUILD SUCCESSFUL in 49 s 850 ms`、`CLEAN_BUILD_EXIT=0`、产物 `2,445,614` 字节、构建后 `git status --short` 为空。原文保留不删，详见 **§R8**。
 
 **② 注入后（必须 FAILED）：**
 
@@ -601,6 +700,8 @@ BASE_EXIT=0
 
 > 诚实标注：这条基线是**增量构建**（`CompileArkTS` 显示 `UP-TO-DATE`、总耗时 4.9s），
 > 它只能证明「当前字节的产物是最新的」，**不足以单独证明从零全量可编译**。真正的编译段证据在 ③（撤回后 `CompileArkTS` 真实执行）。
+>
+> **（t42 更正）** 上述局限**已消除**：队长移走 `entry/build` 与 `.hvigor` 后实跑**全量干净构建** —— `CompileArkTS` 真实重编 `35 s 423 ms`、`BUILD SUCCESSFUL in 49 s 850 ms`、`CLEAN_BUILD_EXIT=0`、产物 `2,445,614` 字节、工作树零改动。原文保留不删，详见 **§R8**。
 
 **② 注入后（必须 FAILED）：**
 
@@ -863,6 +964,7 @@ ohosTest 副本 app/entry/src/ohosTest/resources/rawfile/carbon-calc.json md5 �
 
 | round 6 | t40（`verifier-oc`，**最终独立验证**） | `a8b78efa505d7643bf20e13674305a332e6925e6` | 2026-11-07 | **通过（限已跑项）**：L0 EXIT=0（28 项 0 错误 / 89 文件 0 命中 / docConflicts 0）、**L3 全量 237 passed**（85+40+29+25+10+48，专属库 `carbonboo_test_final`，218.64s）、**编译门禁成对自证 EXIT 0→255→0**（注入侧自定位 `SyncService.ets:39:32`，还原后 md5 与 `git show HEAD` 同值 `d0fce647…`）、**离线 L1 执行器 `RESULT: PASS=55 FAIL=0` / `checked=323 passed=true`**、数值真相源零 diff（`300a89d..HEAD`）且两副本同 md5+`cmp` 相同、规约红线 0/0/0、四条铁律静态全部成立；**hypium 36 个 `it()` / L2 / `server/deploy/` 实跑 / `/admin` 浏览器交互 / 视觉走查 五项仍未运行，一条不算通过** | 本文 §R6（文件最前） |
 | round 7 | t41（`fixer-oc`，**表述更正轮 + 判图腿首次实跑，不新增门禁结论**） | `46d2fcfc26c7957bc31398adc6c805ad27f09cc4` | 2026-11-07（与 R1–R6 同口径） | **仅更正视觉相关表述**：原「`ARK_API_KEY` 在本会话未设置 ⇒ 视觉模型零达成」失真 —— key 在**凭据库** `.dsh/.credentials.yaml → refs.ARK_API_KEY`（非环境变量），实测识图探针 **HTTP=200** 判读正确（最小探针 + 仓库真实令牌色板 `17/17`）；新增 `tests/tools/vision_check/`（从 `AppTheme.ets` 源码解析令牌 → 生色板 → 判读，`RUN_EXIT=0`），**视觉模型通道已验证可用 + 判图链路已实跑**；**页面级视觉走查仍不可做**（`hdc`/模拟器/Previewer 三断点未变，18 页零截图）；hypium 36 `it()` / L2 / deploy / `/admin` 浏览器 四项未运行，一条不算通过；L0 `EXIT=0` | 本文 §R7（文件末尾） |
+| round 8 | t42（`fixer-oc`，**证据登记轮，不新增门禁结论**） | `6a0404ef1c4b6906775e19f6a92456656fb8da73` | 2026-11-07（与 R1–R7 同口径） | **登记队长本轮实测两条新证据**：① 移走 `entry/build` + `.hvigor`（清空增量缓存）后 `hvigorw --no-daemon assembleHap` **全量干净构建通过** —— `CompileArkTS` 真实重编 `35 s 423 ms`（历轮为 `UP-TO-DATE` / 5 s 级）、`BUILD SUCCESSFUL in 49 s 850 ms`、`CLEAN_BUILD_EXIT=0`、产物 `2,445,614` B、构建后 `git status --short` 为空 ⇒ **「只有增量构建、不能证明全量可编译」这条历轮共同局限已消除**；② 离线 L1 执行器门禁自证（队长在 `git archive HEAD` 干净副本 `/tmp/cbgate` 实跑）：`POINTS_PER_KG` 100→101 ⇒ `samples(18×2) PASS=20 FAIL=16`、`checked=323 passed=false mismatches=16`、`INJ_EXIT=1`；`git show HEAD:` 还原后全绿 `RESTORE_EXIT=0`（与 HEAD `IDENTICAL`）⇒ 证明它不是自证循环；**hypium 36 `it()` / L2 / deploy 实跑 / `/admin` 浏览器 / 页面级视觉走查 仍未运行**，L0 未改；本轮不改任何被测字节 | 本文 §R8（文件最前） |
 
 **F 编号规则**：跨轮累加不重用。round 1 用到 **F8**，round 2 用到 **F14**，round 3 从 **F15** 起。
 round 1 / round 2 的原始描述**一字未删** —— 本文件 §R1 转引 round 1 要点，两份备份文件完整留档（见 §15）。
@@ -1872,6 +1974,8 @@ t21 按验收要求把它们显式接入本页…业务路径上它们仍**不�
 > 直接调用得 `Connect server failed`（无设备服务端）—— 两者说的是同一件事（无真机），
 > 不应被读成「换一个 hdc 就能跑」。本轮 L3 已改为**全量 237 passed**（上段「L3 全量本轮未执行」是 round 3 的口径，已被 §R4 覆盖）。
 
+> **（t42 补记）** 上表 N1–N8 与编译门禁无关；此前历轮报告共同的局限「两次 `assembleHap` 均为**增量构建** ⇒ 单凭增量不能证明全量可编译」**已消除**（队长清空 `entry/build` + `.hvigor` 后实测全量编译通过：`CompileArkTS` 35 s 423 ms、`EXIT=0`，见 **§R8**）。本表八项**一项都没变** —— 尤其 N2（`hvigorw test` 执行段仍是 `EXIT=124`）与 N8（18 页零截图）：**编译通过不等于用例通过**。
+
 ---
 
 ## §14 未决问题
@@ -2320,3 +2424,4 @@ ANSWER_END
 - **色板 ≠ 页面**：`vision_check` 判的是**设计令牌颜色**，不产生、也不判任何页面渲染结果；**18 页视觉走查仍是零**，`hdc`/模拟器/Previewer 三个断点本轮一个都没动。
 - **hypium / L2 / `server/deploy/` 实跑 / `/admin` 浏览器交互 仍未运行** —— 本轮与 §R6 相比在这四项上**没有任何变化**，一条都不能算通过。
 - **不 push**：本轮提交由队长推送；「已推送」以队长的 `git ls-remote origin main` 原始输出为准（AGENTS.md §5.1-4）。
+- **（t42 更新）** 本节四项未运行项与「构建」无关；而历轮另一处共同局限「只有增量构建、不能证明全量可编译」已由 **§R8** 的**全量干净构建实测**消除（`CompileArkTS` 真实重编 35 s 423 ms、`CLEAN_BUILD_EXIT=0`）。**本节四项一条都没变。**
