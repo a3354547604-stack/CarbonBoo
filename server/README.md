@@ -171,9 +171,10 @@ except Exception:   # 目录不存在/导入失败 → 静默跳过，服务端�
 | POST | `/api/v1/sync/backup` | 客户端令牌 | 上传全量快照（只存快照，**不做自动合并**） | 200 |
 | GET | `/api/v1/sync/backup` | 客户端令牌 | 下载云端快照（恢复即覆盖的数据源） | 200 |
 | POST | `/api/v1/sync/backup/restore` | 客户端令牌 | 用快照覆盖云端副本（覆盖前生成快照） | 200 |
-| GET | `/api/v1/shop/items` | **无** | 商品目录与价格（无需令牌；配置下发 `GET /api/v1/config` 同样无需令牌，§5.4 / §5.5） | 200 |
+| GET | `/api/v1/shop/items` | **无** | 商品目录与价格（无需令牌；同组的配置下发见下一行，§5.4 / §5.5） | 200 |
+| GET | `/api/v1/config` | **无** | 全局可读配置（§5.5；免令牌，与取价同组） | 200 |
 
-响应体（逐字对齐 §5.1/§5.2/§5.3/§5.4）：
+响应体（逐字对齐 §5.1/§5.2/§5.3/§5.4/§5.5）：
 
 ```jsonc
 // GET /api/v1/health —— 注意：health 没有 data 包装
@@ -195,6 +196,13 @@ except Exception:   # 目录不存在/导入失败 → 静默跳过，服务端�
 // GET  /api/v1/shop/items
 { "ok": true, "data": { "version": "2026.02.01-1", "items": [ { "id": "frame_01", "section": "frame", "name": "嫩芽",
     "description": "初生的绿色", "price": 1500, "icon": "res://frame_01", "order": 1, "onShelf": 1, "isDefaultFree": 0 } ] } }
+// GET  /api/v1/config        res.data = ConfigData（§5.5；**免令牌**，与 §5.4 取价同组）
+{ "ok": true, "data": { "version": "2026-11-06-1", "pointsDailyCap": 200, "badgesEnabled": true,
+                        "goalRewards": [ { "goalId": "S1", "reward": 20 }, { "goalId": "S2", "reward": 20 },
+                                         { "goalId": "S3", "reward": 15 } ],
+                        "serverTime": 1762300000000 } }
+// badgesEnabled 是 **JSON 布尔**（true/false，**不是** 1/0）；goalRewards 取服务端 `goal_def` 逐行、按 `goalId` 升序
+// （示例只列 `server/sql/seed.sql` 第 1–3 条，其余省略；`goal_def` 为空时省略该字段 = 客户端用内置种子）
 // 失败一律 { "ok": false, "code": "...", "message": "..." }
 ```
 
