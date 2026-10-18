@@ -118,8 +118,21 @@ export class ContextFiles implements FilesPort {
     return fileIo.statSync(full).size;
   }
 
+  /**
+   * 相对路径 → 绝对路径。
+   *
+   * 同时接受**已经是完整路径**的入参：`FileEntry.path` 的契约就是"完整路径"，而
+   * `BackupService.list()` 把它直接交给 `restore(path)` → `readText(path)`。
+   * 若这里无脑拼前缀，就会得到 `<filesDir>/<filesDir>/backup/x.json` 而读不到
+   * ——「从备份列表点一条恢复」这个唯一入口会直接失效（t43 离线执行实测到，
+   * `BackupRoundTrip` 的 `restore().ok` 为 false 正是此因）。
+   */
   private full(relativePath: string): string {
-    return `${this.ctx.filesDir}/${relativePath}`;
+    const base: string = this.ctx.filesDir;
+    if (relativePath.startsWith(`${base}/`)) {
+      return relativePath;
+    }
+    return `${base}/${relativePath}`;
   }
 
   private static dirOf(relativePath: string): string {
@@ -149,44 +162,109 @@ export class ContextFiles implements FilesPort {
   }
 }
 
-/** 内存实现（用例用；`baseDir` 用伪路径，便于断言展示文案）。 */
+/**
+ * 内存实现（用例用；`baseDir` 用伪路径，便于断言展示文案）。
+ *
+ * **必须与 `ContextFiles` 同契约**（t43 离线执行发现这里曾经违约）：`list()` 的 `name` 是
+ * **不带目录前缀的 basename**（`ContextFiles.list` 用的是 `listFileSync` 的裸文件名）、
+ * 只列**直接子项**（不递归）、结果按 `modifiedAt` **倒序**；`writeText()` 返回的 `name` 同样是
+ * basename。违反这条会让消费方（`BackupCodec` 按 `backup/${name}` 拼路径）读到空串，
+ * 用真机跑同一套用例却又是绿的 —— 那是最坏的一种"用例失真"。
+ *
+ * `size` 用字符数（真实实现是字节数）：内存实现只服务展示与排序断言，不做字节级断言。
+ */
 export class MemoryFiles implements FilesPort {
   private readonly files: Map<string, string> = new Map<string, string>();
+  /** 写入时刻（`modifiedAt` 的来源）；排序必须基于它，不能用"读到的那一刻"。 */
+  private readonly at: Map<string, number> = new Map<string, number>();
 
   baseDir(): string {
     return '/mem/files';
   }
 
+  /** 相对路径的最后一段（与 `ContextFiles.nameOf` 同义）。 */
+  private static nameOf(relativePath: string): string {
+    const parts: string[] = relativePath.split('/');
+    let i: number = parts.length - 1;
+    while (i >= 0) {
+      if (parts[i].length > 0) {
+        return parts[i];
+      }
+      i = i - 1;
+    }
+    return relativePath;
+  }
+
+  /** 目录前缀归一化（`backup` 与 `backup/` 等价），避免把 `backup2/x` 误配到 `backup`。 */
+  private static prefixOf(relativeDir: string): string {
+    if (relativeDir.length === 0) {
+      return '';
+    }
+    return relativeDir.endsWith('/') ? relativeDir : `${relativeDir}/`;
+  }
+
+  /**
+   * 与 `ContextFiles.full` 同语义：相对路径与「已经带 baseDir 前缀的完整路径」都接受
+   * （`BackupService.list()` 给出的 `path` 就是后者，`restore(path)` 原样传进来）。
+   */
+  private rel(relativePath: string): string {
+    const base: string = `${this.baseDir()}/`;
+    return relativePath.startsWith(base) ? relativePath.substring(base.length) : relativePath;
+  }
+
   async writeText(relativePath: string, text: string): Promise<FileEntry> {
-    this.files.set(relativePath, text);
-    return { path: `${this.baseDir()}/${relativePath}`, name: relativePath, size: text.length, modifiedAt: Date.now() };
+    const rel: string = this.rel(relativePath);
+    this.files.set(rel, text);
+    this.at.set(rel, Date.now());
+    return {
+      path: `${this.baseDir()}/${rel}`,
+      name: MemoryFiles.nameOf(rel),
+      size: text.length,
+      modifiedAt: this.at.get(rel) ?? Date.now(),
+    };
   }
 
   async readText(relativePath: string): Promise<string> {
-    const v: string | undefined = this.files.get(relativePath);
+    const v: string | undefined = this.files.get(this.rel(relativePath));
     return v === undefined ? '' : v;
   }
 
   async list(relativeDir: string): Promise<FileEntry[]> {
+    const prefix: string = MemoryFiles.prefixOf(relativeDir);
     const out: FileEntry[] = [];
     this.files.forEach((value: string, key: string) => {
-      if (key.startsWith(relativeDir)) {
-        out.push({ path: `${this.baseDir()}/${key}`, name: key, size: value.length, modifiedAt: Date.now() });
+      if (!key.startsWith(prefix)) {
+        return;
       }
+      const name: string = key.substring(prefix.length);
+      // 目录项与更深层路径不算文件：`fileIo.listFileSync` 只返回直接子项。
+      if (name.length === 0 || name.indexOf('/') >= 0) {
+        return;
+      }
+      const at: number | undefined = this.at.get(key);
+      out.push({
+        path: `${this.baseDir()}/${key}`,
+        name,
+        size: value.length,
+        modifiedAt: at === undefined ? 0 : at,
+      });
     });
+    out.sort((a: FileEntry, b: FileEntry): number => b.modifiedAt - a.modifiedAt);
     return out;
   }
 
   async remove(relativePath: string): Promise<void> {
-    this.files.delete(relativePath);
+    const rel: string = this.rel(relativePath);
+    this.files.delete(rel);
+    this.at.delete(rel);
   }
 
   async exists(relativePath: string): Promise<boolean> {
-    return this.files.has(relativePath);
+    return this.files.has(this.rel(relativePath));
   }
 
   async sizeOf(relativePath: string): Promise<number> {
-    const v: string | undefined = this.files.get(relativePath);
+    const v: string | undefined = this.files.get(this.rel(relativePath));
     return v === undefined ? 0 : v.length;
   }
 }

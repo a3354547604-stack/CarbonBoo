@@ -272,8 +272,22 @@ export class RewardService {
       }
       i = i + 1;
     }
+    // 本次新达标的徽章必须**同时**进写入判据：`progressRows` 用 `unlockedIds` 决定行的 `unlocked`，
+    // 若只传写入前读出的那一份，刚达标的徽章会算出 `unlocked=false` → UPSERT 的
+    // `unlocked = MAX(user_badge.unlocked, excluded.unlocked)` 永远是 0（t43 实测：永不落库、
+    // 且 `newly` 只被 return 不落盘，于是每次调用都重复报同一枚"新解锁"）。
     const newly: BadgeDef[] = BadgeEngine.evaluate(defs, stats, unlockedIds);
-    const progress: BadgeProgress[] = BadgeEngine.progressRows(defs, stats, unlockedIds, atMap);
+    const nowUnlocked: string[] = unlockedIds.slice();
+    let n: number = 0;
+    while (n < newly.length) {
+      const id: string = newly[n].id;
+      nowUnlocked.push(id);
+      if (!atMap.has(id)) {
+        atMap.set(id, now);
+      }
+      n = n + 1;
+    }
+    const progress: BadgeProgress[] = BadgeEngine.progressRows(defs, stats, nowUnlocked, atMap);
     let k: number = 0;
     while (k < progress.length) {
       const p: BadgeProgress = progress[k];

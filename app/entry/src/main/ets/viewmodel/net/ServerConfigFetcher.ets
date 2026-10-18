@@ -171,8 +171,18 @@ export class ServerConfigFetcher {
     if (raw.length === 0) {
       return undefined;
     }
+    // 写入侧（`fetchAndStore`）用 `knownGoalIds` 现读的真清单，读取侧若传空数组就会把
+    // **每一条**下行 `goalRewards` 当作未知条目整条丢弃（t43 实测：D10-5 只对
+    // `pointsDailyCap` / `badgesEnabled` 成立，`goalRewards` 恒为空）。这里复用同一个 helper，
+    // 让写读两侧判据同源；`goal_def` 读不到时退回空清单 = 全部按未知忽略 → 用内置种子（铁律 1）。
+    let known: string[] = [];
     try {
-      return await ServerConfigFetcher.parse(raw, false, []);
+      known = await ServerConfigFetcher.knownGoalIds(store);
+    } catch (e) {
+      known = [];
+    }
+    try {
+      return await ServerConfigFetcher.parse(raw, false, known);
     } catch (e) {
       return undefined;
     }
