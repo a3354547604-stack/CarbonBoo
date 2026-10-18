@@ -17,6 +17,7 @@ import { ServiceHub } from '../../../main/ets/viewmodel/ServiceHub';
 import { AppResult } from '../../../main/ets/model/Result';
 import { SaveOutcome } from '../../../main/ets/viewmodel/RecordService';
 import { BadgeDef, BadgeProgress } from '../../../main/ets/model/BadgeTypes';
+import { RowShape, numOf } from '../../../main/ets/viewmodel/store/StorePort';
 
 export default function badgeIdempotentTest(): void {
   describe('BadgeIdempotent', () => {
@@ -39,22 +40,43 @@ export default function badgeIdempotentTest(): void {
       }, now);
       expect(saved.ok).assertTrue();
 
-      const first: BadgeDef[] = await hub.reward.unlockBadges(userId, now);
-      let firstUnlockAt: number = 0;
+      // ① 解锁发生在 `save()` **内部**：`RecordService.save()` 经 `RewardService.refresh()`
+      //    已经调用过 `unlockBadges`，本次新解锁的徽章由 `SaveOutcome.newBadges` 携带返回
+      //    （该字段是徽章**名称**、不是 id，见 `RecordService.badgeNames()`）。
+      //    原断言假设"save 之后首次显式 `unlockBadges` 会返回 B_FIRST"，与实现模型不符 —— 是用例写错了，
+      //    不是实现错（t44 已直查库证实，见 docs/VERIFICATION.md 相关轮次）。
+      const beforeExplicit: BadgeProgress[] = await hub.reward.badgeRows(userId, now);
+      let firstName: string = '';
+      let firstUnlockAt: number = -1;
       let k: number = 0;
-      while (k < first.length) {
-        if (first[k].id === 'B_FIRST') {
-          firstUnlockAt = now;
+      while (k < beforeExplicit.length) {
+        if (beforeExplicit[k].badgeId === 'B_FIRST') {
+          firstName = beforeExplicit[k].name;
+          firstUnlockAt = beforeExplicit[k].unlockedAt === undefined ? -1 : beforeExplicit[k].unlockedAt;
+          expect(beforeExplicit[k].unlocked).assertTrue();     // save 之内就已解锁
         }
         k = k + 1;
       }
+      expect(firstName.length > 0).assertTrue();               // 目录里确实有 B_FIRST（否则下一行会退化成恒真）
+      expect(firstUnlockAt > 0).assertTrue();                  // save 之内已写入解锁时刻
+      const carried: string[] = saved.data === undefined ? [] : saved.data.newBadges;
+      expect(carried.indexOf(firstName) >= 0).assertTrue();    // save 把新解锁徽章带回来了
+
+      // ② 之后再**显式**调用 `unlockBadges`：返回空集（幂等）
       const again: BadgeDef[] = await hub.reward.unlockBadges(userId, now);
       const third: BadgeDef[] = await hub.reward.unlockBadges(userId, now + 1000);
       expect(again.length).assertEqual(0);
       expect(third.length).assertEqual(0);
-      expect(firstUnlockAt > 0).assertTrue();
 
-      const rows: BadgeProgress[] = await hub.reward.badgeRows(userId, now);
+      // ③ 库里确实落了 `unlocked=1` + `unlocked_at`（直查 `user_badge`，不看内存态），
+      //    且两次显式调用（`now` / `now+1000`）**没有刷新** `unlocked_at`。
+      const ubRows: RowShape[] = await hub.store.query(
+        "SELECT unlocked, unlocked_at FROM user_badge WHERE user_id = ? AND badge_id = 'B_FIRST'", [userId]);
+      expect(ubRows.length).assertEqual(1);
+      expect(numOf(ubRows[0], 'unlocked')).assertEqual(1);
+      expect(numOf(ubRows[0], 'unlocked_at')).assertEqual(firstUnlockAt);
+
+      const rows: BadgeProgress[] = await hub.reward.badgeRows(userId, now + 1000);
       expect(rows.length).assertEqual(8);
       let unlockedCount: number = 0;
       let i: number = 0;

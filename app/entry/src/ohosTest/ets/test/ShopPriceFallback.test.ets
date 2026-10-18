@@ -90,6 +90,9 @@ export default function shopPriceFallbackTest(): void {
 
     it('② ShopService 消费目录：后台改价后 items()/purchase() 取到新价（A12 / D10-3）', 0, async () => {
       const fx: Fixture = await setup();
+      // 复位到「未拉到过」：本用例先断言内置基线价 1500，而套件内 ① 会往同一个
+      // `app_config['shop_items']` 写 1800（真机各套件同样共享同一个 app 库）。t45 修。
+      await fx.cfg.remove(ConfigKeys.SHOP_ITEMS);
       const now: number = Date.now();
       const userId: string = `t-shop-price-${now}`;
       await fx.hub.auth.logout(now);
@@ -194,6 +197,9 @@ export default function shopPriceFallbackTest(): void {
 
     it('⑤ 从未拉到过 → 回落到本地内置默认价（rawfile 播种价）', 0, async () => {
       const fx: Fixture = await setup();
+      // 复位到「未拉到过」：套件内 ①–④ 会写 `app_config['shop_items']`，
+      // 本用例断言的「键不存在」必须自己保证前置，不能靠跑在谁后面。t45 修。
+      await fx.cfg.remove(ConfigKeys.SHOP_ITEMS);
       // 未做任何取价：目录键应不存在，catalog() 为空 Map
       expect(await storedCatalog(fx.cfg) === undefined).assertTrue();
       expect(await fx.hub.shop.catalogVersion()).assertEqual('');
@@ -215,6 +221,8 @@ export default function shopPriceFallbackTest(): void {
 
     it('⑥ 网络不可达（status=0）→ 整份丢弃，且 fetchAndStore 从不抛错', 0, async () => {
       const fx: Fixture = await setup();
+      // 复位到「未拉到过」：本用例断言失败后键仍不存在，同 ⑤ 的理由。t45 修。
+      await fx.cfg.remove(ConfigKeys.SHOP_ITEMS);
       // FakeHttpClient 默认返回 200 {"ok":true,"data":{}} —— data 里没有 version/items → 非法
       const r: AppResult<ShopPriceOutcome> = await fx.hub.fetchShopPrices();
       expect(r.ok).assertFalse();

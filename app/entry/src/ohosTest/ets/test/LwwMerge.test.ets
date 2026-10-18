@@ -57,6 +57,7 @@ import { FakeHttpClient } from '../../../main/ets/viewmodel/net/HttpPort';
 import { MemoryFiles } from '../../../main/ets/viewmodel/store/FilesPort';
 import { HubPorts, ServiceHub } from '../../../main/ets/viewmodel/ServiceHub';
 import { ConfigKeys } from '../../../main/ets/viewmodel/AppConfig';
+import { ClientSchema } from '../../../main/ets/data/schema/ClientSchema';
 import { FamilySummary, SyncOutcome } from '../../../main/ets/viewmodel/net/SyncService';
 import { AuthOutcome, ServerAuthProvider } from '../../../main/ets/viewmodel/AuthService';
 import { AppResult } from '../../../main/ets/model/Result';
@@ -91,6 +92,17 @@ class RecordingStore implements StorePort {
   /** 全部被记录的调用（顺序保留）。 */
   recorded(): SqlCall[] {
     return this.calls;
+  }
+
+  /**
+   * 清空已记录的调用。
+   *
+   * 用例级清库（`setup()` 里的 `DELETE FROM <9 张同步表>`）本身也会被记录，
+   * 若不清空，⑤/⑥ 里「数 `DELETE FROM carbon_record` 出现几次」的断言会把夹具的清理算进去。
+   * 故清库完成后立刻 `reset()`，让记录从「用例自己的动作」开始。
+   */
+  reset(): void {
+    this.calls.length = 0;
   }
 
   /** 按关键字过滤已记录的 SQL（断言"确实发生过 DELETE / INSERT"用）。 */
@@ -231,10 +243,16 @@ function remoteFrom(local: RowShape, overrides: Overrides): RowShape {
   return out;
 }
 
-/** 最近一次 pull 的 `sync_log` 行（`fullRestore` 必写一行，冲突计数从这里观察）。 */
+/**
+ * 最近一次**同步成功**的 `sync_log` 行（`fullRestore` 必写一行，冲突计数从这里观察）。
+ *
+ * 方向取值以 `SyncService.writeLog` 的调用点为准：只有**失败**才写 `'push'` / `'pull'`，
+ * 同步**成功**写的是 `'both'`，备份三端点写 `'backup_up'` / `'backup_down'` / `'backup_restore'`。
+ * 原先这里筛 `direction = 'pull'`，而本用例走的是成功路径 ⇒ 永远查不到行。
+ */
 async function lastPullLog(hub: ServiceHub, userId: string): Promise<RowShape | undefined> {
   const rows: RowShape[] = await hub.store.query(
-    "SELECT * FROM sync_log WHERE user_id = ? AND direction = 'pull' ORDER BY created_at DESC LIMIT 1",
+    "SELECT * FROM sync_log WHERE user_id = ? AND direction = 'both' ORDER BY created_at DESC, rowid DESC LIMIT 1",
     [userId]
   );
   return firstOf(rows);
@@ -287,14 +305,39 @@ async function setup(): Promise<Fixture> {
     context, rec, base.cfg, base.state, base.resources, base.files, base.engine, fake,
     new ServerAuthProvider(fake));
   await hub.setBreakSave(false, now);
+  // 用例级清库 + 复位增量锚点：本进程**共用一份库**（与真机一致，见
+  // `tests/tools/l1_offline/runners/offline_run.mjs:189-195`），而登录会把「上一个用户」的行
+  // 整体改挂到新账号 —— `AuthService.finishAuth`（`main/ets/viewmodel/AuthService.ets:289`）调用
+  // `AccountMigrator.migrate(store, 当前 userId, 登录得到的 userId)`（同文件 :180-197），
+  // 对 `ClientSchema.SYNCED_TABLES` 逐表执行 `UPDATE <t> SET user_id = ? WHERE user_id = ?`。
+  // 于是前一条用例留下的碳记录 / 积分流水会随迁移落到本用例 userId 名下：实测 ⑦ 的 `family()`
+  // 在整套连跑时看到 3 个 device_id、合计 420 分（单跑时只有 1 个成员、116 分）。
+  // 清空这 9 张表后每条用例都从空库开始 —— 这是「单跑与套件内连跑结果一致」的前提。
+  let ti: number = 0;
+  while (ti < ClientSchema.SYNCED_TABLES.length) {
+    await hub.store.exec(`DELETE FROM ${ClientSchema.SYNCED_TABLES[ti]}`, []);
+    ti = ti + 1;
+  }
+  // `sync_log` 不在同步表里，但 ⑩ 用 `ORDER BY created_at DESC` 取最近一行，旧行会抢到首位。
+  await hub.store.exec('DELETE FROM sync_log', []);
+  // 夹具自己的清库动作不该进断言：⑤/⑥ 会数 trace 里 `DELETE FROM carbon_record` 的次数。
+  rec.reset();
+  // ⑩ 的口径注释写死了「`since` = lastSyncAt = 0」（:831-832）；app_config 不参与迁移，
+  // ⑧ 会把它改成 1 / 4000 / 5500，故此处复位成「从未同步过」的初值。
+  await hub.cfg.set(ConfigKeys.LAST_SYNC_AT, '0');
   // 置登录态（`fullRestore` 首页就判 `isLoggedIn()`）。
   // 为什么用真实登录而不是 `state.setAuth({...})`：ArkTS 禁匿名对象字面量
   //（`arkts-no-untyped-obj-literals`），而 `AuthInfo` 无法用字面量构造；
   // 走 `AuthService.login` 既避开该限制，又比直接改状态更接近真实路径（顺带覆盖了登录链路）。
+  // 用户名 / userId 必须落在 `AuthService` 的契约内：**4–20 位字母数字下划线**
+  //（`main/ets/viewmodel/AuthService.ets:15`，对应附录 B §5.2 错误码表）。
+  // 原来写成 `t-lww-${now}`：连字符 `-` 不在允许集合内 → 本地预校验直接拒 →
+  // 10 条 LwwMerge 用例全部卡在「夹具登录失败」，t13 的 offsetMs / 平局 / 真冲突防线零覆盖。
+  // `t_lww_`（6 字符）+ 13 位毫秒时间戳 = 19 位，合规。t45 修。
   const loginBody: string =
-    `{"ok":true,"data":{"userId":"u-t-lww-${now}","username":"t-lww-${now}","userToken":"tok-${now}"}}`;
+    `{"ok":true,"data":{"userId":"u_t_lww_${now}","username":"t_lww_${now}","userToken":"tok-${now}"}}`;
   fake.stub('POST', `${hub.http.baseUrl()}/api/v1/auth/login`, 200, loginBody);
-  const loginRes: AppResult<AuthOutcome> = await hub.auth.login(`t-lww-${now}`, 'secret123', now);
+  const loginRes: AppResult<AuthOutcome> = await hub.auth.login(`t_lww_${now}`, 'secret123', now);
   if (!loginRes.ok) {
     throw new Error('LwwMerge 夹具登录失败：无法进入已登录态，用例无法验证 fullRestore 路径');
   }
@@ -389,7 +432,7 @@ export default function lwwMergeTest(): void {
       expect(res.ok).assertTrue();
 
       // ① 返回值语义：applyRow 返回 1 → pulled +1
-      expect(res.data === undefined ? -1 : res.data).assertEqual(1);
+      expect(res.data === undefined ? -1 : res.data.pulled).assertEqual(1);
       // ② 落库状态：远端行真的覆盖了本机（amount 从 5 变 42，updated_at 变 2000）
       const after: RowShape | undefined = await localRow(hub, id);
       expect(after !== undefined).assertTrue();
@@ -424,8 +467,11 @@ export default function lwwMergeTest(): void {
       const local: RowShape = await seedLocal(hub, userId, now);
       const id: string = textOf(local, 'id');
       await setLocal(hub, id, 5000, 0);
-      // 远端同时间戳但内容不同（amount 99）：若实现误判为"新者胜"，落库后 amount 会变 99
-      const remote: RowShape = remoteFrom(local, new Overrides().set('updated_at', 5000).set('amount', 99).set('device_id', 'dev-remote'));
+      // 远端同时间戳、**同 deviceId**（= 同一版本）但内容不同（amount 99）：
+      // §6.3 平局规则是「deviceId 字典序大者胜，两端相同视为同一版本、保留本机」，
+      // 所以同一版本**不得**按内容判定"新者胜"。原先夹具把 deviceId 改成 'dev-remote'
+      // （字典序大于本机 UUID），那按契约就该远端胜出，与用例预期相反——是夹具写错了。
+      const remote: RowShape = remoteFrom(local, new Overrides().set('updated_at', 5000).set('amount', 99));
 
       stubPull(fx, [remote], 6000, await since(fx));
       const res: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
@@ -631,6 +677,15 @@ export default function lwwMergeTest(): void {
       // 先落一条碳记录：family() 的成员分组来自 carbon_record.device_id，成员口径才有可断言的一行
       await seedLocal(hub, userId, now);
 
+      // 基线净额：`seedLocal` 走的是真实 `RecordService.save`，它自己就会写积分
+      // （记录 +96、目标 S1 +20），所以**不能**假设"开库即净额为 0"。改为以基线为参照。
+      const sumsBefore: RowShape[] = await hub.store.query(
+        'SELECT COALESCE(SUM(points), 0) AS p FROM point_record WHERE user_id = ? AND is_deleted = 0',
+        [userId]);
+      const beforeRow: RowShape | undefined = firstOf(sumsBefore);
+      const base: number = beforeRow === undefined ? 0 : numOf(beforeRow, 'p');
+      expect(base > 0).assertTrue();   // seed 的积分确实落库了（否则下面的相对断言会退化成恒真）
+
       const sourceId: string = `rec-fam-${now}#0`;
       await hub.points.append(userId, {
         type: 'record',
@@ -649,7 +704,7 @@ export default function lwwMergeTest(): void {
         [userId]);
       const netRow: RowShape | undefined = firstOf(sums);
       const net: number = netRow === undefined ? 0 : numOf(netRow, 'p');
-      expect(net).assertEqual(0);   // +96 − 96
+      expect(net).assertEqual(base);   // +96 − 96 = 0（相对基线不增不减）
 
       const summary: FamilySummary = await hub.sync.family(userId);
       // 修前的 `CASE WHEN flow_kind='primary' THEN points ELSE -points END` 会得到 +192 → 本行失败
@@ -668,7 +723,7 @@ export default function lwwMergeTest(): void {
         occurredAt: now + 1,
       });
       const after: FamilySummary = await hub.sync.family(userId);
-      expect(after.totalPoints).assertEqual(200);
+      expect(after.totalPoints).assertEqual(net + 200);
     });
 
     it('⑧ 真冲突计数：仅当两端自上次同步后都改过（§6.3；t13 已补齐）', 0, async () => {
@@ -725,13 +780,19 @@ export default function lwwMergeTest(): void {
       expect(up.data === undefined ? -1 : up.data).assertEqual(3);
 
       // ② 下载快照 + ③ 覆盖式恢复
+      // 快照信封必须**完整闭合**：`{ok,data{…,tables{carbon_record[…]}}}` 收尾需要 3 个右花括号。
+      // 原先只写了 2 个，`JSON.parse` 抛 `Expected ',' or '}' after property value in JSON at position 581`，
+      // 被 `SyncService.fullRestore` 的 `catch` 归为 `CLOUD_RESTORE_BAD_SNAPSHOT` —— 真实根因在夹具本身，
+      // 不在 `main/ets/**`（所以修夹具、不动生产代码）。
       fx.fake.stub('GET', `${base}/api/v1/sync/backup`, 200,
         '{"ok":true,"data":{"serverTime":333,"snapshotAt":444,"totalRows":1,' +
-        '"tables":{"carbon_record":[' + JSON.stringify(remoteFrom(local, new Overrides().set('updated_at', 9999).set('amount', 12))) + ']}}');
+        '"tables":{"carbon_record":[' + JSON.stringify(remoteFrom(local, new Overrides().set('updated_at', 9999).set('amount', 12))) + ']}}}');
       fx.fake.stub('POST', `${base}/api/v1/sync/backup/restore`, 200,
         '{"ok":true,"data":{"restored":2,"removed":1,"preRestoreAt":555,' +
         '"preRestore":{"carbon_record":[]},"serverTime":666,"tables":{"carbon_record":2}}}');
       const down = await hub.sync.fullRestore(userId, now);
+      // 先给出可读的失败原因（失败信息里直接带错误码/文案），再是原断言本身——两条都保留，强度不降
+      expect(down.ok ? 'ok' : (down.code + ':' + down.message)).assertEqual('ok');
       expect(down.ok).assertTrue();
       expect(down.data === undefined ? -1 : down.data).assertEqual(3);
 

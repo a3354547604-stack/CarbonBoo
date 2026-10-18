@@ -279,6 +279,9 @@ export default function serverConfigFallbackTest(): void {
     it('⑥ HTTP 500 / 破损 JSON / 空 data / 网络抛错 → 静默降级为内置值，从不抛错', 0, async () => {
       const fx: Fixture = await setup();
       CarbonCalc.installDailyCap(undefined);
+      // 复位到「未拉到过」：套件内 ①③④⑤ 会写 `app_config['server_config']`，
+      // 而本用例断言「键不存在 / 三种失败都没写库」，前置必须自己保证。t45 修。
+      await fx.cfg.remove(ConfigKeys.SERVER_CONFIG);
       const url: string = `${fx.fake.baseUrl()}${PATH}`;
       // 未拉到过：键不存在、封顶 = 内置 200
       expect(await storedConfig(fx.cfg) === undefined).assertTrue();

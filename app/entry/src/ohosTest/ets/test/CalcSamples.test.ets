@@ -101,13 +101,20 @@ export default function calcSamples(): void {
     });
 
     it('唯一计算入口：CarbonService.calculate 与 CarbonCalc 结果一致', 0, () => {
-      // 样例 9：节约用电 10 kWh × 0.5703 = 5.7030 kg → 570 分
+      // 样例 9：节约用电 10 kWh × 0.5703 = 5.7030 kg → 应得 C = 570 分
+      // 基准原文（`tests/cases/carbon-calc.json`，唯一真相源）：
+      //   samples 中 id=9 → { "factorKey": "elec_grid", "amount": "10",
+      //                       "expectedReductionKg": "5.7030", "expectedPointC": 570 }
+      //   meta.dailyRecordCap = 200
+      // 实入 A = max(0, min(C, dailyRecordCap − D))；`viaService` 末参 todayRecordPoint = 0
+      //   ⇒ A = min(570, 200) = **200**（同一口径见 capSamples cap-1：D=150、C=96 → A=50）。
+      // 修正前 r9[2] 误写成 570 —— 把「应得 C」当成了「实入 A」。t45 修。
       const r9: number[] = CalcBaselineValidator.viaService(
         'utility', 'elec_grid', 10, 0.5703, VERSION, 'SRC-MEE-GRID-2022', 'verified', 0
       );
       expect(r9[0]).assertEqual(5.7030);
-      expect(r9[1]).assertEqual(570);
-      expect(r9[2]).assertEqual(570);
+      expect(r9[1]).assertEqual(570); // C：应得，不封顶
+      expect(r9[2]).assertEqual(200); // A：受 meta.dailyRecordCap = 200 封顶
 
       // 样例 8：少开一天车 16 km × CAR_OWN_FACTOR 0.1920 = 3.0720 kg → 307 分
       const r8: number[] = CalcBaselineValidator.viaService(
