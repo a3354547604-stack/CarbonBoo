@@ -66,7 +66,7 @@ export class BackupService {
       const tables: BackupTable[] = await this.dumpAll();
       const snapshot: BackupSnapshot = BackupCodec.snapshotOf(tables, now);
       const text: string = BackupCodec.encode(snapshot);
-      const name: string = BackupCodec.fileName(Formatter.fileStamp(now));
+      const name: string = await this.uniqueName(Formatter.fileStamp(now));
       const entry: FileEntry = await this.files.writeText(`${BackupService.DIR}/${name}`, text);
       return ok<BackupOutcome>({
         path: entry.path,
@@ -78,6 +78,29 @@ export class BackupService {
     } catch (e) {
       return fail<BackupOutcome>('BACKUP_FAILED', `备份失败：${BackupService.messageOf(e)}`);
     }
+  }
+
+  /**
+   * 同一分钟内多次备份不互相覆盖。
+   *
+   * 文件名契约是 `carbonboo-backup-YYYYMMDD-HHmm.json`（附录 C §21 / D5-1 / PLAN），但
+   * **恢复前的安全快照**与刚生成的手动备份经常落在同一分钟：直接写同名文件会把目标备份
+   * 覆盖掉（`ContextFiles` 与 `MemoryFiles` 都是覆盖写），于是「恢复前先自保一份」反而
+   * 毁掉了被恢复的那份。撞名时追加 `-2` / `-3` 后缀，首个文件仍严格符合文档口径。
+   */
+  private async uniqueName(stamp: string): Promise<string> {
+    const base: string = BackupCodec.fileName(stamp);
+    const suffix: string = '.json';
+    let candidate: string = base;
+    let n: number = 2;
+    while (await this.files.exists(`${BackupService.DIR}/${candidate}`)) {
+      candidate = `${base.substring(0, base.length - suffix.length)}-${n}${suffix}`;
+      n = n + 1;
+      if (n > 100) {
+        break;
+      }
+    }
+    return candidate;
   }
 
   /** 备份记录（时间倒序；每行含时间与大小）。 */
@@ -154,7 +177,7 @@ export class BackupService {
         while (i < snapshot.tables.length) {
           const t: BackupTable = snapshot.tables[i];
           if (BackupService.isKnownTable(t.name)) {
-            await this.store.exec(`DELETE FROM ${t.name}`, []);
+            await this.store.exec(`DELETE FROM ${BackupService.quoted(t.name)}`, []);
             const written: number = await this.insertRows(t);
             rows = rows + written;
             tables = tables + 1;
@@ -229,7 +252,9 @@ export class BackupService {
     if (columns.length === 0) {
       return 0;
     }
-    const sql: string = `INSERT INTO ${table.name} (${columns.join(', ')}) VALUES (${BackupService.placeholders(columns.length)})`;
+    const quoted: string[] = BackupService.quotedAll(columns);
+    const sql: string = `INSERT INTO ${BackupService.quoted(table.name)} (${quoted.join(', ')}) ` +
+      `VALUES (${BackupService.placeholders(columns.length)})`;
     let written: number = 0;
     let i: number = 0;
     while (i < table.rows.length) {
@@ -263,6 +288,31 @@ export class BackupService {
         }
         k = k + 1;
       }
+      i = i + 1;
+    }
+    return out;
+  }
+
+  /**
+   * SQL 标识符加双引号。
+   *
+   * 起因（t46）：`ClientSchema` 里 4 张表用了保留字列名 `"order"`（建表 DDL 自己加了引号，
+   * 见 `ClientSchema.ets:10` 的注释），而恢复路径拼 INSERT 时直接 `columns.join(', ')`
+   * ⇒ 语句里出现裸 `order` ⇒ SQLite 报 `near "order": syntax error` ⇒ 任何备份都恢复不了
+   * （真机同一条代码路径，同错；恢复是换机/重装后唯一的数据通道）。
+   *
+   * 修法是**逐列/逐个表名**加引号，不是给 `order` 打特例补丁：这样以后任何保留字列名
+   * （`index` / `key` / `group` / `default` …）都不会再踩同一个坑。
+   */
+  private static quoted(name: string): string {
+    return '"' + name + '"';
+  }
+
+  private static quotedAll(names: string[]): string[] {
+    const out: string[] = [];
+    let i: number = 0;
+    while (i < names.length) {
+      out.push(BackupService.quoted(names[i]));
       i = i + 1;
     }
     return out;
