@@ -1,4 +1,123 @@
-# 交付终审报告（round 3 · t32）· CarbonBoo（赛题二）
+# 交付评审报告（round 4 · t8 attempt 9 复评）· CarbonBoo（赛题二）
+
+> 评审人：**fixer-oc**（AgentTeams 成员；本轮角色是**评审者**，不是实现者 —— 只写本文件，
+> 未改任何被测源码 / 规格文档 / 测试基准）
+> 本轮结论**绑定 `HEAD = 53f76ca21ffb96128f7c756aa06a8869c336b73e` 的字节**（开工与收工各复核一次）
+> 被评审对象：`docs/VERIFICATION.md` 的 §R4 / §R6 / §R8（含 §R5、§R7 的补充证据）+ 仓库当前实现
+> 历史轮次报告（§0–§10，t32 终审，绑定 `284c069`）**原文保留在下方**，本附录只做追加，不覆盖、不删改。
+
+## §R9.0 开工四查（原始输出，照录）
+
+```
+$ git rev-parse HEAD
+53f76ca21ffb96128f7c756aa06a8869c336b73e
+$ git status --short
+（空输出）
+$ python3 tests/tools/check_l0.py --strict ; echo L0_EXIT=$?
+（… L0-1 / L0-2 / L0-3 全过 …）
+结论：PASS —— 基准自洽，文档无已知冲突
+L0_EXIT=0
+$ md5sum tests/cases/carbon-calc.json app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+e096b2db77bbcc9a43ee8728cbd883e9  tests/cases/carbon-calc.json
+e096b2db77bbcc9a43ee8728cbd883e9  app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+```
+
+## §R9.1 本轮**我自己实跑**的四条门禁（原始输出，可复现）
+
+| # | 命令 | 结果 |
+|---|---|---|
+| 1 | `python3 tests/tools/check_l0.py --strict` | **`L0_EXIT=0`**，尾行「结论：PASS —— 基准自洽，文档无已知冲突」 |
+| 2 | `cd server && CARBONBOO_TEST_DB=carbonboo_test_t8 .venv/bin/python -m pytest tests/ -q` | **`237 passed, 1 warning in 230.22s`，`PYTEST_EXIT=0`** |
+| 3 | `cd app && source ~/harmony-toolchain/env.sh && export OHOS_BASE_SDK_HOME=$DEVECO_SDK_HOME && hvigorw --no-daemon assembleHap` | **`BUILD SUCCESSFUL in 6 s 409 ms`，`ASSEMBLE_EXIT=0`**（增量：`PackageHap` 显示 `UP-TO-DATE`；**全量干净构建**的原始输出见 §R8.2，由队长实跑，我**未重跑**，如实标注为「采信」） |
+| 4 | `bash tests/tools/l1_offline/run.sh` | **`checked = 323` / `passed = true` / `mismatches=0`，`RUN_EXIT=0`** |
+
+**第 2 条的环境事实（必须写清，否则等于伪证）**：开工时 `127.0.0.1:13307` **不可达**，`carbonboo-mysql` 容器处于 `Exited (255) 23 hours ago`；
+我第一次跑 pytest 得到的是 `237 errors`（报错原文是项目自带的 `STOP: 本机未找到可用的 MySQL…` 保护，不是代码缺陷）。
+**我用 `docker start carbonboo-mysql` 把项目容器拉起**（镜像与本机既有容器，未新建、未改配置、未改库名），确认 `127.0.0.1:13307 OPEN` 后重跑，才得到上表 237 passed。
+⇒ 这条证据的**真实性**由我负责：237 passed 是在**隔离库 `carbonboo_test_t8`** 上跑出来的（未占用别人的默认库）。
+
+## §R9.2 t32 的 F1–F8：逐条闭环复核（不采信「改 status」，只看仓库现状）
+
+| id | t32 原判 | 本轮复核 | 现状证据 |
+|---|---|---|---|
+| F1（medium） | 例外集口径仍有 4 处写「四项」 | **关闭** | `grep -rn "四项网络例外\|例外仅四项\|四个可依赖\|仅有的四个"` 全仓（排除 build/、.agent-teams）**仅 1 命中**：`docs/REVIEW.md:192` —— 那是本报告 §3.1 对旧措辞的**引用**，不是口径残留 |
+| F2/F3/F4（low） | §R4 三条「沿用/计数」的证据与实测不符 | **关闭** | t33 在 `docs/VERIFICATION.md` 文末新增「本轮更正」节（C-F2/C-F3/C-F4），逐条承认失真并给复现命令与原始输出，未删原文 |
+| F5（low） | §R4.6 两处函数名误标 | **关闭** | `docs/VERIFICATION.md:780` 已改为 `:258 amountOfCarFreeDays` / `:267 amountOfRecyclePieces`（t33 原位订正，并在「本轮更正」C-F5 留痕） |
+| F6（low） | 未运行项两套 N 编号无映射 | **关闭** | 新增 C-F6 映射表（§R4.7 N1–N5 ↔ §13 N1–N8）并写死「引用须带小节前缀」 |
+| F7（low） | 复算/契约脚本未入库，证据链易失 | **关闭** | `tests/tools/l1_offline/`（t37）与 `tests/tools/vision_check/`（t41）均已入库；本轮 `RUN_EXIT=0` **现场复现**，不再依赖 `/tmp` |
+| F8（low·信息） | `PointCap` 套件名无对应文件 | **关闭** | `tests/README.md:24` 已改为删除线行并注明由 `CalcSamples.test.ets` + `CalcBaselineValidator.ets` 承载；`:112` F10 写明「非缺陷，有意设计」 |
+
+> 复核口径：**「关闭」只表示「证据已在仓库且我能复现」，不表示「这个缺陷本来不存在」**。F1 曾是真缺陷（t33/t34 修复），这一点在报告里保留痕迹。
+
+## §R9.3 用户原始要求（m00004）↔ 三部分交付物：逐条对应
+
+| 用户要求 | 交付物（仓库内） | 本轮证据 | 判定 |
+|---|---|---|---|
+| **① 鸿蒙 app**（ArkTS + API 12） | `app/`：19 个页面文件（`Index` + 18 页）、23 个组件、`viewmodel/` 服务层、`data/` 19 表 schema + Dao | `assembleHap` EXIT=0；§R6/R4 的**注入自证**（未定义引用 → `BUILD FAILED 255` 且自定位 `文件:行:列`）证明页面/组件**确在编译图**内，不是「假绿」 | **通过（限已跑项）** |
+| **② 服务端**（FastAPI + MySQL） | `server/app/`：`auth 5 + sync 4 + shop 1 + config 1 + backup 3 = 14` 个端点；21 张表；`sql/schema.sql` + migrations | **`237 passed`**（我独立复现）；`/admin` 双 JWT 隔离在 L3 用例内 | **通过** |
+| **③ Web 管理后台** `/admin` | `server/admin_web/`（16 个 py + templates/static），`mount_admin(app)` 在 `server/app/main.py:170-175` 挂载，**可选件**（ADR-0001） | 服务端渲染路由 19 条（`api.py`）；**浏览器内交互本轮未跑**（无浏览器驱动） | **通过（服务端侧）/ 未跑（浏览器侧）** |
+| **④ 用 git 管理便于回滚** | 47+ 次提交，`docs:`/`feat:`/`fix:`/`test:`/`chore:` 前缀；§5.1 基准与推送证据条款 | `git log --oneline -40` 逐条可读；**无**「改期望值/删断言/跳用例」类提交（§R9.5） | **通过** |
+| **⑤ 前端用视觉模型** | 视觉通道：`tests/tools/vision_check/`（t41 入库） | §R7.2 两次探针 `HTTP_STATUS=200` + 判读与图一致；§7.6 色板 `17/17` 命中 | **部分**：通道与色板层**已验证**；**页面级截图 0 张**（见 findings G2） |
+| **⑥ 规约红线**（禁 `any` / `@ts-ignore` / 强制断言 / 第三方包） | `app/entry/src/main/ets/**` | `grep -rn ": any\b\|@ts-ignore\|as unknown as"` → **0 命中**；`oh-package` 无第三方运行时依赖 | **通过** |
+
+## §R9.4 四条铁律：`文件:行` 逐个核对（本轮重跑，不转抄）
+
+| 铁律 | 结论 | 证据 |
+|---|---|---|
+| **1 本地优先** | 成立 | 客户端真相源：`app/entry/src/main/ets/data/dao/CarbonRecordDao.ets:18`（`import { relationalStore }`）、`:52`（`private readonly store: relationalStore.RdbStore`）；服务端**不做碳计算**：`grep -rn "factor\|reduction" server/app` 只命中**模型列定义**（`server/app/models/ledger.py:33-36`），无乘法/无因子逻辑 |
+| **2 单一计算入口** | 成立 | 唯一实现 `app/entry/src/main/ets/service/CarbonService.ets:107`；调用点仅 `viewmodel/RecordService.ets:151` / `:319` / `:375`；`pages/` 目录下 `factor` 只用于**展示**（`RecordDetailPage.ets:141-143` 读快照字段），无页面自行乘因子 |
+| **3 因子快照** | 成立 | 列定义 `app/entry/src/main/ets/data/schema/ClientSchema.ets:85-87`（`factor_value/factor_version/factor_source`）＋ 写入 `CarbonRecordDao.ets:70-72`；回读 `:270-272` |
+| **4 积分单向可追溯** | 成立 | 余额唯一算法 `viewmodel/PointService.ets:87`（`balance()`，`:97` 取 `bal` 聚合，`:109` 派生碳币）；`point_record` 写入只经 `points.append(...)`：`IncludeService.ets:129`、`RecordService.ets:425`、`RewardService.ets:211`、`ShopService.ets:163`；**无删除路径**（流水只增不删） |
+
+## §R9.5 「为让测试变绿而改期望值 / 删断言 / 跳用例」专项核查
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| 基准期望值是否被改过 | 对 `tests/cases/carbon-calc.json` 的**每一次**历史提交，统计 diff 里 `±…"expected…"` 行数 | **仅初始提交 `5f751c4` 有 25 行**（创建文件）；其余 11 次提交**全部 0** |
+| 是否有跳过的用例 | `grep -rn "\.skip(\|pytest.mark.skip\|xfail"` over `server/tests` + `app/entry/src/ohosTest` | **0 命中** |
+| 是否有 `expect.fail` 兜底 | `grep -rn "expect.fail"` over ohosTest | **0 命中** |
+| 是否有测试文件被删除 | `git log --diff-filter=D --name-only -- '*test*' '*Test*'` | **0 条** |
+| 规约红线 | 见 §R9.3-⑥ | 0 命中 |
+
+⇒ 未发现 AGENTS §5 明令禁止的三类操作；**无 reject 级证据**。
+
+## §R9.6 未运行项（单列，**一条都不算通过**）
+
+| # | 未运行项 | 成因（本轮复验一致） |
+|---|---|---|
+| N1 | **hypium L1 全部 36 个 `it()`**（10 套件） | 无真机（`hdc` 无设备）、无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 glibc 2.43 → `hvigorw test` 执行段 `EXIT=124`。**数字本轮自核**：`grep -c "^\s*it("` 合计 **36**，与文档一致（`47` 是不排除注释的粗数，不能引用） |
+| N2 | L2 端侧集成（两条设备 + 飞行模式全功能） | 需两类设备，本机没有 |
+| N3 | `server/deploy/` 实跑（容器 / systemd + TLS + 备份） | 无部署目标 |
+| N4 | `/admin` **浏览器内**交互 | 无浏览器驱动；只验证了服务端渲染路由与 L3 用例 |
+| N5 | **页面级视觉走查（18 页截图）** | 见 findings **G2** |
+
+> 纯逻辑部分**不在这张表里**：`tests/tools/l1_offline/` 跑仓库真实实现、`checked=323 passed=true`（本轮 `RUN_EXIT=0` 复现）。
+> 但它**不是** hypium 的替代品（不覆盖 UI/DB/网络/生命周期），两者不可互相顶替 —— 这一点 t37/t38 已写死，我复核成立。
+
+## §R9.7 结论与放行建议
+
+**verdict = `pass`（限已跑项）**，绑定 `HEAD = 53f76ca21ffb96128f7c756aa06a8869c336b73e`。
+
+三条理由：
+1. 三部分交付物**都在仓库内且可运行**：app 编译门禁成对自证（§R6/R4 的注入 → 255 → 0）＋ 本轮 `assembleHap EXIT=0`；服务端本轮**我独立复现 `237 passed`**；`/admin` 挂载点与 19 条服务端渲染路由在仓库内可查。
+2. `docs/VERIFICATION.md` 的「通过」断言**逐条能找到命令与原始输出**；**凡未运行的都显式单列为未运行**（§R9.6），没有一条被偷换成通过（t32 的 F1–F8 已全部闭环，§R9.2）。
+3. 四条铁律在代码里**真实成立**（§R9.4 给出 `文件:行`），且 AGENTS §5 的三类禁止操作**零命中**（§R9.5）。
+
+放行建议：**可以交付，交付说明必须原样带上 §R9.6 五项未运行**；不得把「编译通过 / 离线复算通过」表述成「L1 通过」。
+
+**Findings（2 条 low；无 blocker / 无 high / 无 medium）**
+
+| id | severity | problem | requiredFix | file:line |
+|---|---|---|---|---|
+| G1 | low | §R8.2（全量干净构建）与 §R8.4（门禁自证）的证据由**队长实跑**提供，我无法在本轮独立复现（复现要清空 `build/`、`.hvigor/` 并跑 50 s，且注入会临时改 `app/` 源码 —— 超出本评审「只写 REVIEW.md」的写入范围） | 报告里已标注来源，保持不变；若需评审独立复现，另派一个允许改 `app/` 的执行型任务在 `git archive` 副本里做（`/tmp/cbgate` 模式） | `docs/VERIFICATION.md:24-105`（§R8.2 / §R8.4） |
+| G2 | low | m00004 的「前端用视觉模型」只到**能力层/色板层**（`HTTP=200`、`17/17`），**页面级 18 页零截图**，故页面观感、布局、令牌落地**没有视觉证据** | 有真机/模拟器时补 18 页截图并跑 `vision_check` 判读；否则在交付说明中显式声明该证据缺失（不得表述为「界面已视觉验收」） | `docs/VERIFICATION.md:2396`（§R7.4 准确三态）/ §13 N8 |
+
+**与前几轮的关系**：§0–§10 是 t32 终审（绑定 `284c069`，verdict=pass 限已跑项）。本轮**不推翻**它，只做两件事：① 把绑定字节刷新到 `53f76ca`（此后 `docs/`、`tests/`、`app/` 的改动我已逐项核对，§R9.2/§R9.5）；② 用我自己跑的四条门禁替换「采信上轮」。
+
+---
+## 附录 · 历史轮次原文（round 3 · t32 终审，绑定 `284c069`）
+
+> 为便于阅读，本轮只把原标题由一级降为二级；**§0–§10 正文一字未改**。
 
 > 评审人：**reviewer-cn**（AgentTeams 成员，交付评审员；**非实现者**，本轮不改任何被测源码与规格文档）
 > 评审对象：`docs/VERIFICATION.md` **§R4 round 4**（t31 终验，基准 `e211ae1`）及其声明覆盖的仓库状态
