@@ -1,11 +1,111 @@
-# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；round 7 = t41 判图腿真相更正 + 首次实跑见 §R7；**最新 round 8 = t42 全量干净构建 + 离线 L1 门禁自证（证据登记）见 §R8 与 §R7**）
+# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；round 7 = t41 判图腿真相更正 + 首次实跑见 §R7；round 8 = t42 全量干净构建 + 离线 L1 门禁自证见 §R8；**最新 round 9 = t43 hypium 36 个 it() 首次离线真执行（PASS=18/FAIL=18 + 缺口清单）见 §R9**）
 
-> **最新一轮是 §R8（round 8 / t42 证据登记，绑定 HEAD `6a0404e`）**：队长清空 `build/` 与 `.hvigor/` 后跑出**全量干净构建**（`CompileArkTS` 真实重编 `35 s 423 ms`、`BUILD SUCCESSFUL`、`EXIT=0`、产物 2,445,614 B、工作树零污染），并在 `git archive` 干净副本里给离线 L1 执行器做了**注入→翻转→从 git 还原**的门禁自证（`POINTS_PER_KG` 100→101 ⇒ 16 处 FAIL / `EXIT=1`；还原后全绿 / `EXIT=0`）——**§R8 不新增门禁结论、不改任何被测字节**。上一轮 §R7（round 7 / t41，绑定 HEAD `46d2fcf`）：视觉模型通道**已验证可用**、判图链路**已实跑**（`tests/tools/vision_check/`，`RUN_EXIT=0`），但**页面级视觉走查仍不可做**（18 页零截图）；§R7 **不新增任何门禁结论**，**门禁结论仍以 §R6（绑定 `a8b78ef`）为准**。下面这段说的是 round 5 与更早的轮次：
+> **最新一轮是 §R9（round 9 / t43，绑定 HEAD `804ad92`）**：`tests/tools/l1_offline/run_tests.sh` 把 `ohosTest` 的 **36 个 `it()`** 用 `node:sqlite` 垫片在离线环境**逐条真执行**（`RESULT: it_executed=36 passed=18 failed=18 requires_device=0`、`checked=323 passed=true`），18 条失败的逐条 `文件:行` 归因见 §R9.3（3 条真实实现缺陷 + 11 条用例缺陷 + 4 条用例顺序耦合）；**hypium 在设备上仍未运行**，两证不可互相顶替。上一轮 §R8（round 8 / t42 证据登记，绑定 HEAD `6a0404e`）：队长清空 `build/` 与 `.hvigor/` 后跑出**全量干净构建**（`CompileArkTS` 真实重编 `35 s 423 ms`、`BUILD SUCCESSFUL`、`EXIT=0`、产物 2,445,614 B、工作树零污染），并在 `git archive` 干净副本里给离线 L1 执行器做了**注入→翻转→从 git 还原**的门禁自证（`POINTS_PER_KG` 100→101 ⇒ 16 处 FAIL / `EXIT=1`；还原后全绿 / `EXIT=0`）——**§R8 不新增门禁结论、不改任何被测字节**。上一轮 §R7（round 7 / t41，绑定 HEAD `46d2fcf`）：视觉模型通道**已验证可用**、判图链路**已实跑**（`tests/tools/vision_check/`，`RUN_EXIT=0`），但**页面级视觉走查仍不可做**（18 页零截图）；§R7 **不新增任何门禁结论**，**门禁结论仍以 §R6（绑定 `a8b78ef`）为准**。下面这段说的是 round 5 与更早的轮次：
 > **round 5 / t38 只做 L1 表述修正，不新增门禁结论。** 起因：t37 把「用 esbuild 转译仓库
 > **真实 ArkTS 实现**并在 Node 里离线执行」的链路固化进了仓库（`tests/tools/l1_offline/`），于是本文件里
 > 「**替代证据为零**」一类断言从「当时的真话」变成了「**漏报已完成的工作**」。§R5 把这类断言逐处改为准确陈述，
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
+
+## §R9 round 9（t43 · **hypium 36 个 `it()` 首次离线真执行**：真实数字 + 缺口清单）
+
+> 本节是**新增证据轮**，绑定 `HEAD = 804ad92`（执行器所在提交）。它把一个持续 8 轮的状态从
+> 「hypium 执行数 0」变成**真实数字**：36 条 `it()` 全部被离线执行，`PASS=18 / FAIL=18`。
+> **它不改变「hypium 在设备上未运行」这一事实** —— 跑的是 `node` + `platform/` 垫片，不是设备上的 `ohosTest`。
+
+### R9.1 做法（不重写算法、不搬假 store）
+
+`tests/tools/l1_offline/run_tests.sh` 把 `app/entry/src/ohosTest/ets/test/*.test.ets` 与它们依赖的
+`app/entry/src/main/ets/**` **原样复制 → 只改 import 前缀 → esbuild 转 CJS**，用 `tests/tools/l1_offline/platform/`
+的垫片顶掉 `@ohos/*`：
+
+- `@kit.ArkData` 的 `relationalStore` → Node v22.22.1 内置 **`node:sqlite`（DatabaseSync）**，真 SQL：
+  唯一索引、`ON CONFLICT ... DO UPDATE`、`MAX()`、事务都按真语义执行（**不是"假装成功的假 store"**）；
+- `resourceManager.getRawFileContent` → 读**真 rawfile**（基准与因子库都是仓库那份）；
+- `@ohos/hypium` → 提供 `describe/env/it/expect` 与断言匹配器；未覆盖模块（`@ohos.file.fs` 等）
+  由 `platform/unavailable.cjs` **显式抛错**，不静默返回假值。
+
+执行前重放 App 的启动地基（`RdbHelper.open` → `SeedRepository.seedStatic` → `FactorRepository.load`，
+调的都是仓库真实函数）——这些用例是按「App 已启动过」写的（如 `ShopPriceFallback ⑤` 断言回落到
+rawfile 播种价，而播种在启动路径里），不重放会得到一片「测试自身缺前置」的红。冷启动取价 / 配置下发
+两步**不重放**（网络例外，L1 不出网）。
+
+### R9.2 原始输出（本文件所在轮次实跑）
+
+```
+$ bash tests/tools/l1_offline/run_tests.sh
+离线 L1 执行器：node v22.22.1，esbuild 0.28.2
+转译完成：78 个 .ets → CJS（.js）
+启动地基：goals=11 badges=8 shop=9 science=12 factors=CF-2026.2
+...（逐条 PASS/FAIL，见下）
+hypium 用例：36 条，PASS=18 FAIL=18
+RESULT: it_executed=36 passed=18 failed=18 requires_device=0
+CalcBaselineValidator：checked=323 passed=true
+基准复算结论：全部一致：共复算 323 个断言点
+
+RESULT: FAIL
+$ echo $?
+1
+```
+
+**通过 18 条（真实套件跑通）**：`CalcSamples` 5/6、`NotLoggedIn`、`GoalIdempotent`、`ShopPurchase`、
+`CsvExport`、`ShopPriceFallback` 3/6、`ServerConfigFallback` 6/8。
+
+### R9.3 缺口清单（18 条失败，逐条 `文件:行` + 具体原因；**一条都不是"垫片缺 API"**）
+
+| 用例 | 位置 | 观察 vs 期望 | 归因 |
+|---|---|---|---|
+| CalcSamples「唯一计算入口」 | `app/entry/src/ohosTest/ets/test/CalcSamples.test.ets:109-110` | `actualPoint=200` vs 570 | 用例期望过期：`CarbonCalc.actualPointOf` 缺省按 `effectiveDailyCap()` 封顶（`AppConstants.ets:34` = 200），570 是 C；t18 起封顶改为下行可配 |
+| LwwMerge ①–⑩（10 条） | `LwwMerge.test.ets:299`（setup 抛出） | 登录 `INPUT_INVALID`「用户名只能用字母、数字、下划线」 | 夹具自造非法入参：`:295-297` 用户名 `t-lww-${now}` 含 `-`，被 `AuthService` 入参校验拒绝 |
+| BadgeIdempotent | `BadgeIdempotent.test.ets:53` | `again.length=1` vs 0 | **实现缺陷**：`viewmodel/RewardService.ets` 的 `unlockBadges` 用 `BadgeEngine.evaluate` 得 `newly`，写库却用 `BadgeEngine.progressRows(..., unlockedIds, ...)`，后者只按**调用前**的 `unlockedIds` 判 `unlocked` ⇒ 新解锁徽章永远写不进 `unlocked=1`（实测 `user_badge` 行 `B_FIRST unlocked=0 progress=1`，连调三次仍返回 `['B_FIRST']`） |
+| BackupRoundTrip | `BackupRoundTrip.test.ets:84` → `viewmodel/domain/BackupCodec.ets:67` | `JSON.parse('')` | **测试支撑代码缺陷**：`viewmodel/store/FilesPort.ets` 的 `MemoryFiles.list()` 返回 `name` 为含目录相对路径（`backup/x.json`），而真实端口 `FileIoFiles.list()` 返回裸文件名；用例按裸名拼 `backup/${list[0].name}` ⇒ 读到空串 |
+| ServerConfigFallback ④ | 该套件 `expect(rewardOfCard(cards,'S1')).assertEqual(7777)` | 实得 20 | **实现缺陷**：`viewmodel/net/ServerConfigFetcher.ets` 的 `effectiveFrom()`（读库侧）调 `parse(raw, false, [])`，`knownGoalIds` 传空数组 ⇒ `rewardsOf()` 把每条 `goalRewards` 当"未登记"整条丢弃 ⇒ 下行目标奖励**运行期永不生效**（写入侧 `goalRewardCount=1` 却通过，两侧口径不一致） |
+| ShopPriceFallback ②/⑤/⑥、ServerConfigFallback ⑥（4 条） | 各套件内断言 | 实得 1800 应为 1500 / 断言 false | 用例间共享状态耦合：同进程一份库（设备上同样如此），`①` 先覆盖 `app_config[shop_items]` / `[server_config]`，后续用例却断言"内置基线 / 从未拉到过"。**单跑全部通过**：`L1_ONLY=… L1_CASE=…` 见 `tests/tools/l1_offline/README.md §7.3` |
+
+合计 1 + 10 + 1 + 1 + 1 + 4 = 18。**`app/` 与 `tests/cases/` 本轮一字未改**：缺陷只登记，不在本任务修复
+（inScope 只有 `tests/tools/l1_offline/` 与本文件）。
+
+### R9.4 门禁自证（不是自证循环）
+
+把 `app/entry/src/main/ets/util/AppConstants.ets` 的 `POINTS_PER_KG` 由 `100` 改成 `101`：
+
+```
+$ bash tests/tools/l1_offline/run.sh
+samples(18×2)        PASS=20 FAIL=16
+RESULT: PASS=39 FAIL=16
+$ echo $?            → 1（INJ_EXIT=1）
+
+$ git show HEAD:app/entry/src/main/ets/util/AppConstants.ets > app/entry/src/main/ets/util/AppConstants.ets
+$ bash tests/tools/l1_offline/run.sh
+samples(18×2)        PASS=36 FAIL=0 ; RESULT: PASS=55 FAIL=0 ; checked = 323 ; RESULT: checked=323 passed=true mismatches=0
+$ echo $?            → 0（RESTORED_EXIT=0）
+```
+
+同一注入在 `run_tests.sh` 上同样有反应（它跑的是同一份真实实现）：
+
+```
+$ bash tests/tools/l1_offline/run_tests.sh     # 注入 101 后
+RESULT: it_executed=36 passed=15 failed=21 requires_device=0
+CalcBaselineValidator：checked=323 passed=false mismatches=16
+$ echo $?            → 1
+
+$ git show HEAD:…/AppConstants.ets > …/AppConstants.ets && bash tests/tools/l1_offline/run_tests.sh
+RESULT: it_executed=36 passed=18 failed=18 requires_device=0
+CalcBaselineValidator：checked=323 passed=true
+```
+
+还原后 `git status --short` 为空（`AppConstants.ets` 与 HEAD 逐字节一致）。注意：`run_tests.sh` 在还原后
+**仍然是 `EXIT=1`** —— 因为那 18 条真实失败（§R9.3）与本次注入无关，这是**如实结果**，不是没还原干净：
+判据看的是 `passed` 由 15 回到 18、`passed=false` 回到 `true`。
+
+### R9.5 未改变的事实（**两证不可互相顶替**）
+
+- **hypium 在设备上的 L1 执行仍然未运行**：无真机（`hdc` 未安装）、无模拟器（`/dev/kvm` 不可写）、
+  SDK Previewer 崩于 glibc 2.43（`pthread_mutex_lock`）。§R9 跑的是 `node` + 垫片，**不是**同一环境。
+- 垫片差异即结论边界：`relationalStore` 是 `node:sqlite` 而非设备 RDB；`fileIo` 是 Node `fs`；HTTP 一律不出网。
+  凡是依赖真实平台行为的断言，本执行器**不能**替代设备执行。
+- 因此本轮**不改变** round 6 的门禁结论（L0 / L3 / 编译门禁 / 铁律静态核查），也不把任何一条历史
+  「未运行」改写为「通过」；它新增的只是**L1 的真实执行数与缺口清单**。
 
 ## §R8 round 8（t42 · 证据登记：**全量干净构建通过** + 离线 L1 执行器门禁自证）
 
@@ -965,6 +1065,7 @@ ohosTest 副本 app/entry/src/ohosTest/resources/rawfile/carbon-calc.json md5 �
 | round 6 | t40（`verifier-oc`，**最终独立验证**） | `a8b78efa505d7643bf20e13674305a332e6925e6` | 2026-11-07 | **通过（限已跑项）**：L0 EXIT=0（28 项 0 错误 / 89 文件 0 命中 / docConflicts 0）、**L3 全量 237 passed**（85+40+29+25+10+48，专属库 `carbonboo_test_final`，218.64s）、**编译门禁成对自证 EXIT 0→255→0**（注入侧自定位 `SyncService.ets:39:32`，还原后 md5 与 `git show HEAD` 同值 `d0fce647…`）、**离线 L1 执行器 `RESULT: PASS=55 FAIL=0` / `checked=323 passed=true`**、数值真相源零 diff（`300a89d..HEAD`）且两副本同 md5+`cmp` 相同、规约红线 0/0/0、四条铁律静态全部成立；**hypium 36 个 `it()` / L2 / `server/deploy/` 实跑 / `/admin` 浏览器交互 / 视觉走查 五项仍未运行，一条不算通过** | 本文 §R6（文件最前） |
 | round 7 | t41（`fixer-oc`，**表述更正轮 + 判图腿首次实跑，不新增门禁结论**） | `46d2fcfc26c7957bc31398adc6c805ad27f09cc4` | 2026-11-07（与 R1–R6 同口径） | **仅更正视觉相关表述**：原「`ARK_API_KEY` 在本会话未设置 ⇒ 视觉模型零达成」失真 —— key 在**凭据库** `.dsh/.credentials.yaml → refs.ARK_API_KEY`（非环境变量），实测识图探针 **HTTP=200** 判读正确（最小探针 + 仓库真实令牌色板 `17/17`）；新增 `tests/tools/vision_check/`（从 `AppTheme.ets` 源码解析令牌 → 生色板 → 判读，`RUN_EXIT=0`），**视觉模型通道已验证可用 + 判图链路已实跑**；**页面级视觉走查仍不可做**（`hdc`/模拟器/Previewer 三断点未变，18 页零截图）；hypium 36 `it()` / L2 / deploy / `/admin` 浏览器 四项未运行，一条不算通过；L0 `EXIT=0` | 本文 §R7（文件末尾） |
 | round 8 | t42（`fixer-oc`，**证据登记轮，不新增门禁结论**） | `6a0404ef1c4b6906775e19f6a92456656fb8da73` | 2026-11-07（与 R1–R7 同口径） | **登记队长本轮实测两条新证据**：① 移走 `entry/build` + `.hvigor`（清空增量缓存）后 `hvigorw --no-daemon assembleHap` **全量干净构建通过** —— `CompileArkTS` 真实重编 `35 s 423 ms`（历轮为 `UP-TO-DATE` / 5 s 级）、`BUILD SUCCESSFUL in 49 s 850 ms`、`CLEAN_BUILD_EXIT=0`、产物 `2,445,614` B、构建后 `git status --short` 为空 ⇒ **「只有增量构建、不能证明全量可编译」这条历轮共同局限已消除**；② 离线 L1 执行器门禁自证（队长在 `git archive HEAD` 干净副本 `/tmp/cbgate` 实跑）：`POINTS_PER_KG` 100→101 ⇒ `samples(18×2) PASS=20 FAIL=16`、`checked=323 passed=false mismatches=16`、`INJ_EXIT=1`；`git show HEAD:` 还原后全绿 `RESTORE_EXIT=0`（与 HEAD `IDENTICAL`）⇒ 证明它不是自证循环；**hypium 36 `it()` / L2 / deploy 实跑 / `/admin` 浏览器 / 页面级视觉走查 仍未运行**，L0 未改；本轮不改任何被测字节 | 本文 §R8（文件最前） |
+| round 9 | t43（`fixer-oc`，**新增证据轮**） | `804ad92` | 2026-11-07（与 R1–R8 同口径） | **hypium 36 个 `it()` 首次离线真执行**：`RESULT: it_executed=36 passed=18 failed=18 requires_device=0`、`checked=323 passed=true`（`RESULT: PASS=55 FAIL=0` 不变）；18 条失败逐条归因 —— 3 条真实实现缺陷（徽章解锁不落库 / 下行 `goalRewards` 读取侧被整条丢弃 / `MemoryFiles.list()` 返回名违反端口契约）、11 条用例自身缺陷（10 条 LWW 夹具用户名含 `-` + 1 条封顶期望过期）、4 条用例间共享库顺序耦合（单跑全过）；门禁自证 `POINTS_PER_KG` 100→101 ⇒ `EXIT=1`，`git show` 还原后 `EXIT=0`；**hypium 在设备上仍未运行**，两证不可互相顶替；L0 `EXIT=0` | 本文 §R9（文件最前） |
 
 **F 编号规则**：跨轮累加不重用。round 1 用到 **F8**，round 2 用到 **F14**，round 3 从 **F15** 起。
 round 1 / round 2 的原始描述**一字未删** —— 本文件 §R1 转引 round 1 要点，两份备份文件完整留档（见 §15）。
