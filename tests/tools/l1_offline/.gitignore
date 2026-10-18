@@ -1,5 +1,7 @@
-# 中间产物一律不进仓库（run.sh 默认写到 mktemp 目录，这里只防手滑）：
+# 中间产物一律不进仓库（run.sh / run_tests.sh 的转译输出默认写在系统临时目录）：
 # `L1_OFFLINE_BUILD=tests/tools/l1_offline/.build bash tests/tools/l1_offline/run.sh` 之类的用法
 .build/
-*.cjs
 *.meta.json
+
+# 注意：**不要**用通配 `*.cjs` 忽略转译产物 —— `platform/*.cjs` 是手写的垫片源码，
+# 必须入库（t43 实测：通配规则会把 9 个垫片整体漏掉）。转译产物只落临时目录。
