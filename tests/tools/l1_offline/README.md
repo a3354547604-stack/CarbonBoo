@@ -126,3 +126,77 @@ const A = c.countsTowardCap === false ? C : CarbonCalc.actualPointOf(C, D);
   （纯类型文件会被 TS 擦除、不会出现在 metafile 的 inputs 里，需放进 `typeOnly` 集合）。
 - 若某个 `app/` 下的纯逻辑文件开始 import ArkTS 运行时 API（如 `@ohos.*`），它会在这里直接转译失败——
   那是**信号**，说明它已不适合离线复算，别把 `@ohos` 塞进 tests/tools/ 的桩里假装能跑。
+
+## 7. `run_tests.sh` —— 把 `ohosTest` 里的 36 个 `it()` 也在离线环境真跑一遍
+
+`run.sh` 只跑「基准复算」（纯逻辑、无平台依赖）。`run_tests.sh` 更进一步：它把
+`app/entry/src/ohosTest/ets/test/*.test.ets` 与它们依赖的 `main/ets/**` 一起转译，
+用垫片顶掉 `@ohos/*` 平台 API，在 Node 里**真实执行每一条 `it()`**。
+
+```bash
+bash tests/tools/l1_offline/run_tests.sh                 # 退出码 0 = 36 条全过且基准一致；1 = 有失败；2 = 环境/转译问题
+L1_VERBOSE=1 bash tests/tools/l1_offline/run_tests.sh     # 附带 hilog 与失败堆栈（已开 sourcemap，行号指回原始 .ets）
+L1_ONLY=ShopPriceFallback bash tests/tools/l1_offline/run_tests.sh   # 只跑某个套件
+L1_CASE=⑤ bash tests/tools/l1_offline/run_tests.sh        # 只跑套件内某条用例（与 L1_ONLY 可叠加）
+L1_KEEP=1 bash tests/tools/l1_offline/run_tests.sh        # 保留转译产物目录，供排查
+```
+
+平台垫片在 `platform/`，**只垫 API、不含业务逻辑**：`relationalStore` 落到 `node:sqlite`
+（真 SQL：唯一索引、`ON CONFLICT ... DO UPDATE`、`MAX()`、事务都按真语义执行），
+`@ohos.app.ability.common` / `@kit.AbilityKit` 给出可用的 `Context`（`resourceManager.getRawFileContent`
+读真 rawfile），`@ohos/hypium` 提供 `describe/it/expect` 与断言匹配器，
+`@ohos.file.fs` 等未覆盖模块由 `unavailable.cjs` **显式抛错**（不静默返回假值）。
+
+执行前会重放 App 的**启动地基**（`RdbHelper.open` 建 19 张表 → `SeedRepository.seedStatic` 写种子 →
+`FactorRepository.load`），调的都是仓库真实函数：这些用例是按「App 已启动过」写的（例如
+`ShopPriceFallback ⑤` 断言"回落到 rawfile 播种价"，而播种发生在启动路径里、不在任何用例里），
+不重放会得到一片"测试自身缺前置"的红。**冷启动取价 / 配置下发两步不重放**（网络例外，L1 不出网）。
+
+### 7.1 本次实测（2026-10-18，原样摘录尾部）
+
+```
+转译完成：78 个 .ets → CJS（.js）
+启动地基：goals=11 badges=8 shop=9 science=12 factors=CF-2026.2
+...
+hypium 用例：36 条，PASS=18 FAIL=18
+CalcBaselineValidator：checked=323 passed=true
+基准复算结论：全部一致：共复算 323 个断言点
+
+RESULT: FAIL
+```
+
+### 7.2 18 条失败的逐条归因（**这些是发现，不是被放行的红**）
+
+36 条里 18 条过、18 条失败。失败**没有一条**是「垫片缺 API」造成的，逐条如下
+（`app/` 与 `tests/cases/` 本轮**一个字节都没改**，缺陷只登记、不顺手修 —— 本任务的 inScope 是 `tests/tools/`）：
+
+| 套件 | 用例 | 断言/抛出位置 | 观察 vs 期望 | 归因 |
+|---|---|---|---|---|
+| CalcSamples | 唯一计算入口 | `app/entry/src/ohosTest/ets/test/CalcSamples.test.ets:109-110` | `actualPoint=200` vs 期望 `570` | **用例期望过时**：`CarbonCalc.actualPointOf`（`app/entry/src/main/ets/service/CarbonCalc.ets:174-178`）缺省用 `effectiveDailyCap()` 封顶，`AppConstants.ets:34` = 200；570 是 `expectedPoint`（C），不是实入 A。用例仍按"不封顶"写 |
+| LwwMerge | ①–⑩（10 条） | `app/entry/src/ohosTest/ets/test/LwwMerge.test.ets:299`（setup 抛错） | 登录 `INPUT_INVALID`：「用户名只能用字母、数字、下划线」 | **夹具自造非法入参**：`:295-297` 的用户名 `t-lww-${now}` 含 `-`，被 `AuthService` 的入参校验拒掉；与实现无关，10 条一起红 |
+| BadgeIdempotent | 徽章解锁幂等 | `app/entry/src/ohosTest/ets/test/BadgeIdempotent.test.ets:53` | `again.length=1` vs 期望 `0` | **实现缺陷**：`app/entry/src/main/ets/viewmodel/RewardService.ets` 的 `unlockBadges` 用 `BadgeEngine.evaluate` 算出 `newly`，但写库用的是 `BadgeEngine.progressRows(..., unlockedIds, ...)`，后者只按**调用前**的 `unlockedIds` 判 `unlocked` → 新解锁徽章永远写不进 `unlocked=1`，每次调用都把同一枚当"新解锁"返回。实测落库行：`B_FIRST unlocked=0 progress=1`，而 `unlockBadges` 连调三次都返回 `['B_FIRST']` |
+| BackupRoundTrip | 备份→恢复往返 | `BackupRoundTrip.test.ets:84` → `app/entry/src/main/ets/viewmodel/domain/BackupCodec.ets:67` `JSON.parse('')` | 备份文件读成空串 | **测试支撑代码缺陷**：`app/entry/src/main/ets/viewmodel/store/FilesPort.ets` 里 `MemoryFiles.list()` 返回的 `name` 是**含目录的相对路径**（`backup/xxx.json`），而真实端口 `FileIoFiles.list()` 返回**裸文件名**；用例按裸名拼 `backup/${list[0].name}` → 读到另一个不存在的键 → 空串 |
+| ServerConfigFallback | ④ goalRewards 覆盖 | `ServerConfigFallback.test.ets` 的 `expect(rewardOfCard(cards,'S1')).assertEqual(7777)` | 实得 `20`（内置值） | **实现缺陷**：`app/entry/src/main/ets/viewmodel/net/ServerConfigFetcher.ets` 的 `effectiveFrom()`（读库侧）调 `parse(raw, false, [])`，把 `knownGoalIds` 传成**空数组** → `rewardsOf()` 把每条 `goalRewards` 都判成"未登记"整条丢弃 → 下行的目标奖励在**运行期永不生效**（写入侧校验通过、`goalRewardCount=1`，两端口径不一致） |
+| ShopPriceFallback | ② / ⑤ / ⑥（3 条） | ② `expect(basePrice).assertEqual(1500)`；⑤ ⑥ `assertTrue(false)` | 实得 `1800` / 断言 false | **用例间共享状态耦合**：同一进程一份库（设备上同样如此），① 先把 `app_config[shop_items]` 整份覆盖成 1800，② 却断言"内置基线 1500"、⑤ 断言"从未拉到过"。**单跑这三条全部通过**（`L1_ONLY=ShopPriceFallback L1_CASE=②` 等，见 §7.3） |
+| ServerConfigFallback | ⑥ 降级不抛错 | 同套件 | 断言 false | 同上：单跑通过，随套件顺序跑失败（① 已写入一份有效配置） |
+
+合计 1 + 10 + 1 + 1 + 1 + 3 + 1 = 18。
+
+### 7.3 「单跑通过、连跑失败」的复现命令
+
+```bash
+L1_ONLY=ShopPriceFallback L1_CASE=② bash tests/tools/l1_offline/run_tests.sh   # → RESULT: PASS
+L1_ONLY=ShopPriceFallback L1_CASE=⑤ bash tests/tools/l1_offline/run_tests.sh   # → RESULT: PASS
+L1_ONLY=ShopPriceFallback L1_CASE=⑥ bash tests/tools/l1_offline/run_tests.sh   # → RESULT: PASS
+L1_ONLY=ServerConfigFallback L1_CASE=⑥ bash tests/tools/l1_offline/run_tests.sh # → RESULT: PASS
+```
+
+### 7.4 这一节**不改变** hypium 的状态
+
+`run_tests.sh` 把 36 个 `it()` 在**离线环境**跑了一遍，用的仓库真实实现；但它跑的是
+`node` + 垫片，**不是** `ohosTest` 在设备上的执行。因此：
+
+- 「`hvigorw test` / hypium 在真机或模拟器上的 L1 执行」**仍然是未运行**（无真机、无模拟器、
+  Previewer 与 glibc 2.43 不兼容）—— 本工具不改变这一事实，两条证据**不可互相顶替**。
+- 垫片层的差异本身就是结论的边界：`relationalStore` 是 `node:sqlite` 而非设备上的 RDB，
+  `fileIo` 是 Node `fs`、HTTP 一律不出网。凡是依赖这些真实平台行为的断言，本工具**不能**替代设备执行。
