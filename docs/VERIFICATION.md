@@ -9,6 +9,196 @@
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
 
+## §R15 round 15（t69 · **可复现性独立验证**：干净副本里五条门禁逐条真跑 + 一键复现脚本 + 变异反证）
+
+> **本节绑定**：被验字节 = `git -C <repo> rev-parse HEAD` 的 **`1b85147e5f6be22a6129ee2b233e41e580bf0679`**（开工时读取，见 §R15.1 的原始输出）。
+> 所有门禁**都在副本里跑**（`git archive HEAD | tar -x`），热工作区只被写入 `tests/tools/repro/` 两个文件 + 本节正文。
+> **收工时 HEAD 已被并行成员推进到 `d484de64`**（t68 的两个提交），漂移影响与「在 HEAD 字节上重跑 ④」的结论见 §R15.7。
+> 本节契约原文写「追加 §R14」，但 `§R14` 已由 round 14（t60）占用（`:12`），故本节编 **§R15**；**只追加**：既有 §R1–§R14 与 §0–§15 正文一字未改，只新增本节 + 轮次索引一行。
+
+### §R15.1 结论一句话
+
+**仓库是自包含、可复现的**：一份只含被跟踪字节的副本（352 个文件 = `git ls-files` 的 352 行），配上**文档写明的四条环境前提**（系统 `python3`、`esbuild`+`node`、Python 3.11 venv + MySQL 8、`~/harmony-toolchain`），五条门禁逐条跑出与既有记录一致的退出码；**但「换一台机器一条命令跑通」目前不成立**，卡点只有一处：被跟踪文件 `app/hvigor/hvigor-config.json5:14-15` 里写死了 `/home/qinyixiang/...` 的绝对路径（见 §R15.8-F2）。
+
+### §R15.2 副本怎么来（可复现性的前提）
+
+```
+$ git -C <repo> rev-parse HEAD
+1b85147e5f6be22a6129ee2b233e41e580bf0679
+$ git -C <repo> archive HEAD | tar -t | grep -v '/$' | wc -l
+352
+$ git -C <repo> ls-files | wc -l
+352
+$ git -C /tmp/cbrepro status --short | wc -l
+0
+```
+
+副本 = `git archive HEAD | tar -x -C /tmp/cbrepro`，随后在副本内 `git init` + 一次本地提交（只为让「工作树是否干净」可判、并让反证能用 `git checkout --` 还原，**不影响被验字节**）。
+
+**五个关键文件的字节对照**（热工作区 vs 副本，sha256 逐个相同 ⇒ 副本确实是 HEAD 的字节）：
+
+| 文件 | sha256（两处相同） |
+|---|---|
+| `tests/cases/carbon-calc.json` | `632729f83b13725d03206243dd8c32fedddb395dc54401c6b843f0ab51bfafb5` |
+| `app/entry/src/ohosTest/resources/rawfile/carbon-calc.json` | `632729f83b13725d03206243dd8c32fedddb395dc54401c6b843f0ab51bfafb5`（**与上一行同值** ⇒ 两副本一致） |
+| `tests/tools/check_l0.py` | `6e3bb062d810109eef9c1c107ab0b1000b581a3a6c0636201f47ea1792aaf530` |
+| `server/tests/conftest.py` | `5fcc11316583137d5f85a60190a13cd566004dda7b6cff4aaed4301cacd5592d` |
+| `tests/tools/l1_offline/run.sh` | `7de8415a0f2d55451f7f51a04baa4bfd891c53dcf0dd6bc1af9fdaeff80b57c9` |
+
+### §R15.3 五条门禁逐条真跑（副本内，原始输出）
+
+| # | 命令（逐字照仓库文档） | 退出码 | 首次执行需要什么 |
+|---|---|---|---|
+| ① | `python3 tests/tools/check_l0.py --strict` | **0** | 无（系统 `python3` 3.14.4，纯标准库） |
+| ② | `bash tests/tools/l1_offline/run.sh` | **0** | `esbuild` + `node`（默认读 `$HOME/harmony-toolchain/...`，可用 `ESBUILD`/`NODE` 覆盖）；**离线** |
+| ③ | `bash tests/tools/l1_offline/run_tests.sh` | **0** | 同上；**离线**（`node:sqlite` 垫片） |
+| ④ | `cd server && .venv/bin/python -m pytest tests/ -q` | **0** | **网络**（首次 `pip install -r requirements.txt`，走 PyPI 镜像）+ **MySQL 8 容器** + 凭据（`.env` 或 `MYSQL_*`）；venv **不在仓库** |
+| ⑤ | `source ~/harmony-toolchain/env.sh && cd app && hvigorw --no-daemon assembleHap` | **0** | **仓库外命令行工具链** `~/harmony-toolchain/`（含 CLT/JDK21/node）+ `app/hvigor/hvigor-config.json5` 的两条 `file:` 绝对路径 |
+
+**① L0**（`python3 tests/tools/check_l0.py --strict`）：
+```
+检查项：28    错误：0
+扫描文件：89    命中：0
+L0-3 人工待修清单（tests/cases/carbon-calc.json → docConflicts）：0 条
+结论：PASS —— 基准自洽，文档无已知冲突
+```
+
+**② 离线 L1 纯逻辑复算**（`bash tests/tools/l1_offline/run.sh`）：
+```
+samples(18×2)        PASS=36 FAIL=0
+capSamples(5×2+1)    PASS=11 FAIL=0
+conversions(2)       PASS=2 FAIL=0
+boundary 20/21/22(6) PASS=6 FAIL=0
+RESULT: PASS=55 FAIL=0
+RESULT: checked=323 passed=true mismatches=0
+RUN.SH: 全部 PASS（离线纯逻辑部分）
+```
+
+**③ 离线 L1 hypium 用例**（`bash tests/tools/l1_offline/run_tests.sh`）：
+```
+RESULT: it_executed=41 passed=41 failed=0 requires_device=0
+CalcBaselineValidator：checked=323 passed=true
+基准复算结论：全部一致：共复算 323 个断言点
+RESULT: PASS
+```
+> 边界（与 §R9/§R10 同口径）：这是**离线转译执行**，`requires_device=0` 表示「没有因子必须真机而被跳过」，**不等于**在设备上跑过。
+
+**④ 服务端 pytest**（`cd server && .venv/bin/python -m pytest tests/ -q`）：
+```
+241 passed, 1 warning in 196.60s (0:03:16)
+PYTEST_EXIT=0
+```
+首次执行的实际动作（副本里 `.venv` 不存在，必须现场建）：
+```
+Looking in indexes: https://mirrors.aliyun.com/pypi/simple/
+Successfully installed MarkupSafe-3.0.4 PyMySQL-1.2.3 SQLAlchemy-2.1.4 … pytest-9.1.1 … uvicorn-0.54.0 uvloop-0.23.0 watchfiles-1.3.0 websockets-17.2
+VENV_PIP_EXIT=0
+```
+
+**⑤ 鸿蒙构建**（`source ~/harmony-toolchain/env.sh && export OHOS_BASE_SDK_HOME=$DEVECO_SDK_HOME && cd app && hvigorw --no-daemon assembleHap`）：
+```
+> hvigor Finished :entry:default@CompileArkTS... after 9 s 706 ms
+> hvigor WARN: No signingConfig found for product default
+> hvigor BUILD SUCCESSFUL in 11 s 500 ms
+GATE5_EXIT=0
+```
+> 增量重跑为 `BUILD SUCCESSFUL in 846 ms`；`WARN: No signingConfig` 是**预期**（只产出未签名 HAP）。构建产物全部落在 `.gitignore` 覆盖范围内，跑完副本 `git status --short` 仍为 0 行。
+
+### §R15.4 隐性依赖专项（本任务的核心问题）
+
+**(a) 有没有门禁依赖未跟踪文件？** 没有。副本里五条门禁全程 `git status --short` = **0 行**（唯一一次 `git checkout -- tests/cases/carbon-calc.json` 是 §R15.5 反证要求的还原，且只碰被跟踪文件）。未使用 `git stash`。
+
+**(b) 有没有依赖 `/tmp` 历史产物或仓库外脚本（`~/.dsh`、`~/cb-verify`）？** 五条门禁里没有。全量 grep 只有 3 条命中，均非运行时依赖：
+`tests/tools/l1_offline/README.md:124`（告诫「注入-还原用 `git show`，别用 `cp` 备份」，t42 实测陷阱）、`app/hvigor/hvigor-config.json5:14` 与 `:15`（工具链绝对路径，见 (c)）。
+
+**(c) 有没有依赖 `~/harmony-toolchain/esbuild` 这类绝对路径？文档写在哪？**
+- `esbuild` / `node` 的绝对路径是**默认值**、可覆盖：`tests/tools/l1_offline/run.sh:39` `ESBUILD="${ESBUILD:-$HOME/harmony-toolchain/esbuild/bin/esbuild}"`、`:44` 同款 `NODE`；`runners/offline_run.mjs:57-59` 还有 `$HOME/harmony-toolchain` → `/usr/bin/esbuild` 的回退。文档：`docs/toolchain/harmony-cli-build.md:11/:20/:24/:209-215`（esbuild 的持久位置与理由）。
+- **唯一写进被跟踪文件、且带本机用户名的绝对路径**：`app/hvigor/hvigor-config.json5:14-15` 的 `file:/home/qinyixiang/harmony-toolchain/clt/command-line-tools/hvigor/{hvigor-ohos-plugin,hvigor}`。该文件内注释已写「换机器需同步改这两行」，但 `docs/toolchain/*.md` 与根 `README.md` **都没有这句话**（grep「换机器/绝对路径」在 `docs/` 下 0 命中）⇒ **文档缺口**，见 §R15.8-F2。
+
+**(d) `app/entry/src/ohosTest/resources/rawfile/carbon-calc.json` 与根 `tests/cases/carbon-calc.json` 是否字节一致？** 一致：两者 sha256 同为 `632729f8…`（见 §R15.2 表）。
+
+**(e) 有没有硬编码的机器名/用户名/端口？** 端口方面：门禁代码里出现 `3306`/`13307`，出处 `server/tests/conftest.py:13/:43-44/:127/:130`，且都写明「本机容器把 3306 映射到 13307」并支持 `MYSQL_PORT` 覆盖；`13306`（另一容器）**不在**五条门禁里。用户名方面：只有 (c) 里那两行。
+
+### §R15.5 一键复现脚本 + 变异反证（不是自证循环）
+
+新增 `tests/tools/repro/run.sh`（+ `README.md`）：只做编排（`l0 / l1 / l1test / pytest / hap` 五段），逐条打 `PASS / FAIL / ENV-SKIP` 与退出码，末尾一行 `REPRO: PASS=.. FAIL=.. ENV-SKIP=.. TOTAL=..`；退出码 **0=全 PASS / 1=有 FAIL / 2=全 ENV-SKIP**；**不内联任何算法或期望值**（判定全部来自被调工具自己的退出码）。`bash -n` 通过（`shellcheck` 本机未安装，逐段人工复核过）。
+
+**基线（副本内）**：
+```
+[PASS] l0 (exit=0)   [PASS] l1 (exit=0)   [PASS] l1test (exit=0)   [PASS] pytest (exit=0)   [PASS] hap (exit=0)
+REPRO: PASS=5 FAIL=0 ENV-SKIP=0 TOTAL=5
+REPRO_EXIT=0
+```
+
+**反证（把基准里一个期望值改掉 ⇒ 必须变红 ⇒ `git` 还原 ⇒ 回绿）**：只改 `tests/cases/carbon-calc.json:434` 的 `"expectedReductionKg": "5.7030"` → `"5.7040"`（sha256 `632729f8…` → `d7743beb…`）：
+```
+FAIL      l0         exit=2   … [ERROR] 样例 9（节约用电）：减排量算得 5.7030，期望 5.7040
+                               结论：FAIL —— 数值基准自身有问题，必须先修基准文件（退出码 2）
+FAIL      l1         exit=1   … RESULT: PASS=54 FAIL=1 / FAIL [samples] #9.reductionKg: got 5.7030, want 5.7040
+                               RESULT: checked=323 passed=false mismatches=2
+REPRO: PASS=3 FAIL=2 ENV-SKIP=0 TOTAL=5      COUNTER_RED_EXIT=1
+```
+还原（**用副本内 git，不是 `cp`**）后 `sha256 = 632729f8…`、`git status --short` 0 行，重跑：
+```
+REPRO: PASS=5 FAIL=0 ENV-SKIP=0 TOTAL=5      COUNTER_GREEN_EXIT=0
+```
+
+**`ENV-SKIP` 三支实测**（缺环境不伪装成通过、也不算失败）：
+
+| 构造 | 输出 | 退出码 |
+|---|---|---|
+| `HARMONY_ENV_SH=/nonexistent/env.sh REPRO_ONLY=hap` | `ENV-SKIP hap exit=2` +「缺少工具链入口：/nonexistent/env.sh／按 docs/toolchain/harmony-cli-build.md §1 安装」 | **2** |
+| `REPRO_ONLY=pytest`（副本无 `.env`、无 `MYSQL_PASSWORD`） | `ENV-SKIP pytest exit=2` +「按 server/README.md §8 的『没有 .env』形式传入环境变量」 | **2** |
+| `REPRO_ONLY=pytest MYSQL_PASSWORD=x MYSQL_PORT=1` | `ENV-SKIP pytest exit=2` +「MySQL 不可达：127.0.0.1:1」 | **2** |
+
+### §R15.6 环境前提清单（缺什么 → 哪份文档写过 → 蒸馏结论）
+
+| 前提 | 缺了会怎样 | 文档出处 | 结论 |
+|---|---|---|---|
+| 系统 `python3`（3.14.4） | ① 跑不了 | `docs/toolchain/server-env.md §1` | 有文档 |
+| `esbuild` + `node` | ②③ `ENV-SKIP` | `tests/tools/l1_offline/run.sh` 头部、`docs/toolchain/harmony-cli-build.md §7` | 有文档，且可 `ESBUILD`/`NODE` 覆盖 |
+| Python 3.11 venv（**需联网**） | ④ `ENV-SKIP` | `server/README.md §2`（含 `-i https://mirrors.aliyun.com/pypi/simple/`） | 有文档；venv 不入库是**故意**的（约 1.3 万文件） |
+| MySQL 8（本机容器 **13307**）+ 凭据 | ④ `ENV-SKIP` | `server/README.md §8`、`server/tests/conftest.py:13/:43-44`、`docs/toolchain/server-env.md §1` | 有文档，且支持 `MYSQL_*` 覆盖 |
+| `~/harmony-toolchain`（CLT/JDK21/node） | ⑤ `ENV-SKIP` | `docs/toolchain/harmony-cli-build.md:4/:11/:20-24/:138-152` | 有文档 |
+| `app/hvigor/hvigor-config.json5` 两条绝对路径 | ⑤ 在**换机器**时失败（本机 OK） | **只在文件内注释**，`docs/` 无 | **文档缺口**（§R15.8-F2） |
+
+### §R15.7 证据边界（能替代什么 / 不能替代什么）
+
+| 本次证据 | **能**替代 | **不能**替代 |
+|---|---|---|
+| 干净副本五条门禁 + 一键脚本 + 变异反证 | 「仓库自包含且可复现」：只含被跟踪字节即可重建、五条门禁的退出码与既有记录一致、脚本对基准改动敏感（改一个期望值即红） | **真机 hypium**（41 个 `it()` 从未在设备上跑过）、**真机 L2**（双设备协同）、**云 VM 部署**、**`/admin` 浏览器交互**（见 §R12）、**18 页视觉走查**（§R7 只说判图通道可用）、**真实设备截图** |
+| `ENV-SKIP` 三支 | 「缺环境时不会伪装成通过」 | 环境本身是否可装（不含安装过程的验证） |
+| 副本与热工作区 5 文件 sha256 相同 | 副本 = 被验字节 | 热工作区**未跟踪文件**是否会影响门禁（未跟踪文件不在副本里，本任务不验证它们） |
+
+**HEAD 漂移**：被验 `1b85147` → 收工 `d484de64`（t68 的 `cee94ff` + `d484de6`，改动 `server/app/services/sync_service.py`、`server/tests/test_sync.py`、`tests/tools/l2_sync/*`、`docs/VERIFICATION.md`）。§R15.2 的五个关键文件在 HEAD 上 sha256 **逐个相同**；但 ④ 的输入变了，故在 **HEAD 字节的副本**上重跑 ④：见 §R15.9。
+
+### §R15.8 本轮发现（只报告，不改被测文件）
+
+- **F1（工具自身，已修）**：`repro/run.sh` 的首版在仓库根跑 pytest（`pytest tests/` 指错目录）→ `no tests ran`、exit 5，被如实判成 `FAIL`。修法：`cd server && ./.venv/bin/python -m pytest tests/ -q`。**这条恰好证明本工具不会「看起来过了」**：它的第一次基线就是红的。
+- **F2（文档缺口，medium）**：被跟踪文件 `app/hvigor/hvigor-config.json5:14-15` 写死 `/home/qinyixiang/...`；文件内注释写了「换机器需同步改这两行」，但 `docs/toolchain/*.md` 与根 `README.md` 均未写（`grep -rn "换机器\|绝对路径" docs/` = 0 命中）。照文档复现的新机器会在 ⑤ 失败且不知道改哪里。
+- **F3（已知前提，不算缺陷）**：`server/.venv` 不入库 ⇒ 首次必须联网装依赖（`server/README.md §2` 已写明）；`esbuild`/`node` 默认走 `$HOME/harmony-toolchain`（可覆盖）。
+- **F4（预期告警）**：`assembleHap` 打印 `WARN: No signingConfig found`，仍 `BUILD SUCCESSFUL`（未签名 HAP）。
+
+### §R15.9 在 HEAD 字节上重跑 ④（补绑定）
+
+`/tmp/cbrepro2` = `git archive d484de64 | tar -x`（+ `git init` 与一次本地提交），venv 从 `/tmp/cbrepro` 复用：
+```
+$ cd /tmp/cbrepro2/server && MYSQL_* … CARBONBOO_TEST_DB=carbonboo_test_t69b ./.venv/bin/python -m pytest tests/ -q
+243 passed, 1 warning in 188.95s (0:03:08)
+PYTEST_HEAD2_EXIT=0
+```
+
+**一次真实的第一步失败（如实记录）**：第一次在 `d484de64` 的副本上跑 ④ 得到 `1 failed, 242 passed`，失败项 `tests/test_auth.py::test_no_secret_files_in_repo`，断言原文 `AssertionError: server/.env 必须被 .gitignore 忽略（AGENTS §7.3 禁止提交密钥）`。原因不是仓库缺陷，而是**我的第二份副本只解包、没有 `git init`**，用例里的 `git check-ignore -q server/.env` 于是非零返回；补 `git init` + 本地提交后复跑即通过。⇒ 附带结论：`server/tests/` 里**有用例依赖 `.git` 元数据**，所以「干净副本」必须包含 `git init`（§R15.2 已把它写进复现配方）。
+
+### §R15.10 未运行清单（不计通过）
+
+- 真机 hypium（10 套件 / 41 个 `it()`）：`hdc` 缺失、`/dev/kvm` 不可写、无模拟器。
+- 真机 L2 双设备协同；云 VM 部署（`server/deploy/` 另有容器化实跑，见 `tests/tools/deploy_e2e/`，**不是**真云 VM）。
+- `/admin` 浏览器交互（§R12 已做，需 Windows Edge；本任务未重跑）、18 页视觉走查、真实设备截图。
+- 「换机器一条命令跑通」的**正向**验证：本轮只验证了**本机**副本；F2 是据此推断的**阻碍**，未在第二台机器上实测。
+
+**边界句（写死）**：本节证明的是「**只含被跟踪字节的副本 + 文档写明的环境前提** ⇒ 五条门禁可复现」；**不证明**任何一条门禁的内容正确性（那是 §R6–§R14 的事），也**不替代**真机证据。任何 `ENV-SKIP` 条目**都不计入通过**。
+
 ## §R14 round 14（t60 · **交付验收总表**：把全项目验收口径逐条映射到「证据类型 + 结论」，并重写未运行清单）
 
 > **本节绑定**：本节写入时的 `git rev-parse HEAD` = `1df70c10dfa333d9d6cf299240220f6e4fc7e098`（`tests/README.md §5.3` 那条 `docs:` 提交，其父 = `84f96a5accf75ad4f19465c9f9f996d45bd685cf`）；
@@ -1820,6 +2010,7 @@ ohosTest 副本 app/entry/src/ohosTest/resources/rawfile/carbon-calc.json md5 �
 | round 12 | t55（`verifier-oc`，**浏览器级 E2E 新增证据轮**） | `585fca94008ce1cd7486d75f50875ac908758276` | 2026-10-19 | **`/admin` 浏览器级端到端验证（补上 §13 N5「无浏览器驱动」）**：Windows 侧**真实 Edge headless + CDP**（`Edg/155.0.4283.62`）驱动七项功能（登录 / 用户列表 / 操作日志 / 配置读写 / 商品图标真实上传 / 改密 / 登出）与**四条鉴权边界**（登出清 Cookie、未登录 `/admin/users` **浏览器侧 303**、旧 Cookie 重放仍 200 的无状态语义、客户端令牌 **403**）⇒ `checks: PASS=97 FAIL=0`、`RUN_EXIT=0`，**四次连跑检查名集合逐条一致**；落 **13 张 1440×900 截图 + `report.json`**，新增 `tests/tools/admin_e2e/`（**零新增依赖**、退出码 0/1/2）；实测发现 2 条（登录页 `.flash` 缺 `id` ⇒ `admin.js` 回退 `window.alert`；登出只清 Cookie、JWT 无状态）**如实记录、未修**；**被测字节零改动**、不新增其它门禁结论；**L1 设备执行 / L2 / `deploy` 实跑 / App 18 页视觉走查仍未运行**，一条不算通过；L0 `EXIT=0` | 本文 §R12（文件最前；由紧随本节后的同一次提交引入） |
 | round 13 | t59（`verifier-oc`，**修复 + 留档轮**） | `4a295698bdfbf259db9863a57631dc3d416b5b03`（修复提交 `dac2eb8` / 文档提交 `24fa9e9`） | 2026-10-19 | **收 §R12.6 的两条实测项 + 工具自身一条瑕疵**：① 登录页 `.flash` 补 `id="flash"` ⇒ 错误口令不再弹原生 `window.alert`（e2e **97 → 98 项**，`dialogs=0`、`#flash found=True hidden=False text=…`）；② `admin_e2e` 的 `rm -rf artifacts` 从 env 检查前移到之后（`ENV_EXIT=2` 且 artifacts md5/mtime 未变）；③ 管理端「登出清 Cookie ≠ 吊销令牌」写进 `server/README.md`（**未实现**，产品决策）；`admin.js` 字节未动、L0 `EXIT=0`、pytest `237 passed`、`git diff --stat -- app/ tests/cases/` 空 | 本文 §R13（文件最前；`24fa9e9` 引入） |
 | round 14 | t60（`verifier-oc`，**交付级文档收口轮，不新增门禁结论**） | `1df70c10dfa333d9d6cf299240220f6e4fc7e098`（本节自身的 `docs:` 提交再前进一格） | 2026-10-19 | **新增 §R14「交付验收总表」**：把 17 条验收口径逐条映射到「实跑命令 / 报告章节 / 仍未运行 + 结论」，并重写 §13 未运行清单 —— **8 行 → 6 行**（N5 `/admin` 浏览器交互 → **已运行**（§R12/§R13）、N4 部署实跑 → **已运行（容器化）**（§R14.1 第 14 行）；**未删除任何行**），另列 **U1–U8 八项仍未运行**（真机 hypium 36 `it()` / 真机飞行模式 / 18 页视觉走查 / systemd 真启动 / certbot ACME / 公网域名防火墙 / 非 Edge 浏览器 / 并发性能）；`tests/README.md` 新增 §5.3 登记 6 个证据工具 + 五条边界；L0 `EXIT=0`、`tests/README.md` 纯插入 25 行 | 本文 §R14（文件最前；本节由紧随其后的 `docs:` 提交引入） |
+| round 15 | t69（`verifier-oc`，**可复现性独立验证轮**） | `1b85147e5f6be22a6129ee2b233e41e580bf0679`（收工时 HEAD 已推进到 `d484de64`；五个关键文件在 HEAD 上 sha256 逐个相同，④ 已在 HEAD 字节上重跑） | 2026-10-19 | **干净副本（`git archive`，352 文件 = `git ls-files`）里五条门禁逐条真跑**：L0 `EXIT=0`（28 项 0 错误 / 89 文件 0 命中）、离线 L1 `PASS=55 FAIL=0` + `checked=323 passed=true`、离线 hypium `it_executed=41 passed=41 failed=0`、服务端 `241 passed`（副本@`1b85147`）/ `243 passed`（HEAD 字节复跑；首次需**联网建 venv** + MySQL 8 容器 13307）、`assembleHap` `BUILD SUCCESSFUL in 11 s 500 ms`（副本内首次真实重编）；新增 `tests/tools/repro/`（退出码 0/1/2，`ENV-SKIP` 三支实测；**反证**：改一个 `expectedReductionKg` ⇒ `PASS=3 FAIL=2` / `EXIT=1` ⇒ 副本内 `git` 还原 ⇒ `5/5 PASS` / `EXIT=0`）；隐性依赖专项：**无**未跟踪文件 / `/tmp` 历史产物 / 仓库外脚本依赖，机器锁定项只有 `app/hvigor/hvigor-config.json5:14-15` 的 `/home/qinyixiang/…`（`docs/` 未写「换机器要改」⇒ §R15.8-F2）；`server/tests/` 有用例依赖 `.git` 元数据（副本必须 `git init`）；真机 hypium 41 `it()` / 真机 L2 / 云 VM / 18 页截图**仍未运行** | 本文 §R15（文件最前） |
 
 > **导航说明（t52 补记）**：§R10 首段「本文件首行轮次索引与顶部 blockquote **未重写**，仍停留在 round 9 的表述 —— 以本节为准」
 > 是 **t48 时点**的记录（当时受「只追加」约束、未维护导航）。**t52 已按「维护导航」补上 round 10 / round 11 两行并更新首行标题与顶部 blockquote，
