@@ -72,6 +72,16 @@ env_checks() {
   return $ok
 }
 
+# t76 追加：真 nginx(TLS) 图层默认开启（CB_ADMIN_E2E_NGINX=0 可退回 t55 的纯直连路径）。
+# 镜像不存在属于「环境不可达」而非「断言失败」——先于建库/起服务端判定，退出码 2。
+if [ "${CB_ADMIN_E2E_NGINX:-1}" = "1" ]; then
+  if ! docker image inspect "${CB_ADMIN_E2E_NGINX_IMAGE:-nginx:alpine}" >/dev/null 2>&1; then
+    envfail "nginx 镜像不可用（CB_ADMIN_E2E_NGINX_IMAGE=${CB_ADMIN_E2E_NGINX_IMAGE:-nginx:alpine}，docker image inspect 失败）"
+    log "RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）"
+    exit 2
+  fi
+fi
+
 if ! env_checks; then
   log "RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）"
   exit 2
@@ -142,8 +152,19 @@ cleanup() {
   powershell.exe -NoProfile -Command \
     "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | Where-Object { \$_.CommandLine -like '*$WIN_PROFILE_NAME*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }" \
     >/dev/null 2>&1
+  # t76：真 nginx(TLS) 图层的容器 / 第二份 Edge profile / 仓库外的第二份 run.json 一并清掉
+  nginx_cleanup_guard
   mysql_root -e "DROP DATABASE IF EXISTS \`$DB_NAME\`; DROP USER IF EXISTS '$DB_USER'@'%';" >/dev/null 2>&1
-  rm -f "$WIN_TMP/cb-admin-e2e-run.json"
+  rm -f "$WIN_TMP/cb-admin-e2e-run.json" "$WIN_TMP/cb-admin-e2e-run-nginx.json"
+}
+
+# t76 追加：该函数在 4b 阶段定义变量之前也可能被 cleanup 调到（env 早退），故全部用 :- 兜底。
+nginx_cleanup_guard() {
+  docker rm -f "${NGINX_NAME:-cb-admin-e2e-nginx}" >/dev/null 2>&1
+  powershell.exe -NoProfile -Command \
+    "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | Where-Object { \$_.CommandLine -like '*${WIN_PROFILE_NGINX_NAME:-cb-admin-e2e-nginx-profile}*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }" \
+    >/dev/null 2>&1
+  rm -rf "${WIN_PROFILE_NGINX_WSL:-/nonexistent-cb-profile}" 2>/dev/null
 }
 trap cleanup EXIT
 
@@ -247,6 +268,234 @@ DRIVER_EXIT="${PIPESTATUS[0]}"
 log ""
 log "=== 截图归档 ==="
 ls -l "$ARTIFACTS" 2>/dev/null | sed -n '1,40p'
+
+# =========================================================================== #
+# 4b. t76 追加：真浏览器图层 —— 经真 nginx(TLS) 反代再跑一遍（第二遍）
+#
+#     上面第 4 步是「Windows Edge → WSL uvicorn 直连」。本阶段在两者之间插入
+#     **仓库里真正要上生产的那份 nginx 站点配置**（`server/deploy/nginx/carbonboo.conf`，
+#     一字不改，只派生副本改证书路径与上游地址），以容器 `nginx:alpine` + 自签证书做
+#     TLS 终止与 `/admin` 反代；然后用**同一套** Edge headless + CDP 驱动
+#     （`cdp_driver.py`，t76 只加了 origin 改写/自签证书/资源探针三个开关）从
+#     `https://api.example.com:10443` 把/七项功能与四条鉴权边界**再跑一遍**。
+#
+#     随后 `compare_paths.py` 在 WSL 侧逐字节比对两条路径：登录页 HTML、浏览器实际
+#     加载过的 `/admin/static/*` 资源（状态码 + sha256）、断言项集合、TLS 对端证书。
+#     任一不一致 → 退出码 1；nginx 起不来 / 不可达 → 退出码 2（沿用 t55 约定）。
+#
+#     可覆盖：CB_ADMIN_E2E_NGINX=0 关闭本阶段（退回 t55 行为）；
+#             CB_ADMIN_E2E_NGINX_IMAGE / _HTTPS_PORT / _HTTP_PORT / _CDP_PORT。
+# =========================================================================== #
+NGINX_NAME="cb-admin-e2e-nginx"
+NGINX_IMAGE="${CB_ADMIN_E2E_NGINX_IMAGE:-nginx:alpine}"
+NGINX_HTTPS_PORT="${CB_ADMIN_E2E_NGINX_HTTPS_PORT:-10443}"
+NGINX_HTTP_PORT="${CB_ADMIN_E2E_NGINX_HTTP_PORT:-10080}"
+NGINX_CDP_PORT="${CB_ADMIN_E2E_NGINX_CDP_PORT:-9334}"
+NGINX_DIR="$TMP/nginx"
+NGINX_TARGET="127.0.0.1"
+WIN_PROFILE_NGINX_NAME="cb-admin-e2e-nginx-profile"
+WIN_PROFILE_NGINX_WSL="$WIN_TMP/$WIN_PROFILE_NGINX_NAME"
+WIN_PROFILE_NGINX="C:/Users/Administrator/AppData/Local/Temp/$WIN_PROFILE_NGINX_NAME"
+WIN_RUNJSON_NGINX="$WIN_TMP/cb-admin-e2e-run-nginx.json"
+WIN_RUNJSON_NGINX_ARG="C:/Users/Administrator/AppData/Local/Temp/cb-admin-e2e-run-nginx.json"
+NGINX_DRIVER_EXIT=0
+NGINX_PASS=0
+NGINX_FAIL=0
+COMPARE_EXIT=0
+PROD_SAME=1
+
+# 生产库（carbonboo）逐表精确行数：本工具只建/删任务库，生产库必须跑前==跑后
+prod_counts() {
+  local tables t
+  tables="$(mysql_root -N -B -e "SELECT table_name FROM information_schema.tables WHERE table_schema='carbonboo' AND table_type='BASE TABLE' ORDER BY table_name;" 2>/dev/null | tr -d '\r')"
+  for t in $tables; do
+    printf '%s\t%s\n' "$t" "$(mysql_root -N -B -e "SELECT COUNT(*) FROM \`carbonboo\`.\`$t\`;" 2>/dev/null | tr -d '\r')"
+  done
+}
+
+if [ "${CB_ADMIN_E2E_NGINX:-1}" = "1" ]; then
+  log ""
+  log "=== t76：真浏览器图层经真 nginx(TLS) 反代（Edge headless + CDP，第二遍） ==="
+
+  info "生产库 carbonboo 逐表行数（nginx 图层跑前）"
+  prod_counts > "$TMP/prod_counts_before.txt" 2>/dev/null || true
+  info "已记录 $(wc -l < "$TMP/prod_counts_before.txt" | tr -d ' ') 张表"
+
+  # ---- 自签证书（仅本阶段临时用，落在 /tmp，不进仓库） ----
+  rm -rf "$NGINX_DIR"; mkdir -p "$NGINX_DIR/certs"
+  if ! openssl req -x509 -newkey rsa:2048 -nodes -keyout "$NGINX_DIR/certs/privkey.pem" \
+       -out "$NGINX_DIR/certs/fullchain.pem" -days 2 -subj "/CN=api.example.com" \
+       -addext "subjectAltName=DNS:api.example.com" > "$NGINX_DIR/openssl.log" 2>&1; then
+    envfail "自签证书生成失败（$NGINX_DIR/openssl.log）"
+    log "RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）"
+    exit 2
+  fi
+
+  # ---- 派生 nginx 配置：只改证书路径 + 上游地址；仓库里的 conf 一字不改 ----
+  sed -e 's|/etc/letsencrypt/live/api.example.com/fullchain.pem|/etc/nginx/tls/fullchain.pem|' \
+      -e 's|/etc/letsencrypt/live/api.example.com/privkey.pem|/etc/nginx/tls/privkey.pem|' \
+      -e "s|http://127.0.0.1:8000|http://host.docker.internal:$PORT|g" \
+      "$SERVER/deploy/nginx/carbonboo.conf" > "$NGINX_DIR/carbonboo.conf"
+  UPSTREAM_HITS="$(grep -c "host.docker.internal:$PORT" "$NGINX_DIR/carbonboo.conf" || true)"
+  if [ "${UPSTREAM_HITS:-0}" -lt 1 ]; then
+    envfail "派生配置里没有替换出上游 host.docker.internal:$PORT（仓库 conf 结构变了？）"
+    log "RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）"
+    exit 2
+  fi
+  info "nginx 配置派生完成：上游 127.0.0.1:8000 → host.docker.internal:$PORT（替换 $UPSTREAM_HITS 处），证书 → /etc/nginx/tls/"
+
+  # ---- 起真 nginx(TLS) 容器 ----
+  docker rm -f "$NGINX_NAME" >/dev/null 2>&1
+  if ! docker run -d --name "$NGINX_NAME" --add-host "host.docker.internal:host-gateway" \
+       -p "$NGINX_HTTPS_PORT:443" -p "$NGINX_HTTP_PORT:80" \
+       -v "$NGINX_DIR/carbonboo.conf:/etc/nginx/conf.d/default.conf:ro" \
+       -v "$NGINX_DIR/certs:/etc/nginx/tls:ro" \
+       "$NGINX_IMAGE" > "$NGINX_DIR/docker-run.log" 2>&1; then
+    envfail "nginx 容器启动失败（$NGINX_IMAGE）：$(tail -2 "$NGINX_DIR/docker-run.log" | tr '\n' ' ')"
+    log "RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）"
+    exit 2
+  fi
+
+  code=""
+  for i in $(seq 1 80); do
+    code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 2 \
+        --resolve "api.example.com:$NGINX_HTTPS_PORT:127.0.0.1" \
+        "https://api.example.com:$NGINX_HTTPS_PORT/admin/login" || true)"
+    [ "$code" = "200" ] && break
+    sleep 0.5
+  done
+  if [ "${code:-}" != "200" ]; then
+    envfail "nginx(TLS) 反代未就绪：GET /admin/login → ${code:-000}（容器日志见下）"
+    docker logs --tail 8 "$NGINX_NAME" 2>&1
+    log "RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）"
+    exit 2
+  fi
+  info "nginx(TLS) 就绪：https://api.example.com:$NGINX_HTTPS_PORT/admin/login → HTTP 200（HTTP→HTTPS 跳转端口 $NGINX_HTTP_PORT）"
+
+  # ---- Windows 侧（Edge 所在侧）可达性：WSL localhost 转发优先，失败再试 WSL eth0 IP ----
+  win_code="$(powershell.exe -NoProfile -Command \
+    "curl.exe -s -k --max-time 6 -o NUL -w '%{http_code}' --resolve api.example.com:$NGINX_HTTPS_PORT:127.0.0.1 https://api.example.com:$NGINX_HTTPS_PORT/admin/login" \
+    2>/dev/null | tr -d '\r\n ')"
+  if [ "$win_code" != "200" ]; then
+    NGINX_TARGET="$(ip -4 -o addr show dev eth0 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
+    info "Windows localhost 不通（${win_code:-无输出}），改用 WSL eth0 IP：$NGINX_TARGET"
+    win_code="$(powershell.exe -NoProfile -Command \
+      "curl.exe -s -k --max-time 6 -o NUL -w '%{http_code}' --resolve api.example.com:$NGINX_HTTPS_PORT:$NGINX_TARGET https://api.example.com:$NGINX_HTTPS_PORT/admin/login" \
+      2>/dev/null | tr -d '\r\n ')"
+  fi
+  if [ "$win_code" != "200" ]; then
+    envfail "Windows 侧访问 nginx 不可达（localhost 与 $NGINX_TARGET 均非 200：${win_code:-无输出}）"
+    log "RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）"
+    exit 2
+  fi
+  info "Windows 侧可达：Edge 目标 api.example.com → $NGINX_TARGET:$NGINX_HTTPS_PORT（HTTP $win_code）"
+
+  # ---- 第二份 Edge（独立 profile + 独立 CDP 端口；profile 必须 Windows 路径） ----
+  # `--no-proxy-server`：本机 Windows 配了系统代理时，Chromium 对**主机名**请求会走代理
+  # （实测无此开关时 https://api.example.com:10443 报 ERR_CONNECTION_RESET/ABORTED，而
+  #  `--dump-dom https://127.0.0.1:10443/...` 正常）——这是浏览器侧环境问题，不是反代缺陷。
+  info "启动 Edge headless（CDP 端口 $NGINX_CDP_PORT，profile $WIN_PROFILE_NGINX，--ignore-certificate-errors --no-proxy-server）"
+  powershell.exe -NoProfile -Command \
+    "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | Where-Object { \$_.CommandLine -like '*$WIN_PROFILE_NGINX_NAME*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }" \
+    >/dev/null 2>&1
+  rm -rf "$WIN_PROFILE_NGINX_WSL" 2>/dev/null
+  nohup "$EDGE" --headless=new --disable-gpu --no-first-run --no-default-browser-check \
+    --remote-debugging-port="$NGINX_CDP_PORT" --user-data-dir="$WIN_PROFILE_NGINX" \
+    --ignore-certificate-errors --no-proxy-server \
+    --host-resolver-rules="MAP api.example.com $NGINX_TARGET" \
+    "about:blank" > "$TMP/edge_nginx.log" 2>&1 &
+  EDGE_NGINX_PID=$!
+  sleep 6
+  if ! grep -q "DevTools listening on" "$TMP/edge_nginx.log" 2>/dev/null; then
+    sleep 6
+  fi
+  if ! grep -q "DevTools listening on" "$TMP/edge_nginx.log" 2>/dev/null; then
+    envfail "第二份 Edge 未起来（$TMP/edge_nginx.log 无 'DevTools listening on'）"
+    tail -5 "$TMP/edge_nginx.log" 2>/dev/null
+    log "RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）"
+    exit 2
+  fi
+  info "Edge(nginx) CDP 已监听：$(grep -m1 'DevTools listening on' "$TMP/edge_nginx.log" | sed 's/^.*DevTools listening on //')"
+
+  # ---- 第二份 run.json：浏览器 origin = https://api.example.com，探针 origin = 直连 uvicorn ----
+  # 口令必须接上第一遍的状态：第二遍开始时管理员口令已经是第一遍 ⑥ 改成的 $NEW_PW，
+  # 若仍用引导口令 $ADMIN_PW 会「口令错误」——这是同一套用例连跑两遍的必然，不是缺陷。
+  NEW_PW_2="Ch4nged2-$(head -c 12 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
+  cat > "$WIN_RUNJSON_NGINX" <<JSON
+{
+  "base_url": "https://api.example.com:$NGINX_HTTPS_PORT",
+  "http_probe_base_url": "http://127.0.0.1:$PORT",
+  "insecure_tls": true,
+  "cdp_http": "http://127.0.0.1:$NGINX_CDP_PORT",
+  "artifacts_dir": "$(printf '%s' "$ARTIFACTS" | sed 's|^/mnt/c/|C:/|')",
+  "viewport": [1440, 900],
+  "admin_username": "$ADMIN_USER",
+  "admin_password": "$NEW_PW",
+  "admin_new_password": "$NEW_PW_2",
+  "client_username": "$CLIENT_USER",
+  "client_password": "$CLIENT_PW",
+  "item_id": "frame_01",
+  "upload_png": "$(printf '%s' "$UPLOAD_PNG_WIN" | sed 's|\\\\|\\|g')",
+  "shot_prefix": "nginx_",
+  "report_name": "report_nginx.json",
+  "resource_probe": true
+}
+JSON
+
+  log ""
+  log "--- 第二遍：经 nginx(TLS) 的浏览器级端到端驱动 ---"
+  PYTHONIOENCODING=utf-8 PYTHONUTF8=1 "$WINPY" "$(printf '%s' "$HERE/cdp_driver.py" | sed 's|^/mnt/c/|C:/|')" \
+    "$WIN_RUNJSON_NGINX_ARG" 2>&1 | tee "$TMP/driver_nginx.log"
+  NGINX_DRIVER_EXIT="${PIPESTATUS[0]}"
+  NGINX_PASS="$(grep -c '\[PASS\]' "$TMP/driver_nginx.log" 2>/dev/null | head -1)"; NGINX_PASS="${NGINX_PASS:-0}"
+  NGINX_FAIL="$(grep -c '\[FAIL\]' "$TMP/driver_nginx.log" 2>/dev/null | head -1)"; NGINX_FAIL="${NGINX_FAIL:-0}"
+  info "nginx 路径驱动：PASS=$NGINX_PASS FAIL=$NGINX_FAIL exit=$NGINX_DRIVER_EXIT"
+
+  log ""
+  log "--- t76：两条路径一致性校验（WSL python3，纯标准库；TLS 按 api.example.com 真校验）---"
+  python3 "$HERE/compare_paths.py" \
+    --direct-http "http://127.0.0.1:$PORT" \
+    --nginx-url "https://api.example.com:$NGINX_HTTPS_PORT" \
+    --nginx-cert "$NGINX_DIR/certs/fullchain.pem" \
+    --direct-report "$ARTIFACTS/report.json" \
+    --nginx-report "$ARTIFACTS/report_nginx.json" \
+    --artifacts "$ARTIFACTS" --min-brand-shots 3 2>&1 | tee "$TMP/compare.log"
+  COMPARE_EXIT="${PIPESTATUS[0]}"
+  COMPARE_PASS="$(grep -c '\[PASS\]' "$TMP/compare.log" 2>/dev/null | head -1)"; COMPARE_PASS="${COMPARE_PASS:-0}"
+  COMPARE_FAIL="$(grep -c '\[FAIL\]' "$TMP/compare.log" 2>/dev/null | head -1)"; COMPARE_FAIL="${COMPARE_FAIL:-0}"
+  info "一致性校验：PASS=$COMPARE_PASS FAIL=$COMPARE_FAIL exit=$COMPARE_EXIT"
+
+  log ""
+  log "--- nginx 路径截图（artifacts/nginx_*.png）---"
+  ls -l "$ARTIFACTS"/nginx_*.png 2>/dev/null | sed -n '1,20p'
+
+  # ---- 生产库行数跑前==跑后 ----
+  prod_counts > "$TMP/prod_counts_after.txt" 2>/dev/null || true
+  if diff -u "$TMP/prod_counts_before.txt" "$TMP/prod_counts_after.txt" > "$TMP/prod_counts.diff" 2>&1; then
+    info "生产库 carbonboo 逐表行数：跑前==跑后（$(wc -l < "$TMP/prod_counts_before.txt" | tr -d ' ') 张表）"
+  else
+    PROD_SAME=0
+    fail "生产库 carbonboo 行数发生变化（见 /tmp/cb-admin-e2e/prod_counts.diff）："
+    sed -n '1,20p' "$TMP/prod_counts.diff"
+  fi
+
+  log ""
+  log "=== 结论（t76：直连 + 真 nginx(TLS) 反代 两条路径）==="
+  D_PASS="$(grep -c '\[PASS\]' "$TMP/driver.log" 2>/dev/null | head -1)"; D_PASS="${D_PASS:-0}"
+  D_FAIL="$(grep -c '\[FAIL\]' "$TMP/driver.log" 2>/dev/null | head -1)"; D_FAIL="${D_FAIL:-0}"
+  log "直连 checks: PASS=$D_PASS FAIL=$D_FAIL driver_exit=$DRIVER_EXIT"
+  log "nginx checks: PASS=$NGINX_PASS FAIL=$NGINX_FAIL driver_exit=$NGINX_DRIVER_EXIT compare_exit=$COMPARE_EXIT"
+  if [ "$DRIVER_EXIT" = "0" ] && [ "$NGINX_DRIVER_EXIT" = "0" ] && [ "$COMPARE_EXIT" = "0" ] && [ "$PROD_SAME" = "1" ]; then
+    log "RESULT: PASS —— 直连与真 nginx(TLS) 反代两条路径均由真实 Edge headless + CDP 驱动通过"
+    exit 0
+  elif [ "$DRIVER_EXIT" = "2" ] || [ "$NGINX_DRIVER_EXIT" = "2" ] || [ "$COMPARE_EXIT" = "2" ]; then
+    log "RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）"
+    exit 2
+  else
+    log "RESULT: FAIL —— 见上面的 [FAIL] 行、artifacts/report_nginx.json 与 /tmp/cb-admin-e2e/compare.log"
+    exit 1
+  fi
+fi
 
 log ""
 log "=== 结论 ==="

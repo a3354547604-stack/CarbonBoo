@@ -78,37 +78,37 @@
     {
       "step": "02_after_login 截图尺寸 == 1440x900",
       "ok": true,
-      "detail": "实测 1440x900，83330 字节"
+      "detail": "实测 1440x900，84253 字节"
     },
     {
       "step": "02_after_login 非空白像素比例 ≥ 0.004",
       "ok": true,
-      "detail": "nonwhite_ratio=0.3469"
+      "detail": "nonwhite_ratio=0.3468"
     },
     {
       "step": "02_after_login 颜色数 ≥ 16",
       "ok": true,
-      "detail": "unique_colors=1925"
+      "detail": "unique_colors=1971"
     },
     {
       "step": "02_after_login 不是别页截图的副本",
       "ok": true,
-      "detail": "md5=bca8e3dffed6…（首见）"
+      "detail": "md5=c918688695a7…（首见）"
     },
     {
       "step": "02_after_login 截图",
       "ok": true,
-      "detail": "{\"file\": \"02_after_login.png\", \"size\": [1440, 900], \"bytes\": 83330, \"md5\": \"bca8e3dffed663484e6c2ecdb5f46919\", \"nonwhite_ratio\": 0.3469, \"unique_colors\": 1925, \"brand_pixels\": 8219}"
+      "detail": "{\"file\": \"02_after_login.png\", \"size\": [1440, 900], \"bytes\": 84253, \"md5\": \"c918688695a77a2ba20c41ad87e4e605\", \"nonwhite_ratio\": 0.3468, \"unique_colors\": 1971, \"brand_pixels\": 8219}"
     },
     {
       "step": "① 登录后画面与登录页确实不同（截图 md5 不同）",
       "ok": true,
-      "detail": "c76e6600ddae… vs bca8e3dffed6…"
+      "detail": "c76e6600ddae… vs c918688695a7…"
     },
     {
       "step": "info",
       "ok": true,
-      "detail": "已注册客户端账号 e2e_client_1242345（POST /api/v1/auth/register → HTTP 201）"
+      "detail": "已注册客户端账号 e2e_client_2047345（POST /api/v1/auth/register → HTTP 201）"
     },
     {
       "step": "② GET /admin/users 状态码 200",
@@ -128,7 +128,7 @@
     {
       "step": "② 用户列表里出现刚注册的客户端账号（库内真值）",
       "ok": true,
-      "detail": "innerText 含 e2e_client_1242345（空库会显示「还没有账号…」，也可）"
+      "detail": "innerText 含 e2e_client_2047345（空库会显示「还没有账号…」，也可）"
     },
     {
       "step": "② 该页确由服务端渲染（含侧栏导航与页脚口径）",
@@ -138,7 +138,7 @@
     {
       "step": "03_users 截图尺寸 == 1440x900",
       "ok": true,
-      "detail": "实测 1440x900，49908 字节"
+      "detail": "实测 1440x900，49835 字节"
     },
     {
       "step": "03_users 非空白像素比例 ≥ 0.004",
@@ -148,17 +148,17 @@
     {
       "step": "03_users 颜色数 ≥ 16",
       "ok": true,
-      "detail": "unique_colors=1390"
+      "detail": "unique_colors=1365"
     },
     {
       "step": "03_users 不是别页截图的副本",
       "ok": true,
-      "detail": "md5=56054874bd4e…（首见）"
+      "detail": "md5=ac5c51dd075f…（首见）"
     },
     {
       "step": "03_users 截图",
       "ok": true,
-      "detail": "{\"file\": \"03_users.png\", \"size\": [1440, 900], \"bytes\": 49908, \"md5\": \"56054874bd4edb5a13130bc363944642\", \"nonwhite_ratio\": 0.7352, \"unique_colors\": 1390, \"brand_pixels\": 7941}"
+      "detail": "{\"file\": \"03_users.png\", \"size\": [1440, 900], \"bytes\": 49835, \"md5\": \"ac5c51dd075fa77894bce1bf21d183b9\", \"nonwhite_ratio\": 0.7352, \"unique_colors\": 1365, \"brand_pixels\": 7941}"
     },
     {
       "step": "③ GET /admin/logs 状态码 200",
@@ -178,7 +178,7 @@
     {
       "step": "04_logs 截图尺寸 == 1440x900",
       "ok": true,
-      "detail": "实测 1440x900，63385 字节"
+      "detail": "实测 1440x900，62951 字节"
     },
     {
       "step": "04_logs 非空白像素比例 ≥ 0.004",
@@ -188,17 +188,17 @@
     {
       "step": "04_logs 颜色数 ≥ 16",
       "ok": true,
-      "detail": "unique_colors=1782"
+      "detail": "unique_colors=1789"
     },
     {
       "step": "04_logs 不是别页截图的副本",
       "ok": true,
-      "detail": "md5=a89fd62e4801…（首见）"
+      "detail": "md5=2d0d80f6fd8a…（首见）"
     },
     {
       "step": "04_logs 截图",
       "ok": true,
-      "detail": "{\"file\": \"04_logs.png\", \"size\": [1440, 900], \"bytes\": 63385, \"md5\": \"a89fd62e480141425cd6da96c6c3d84a\", \"nonwhite_ratio\": 0.6433, \"unique_colors\": 1782, \"brand_pixels\": 9120}"
+      "detail": "{\"file\": \"04_logs.png\", \"size\": [1440, 900], \"bytes\": 62951, \"md5\": \"2d0d80f6fd8a28cd22cbeb0544a79cce\", \"nonwhite_ratio\": 0.6433, \"unique_colors\": 1789, \"brand_pixels\": 9120}"
     },
     {
       "step": "④ GET /admin/config 状态码 200",
@@ -363,7 +363,7 @@
     {
       "step": "08_password 截图尺寸 == 1440x900",
       "ok": true,
-      "detail": "实测 1440x900，63540 字节"
+      "detail": "实测 1440x900，63776 字节"
     },
     {
       "step": "08_password 非空白像素比例 ≥ 0.004",
@@ -373,17 +373,17 @@
     {
       "step": "08_password 颜色数 ≥ 16",
       "ok": true,
-      "detail": "unique_colors=1563"
+      "detail": "unique_colors=1557"
     },
     {
       "step": "08_password 不是别页截图的副本",
       "ok": true,
-      "detail": "md5=e5b81b8585b2…（首见）"
+      "detail": "md5=292027c1516b…（首见）"
     },
     {
       "step": "08_password 截图",
       "ok": true,
-      "detail": "{\"file\": \"08_password.png\", \"size\": [1440, 900], \"bytes\": 63540, \"md5\": \"e5b81b8585b230baa2a611e319847de7\", \"nonwhite_ratio\": 0.5632, \"unique_colors\": 1563, \"brand_pixels\": 24817}"
+      "detail": "{\"file\": \"08_password.png\", \"size\": [1440, 900], \"bytes\": 63776, \"md5\": \"292027c1516be33538ad014349338fb0\", \"nonwhite_ratio\": 0.5632, \"unique_colors\": 1557, \"brand_pixels\": 24817}"
     },
     {
       "step": "⑥ POST /admin/password 状态码 200",
@@ -503,7 +503,7 @@
     {
       "step": "⑦ 客户端令牌（aud=carbonboo-client）由浏览器打 /admin/users 必须 403",
       "ok": true,
-      "detail": "客户端账号 e2e_client_1242345 登录 HTTP 200 → 浏览器 fetch 实测 HTTP 403 code=FORBIDDEN"
+      "detail": "客户端账号 e2e_client_2047345 登录 HTTP 200 → 浏览器 fetch 实测 HTTP 403 code=FORBIDDEN"
     },
     {
       "step": "11_client_token_probe 截图尺寸 == 1440x900",
@@ -588,41 +588,41 @@
     {
       "step": "13_relogin_new_password 截图尺寸 == 1440x900",
       "ok": true,
-      "detail": "实测 1440x900，101073 字节"
+      "detail": "实测 1440x900，100446 字节"
     },
     {
       "step": "13_relogin_new_password 非空白像素比例 ≥ 0.004",
       "ok": true,
-      "detail": "nonwhite_ratio=0.2206"
+      "detail": "nonwhite_ratio=0.2205"
     },
     {
       "step": "13_relogin_new_password 颜色数 ≥ 16",
       "ok": true,
-      "detail": "unique_colors=2062"
+      "detail": "unique_colors=2031"
     },
     {
       "step": "13_relogin_new_password 不是别页截图的副本",
       "ok": true,
-      "detail": "md5=a0d38fae2430…（首见）"
+      "detail": "md5=a711bfa420ef…（首见）"
     },
     {
       "step": "13_relogin_new_password 截图",
       "ok": true,
-      "detail": "{\"file\": \"13_relogin_new_password.png\", \"size\": [1440, 900], \"bytes\": 101073, \"md5\": \"a0d38fae2430e1fce432a04fceb46da8\", \"nonwhite_ratio\": 0.2206, \"unique_colors\": 2062, \"brand_pixels\": 8214}"
+      "detail": "{\"file\": \"13_relogin_new_password.png\", \"size\": [1440, 900], \"bytes\": 100446, \"md5\": \"a711bfa420ef3a358220fc1270fff61a\", \"nonwhite_ratio\": 0.2205, \"unique_colors\": 2031, \"brand_pixels\": 8214}"
     }
   ],
   "failed": 0,
   "shots": {
     "c76e6600ddae69bc9204d7e54e2b73fd": "11_client_token_probe",
-    "bca8e3dffed663484e6c2ecdb5f46919": "02_after_login",
-    "56054874bd4edb5a13130bc363944642": "03_users",
-    "a89fd62e480141425cd6da96c6c3d84a": "04_logs",
+    "c918688695a77a2ba20c41ad87e4e605": "02_after_login",
+    "ac5c51dd075fa77894bce1bf21d183b9": "03_users",
+    "2d0d80f6fd8a28cd22cbeb0544a79cce": "04_logs",
     "d593e4dc53c7d4c473419cccc03eb1d7": "05_config_read",
     "bf762593d1b8380cce38d77ffe2242bc": "06_config_write",
     "0fcec507e8fe809a0f974ee8aa315886": "07_items_icon",
-    "e5b81b8585b230baa2a611e319847de7": "08_password",
+    "292027c1516be33538ad014349338fb0": "08_password",
     "fbbf21586a88aa83a8816b38b642648b": "12_old_password_rejected",
-    "a0d38fae2430e1fce432a04fceb46da8": "13_relogin_new_password"
+    "a711bfa420ef3a358220fc1270fff61a": "13_relogin_new_password"
   },
   "dialogs": [],
   "base_url": "http://127.0.0.1:8041",

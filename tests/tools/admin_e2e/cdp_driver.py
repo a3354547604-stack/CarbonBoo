@@ -29,6 +29,7 @@ import json
 import os
 import select
 import socket
+import ssl
 import struct
 import sys
 import time
@@ -47,6 +48,18 @@ for _stream in (sys.stdout, sys.stderr):
 
 #: 品牌主色（`docs/APPENDIX-C-ui-screens.md` §3.1 → `admin_web/static/admin.css` `--primary`）
 BRAND = (46, 125, 91)
+
+# --------------------------------------------------------------------------- #
+# t76 追加（走真 nginx(TLS) 反代时用；三项都不设时行为与 t59 完全一致）
+# --------------------------------------------------------------------------- #
+# 浏览器 origin 与驱动自身探针 origin 会分离：浏览器用 https://api.example.com:10443
+# （Edge 侧由 --host-resolver-rules + --ignore-certificate-errors 解析并接受自签证书），
+# 而 Windows python 的 urllib 探针既解析不了该名字、也验不过自签证书，故：
+#   * PROBE_REWRITE = (浏览器 origin, 探针可达 origin)：http() 内按前缀替换 URL
+#   * INSECURE_TLS  = True：改用不校验证书的 opener
+PROBE_REWRITE: tuple[str, str] | None = None
+INSECURE_TLS = False
+SHOT_PREFIX = ""
 
 
 class EnvUnreachable(Exception):
@@ -285,12 +298,22 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 _OPENER = urllib.request.build_opener(_NoRedirect)
+_OPENER_INSECURE = urllib.request.build_opener(
+    _NoRedirect, urllib.request.HTTPSHandler(context=ssl._create_unverified_context()))
+
+
+def _probe_url(url: str) -> str:
+    """t76：把浏览器 origin 的 URL 改写到探针 origin（未设 PROBE_REWRITE 时原样返回）。"""
+    if PROBE_REWRITE is None:
+        return url
+    src_prefix, dst_prefix = PROBE_REWRITE
+    return dst_prefix + url[len(src_prefix):] if url.startswith(src_prefix) else url
 
 
 def http(method: str, url: str, payload: object = None, headers: dict | None = None,
          raw: bytes | None = None, timeout: float = 20.0) -> tuple[int, dict, bytes]:
     """返回 (status, headers, body)；3xx 不跟随，作为状态如实返回。"""
-    request = urllib.request.Request(url, data=raw, method=method)
+    request = urllib.request.Request(_probe_url(url), data=raw, method=method)
     if payload is not None:
         request.data = json.dumps(payload).encode()
         request.add_header("Content-Type", "application/json")
@@ -302,7 +325,7 @@ def http(method: str, url: str, payload: object = None, headers: dict | None = N
         return {str(k).lower(): str(v) for k, v in headers_map.items()}  # type: ignore[attr-defined]
 
     try:
-        with _OPENER.open(request, timeout=timeout) as response:
+        with (_OPENER_INSECURE if INSECURE_TLS else _OPENER).open(request, timeout=timeout) as response:
             return int(response.status), _lower(response.headers), response.read()
     except urllib.error.HTTPError as exc:
         return int(exc.code), _lower(exc.headers), exc.read()
@@ -373,8 +396,8 @@ class Report:
               f"nonwhite={ratio} colors={len(colors)} brand={green} md5={md5[:12]}", flush=True)
         return stats
 
-    def save(self, extra: dict) -> str:
-        path = os.path.join(self.dir, "report.json")
+    def save(self, extra: dict, name: str = "report.json") -> str:
+        path = os.path.join(self.dir, name)
         payload = {"checks": self.items, "failed": self.failed, "shots": self.shots}
         payload.update(extra)
         with open(path, "w", encoding="utf-8") as handle:
@@ -491,6 +514,17 @@ def main() -> int:
     item_id = cfg.get("item_id", "frame_01")
     upload_png = cfg["upload_png"]
 
+    # t76 追加：真 nginx(TLS) 反代路径的开关（不设即与既有直连路径完全一致）
+    global PROBE_REWRITE, INSECURE_TLS, SHOT_PREFIX
+    INSECURE_TLS = bool(cfg.get("insecure_tls", False))
+    SHOT_PREFIX = str(cfg.get("shot_prefix", ""))
+    probe_base = cfg.get("http_probe_base_url")
+    if probe_base:
+        PROBE_REWRITE = (base, str(probe_base).rstrip("/"))
+        print(f"[ENV] 浏览器 origin={base}；驱动探针 origin={PROBE_REWRITE[1]}"
+              f"（insecure_tls={INSECURE_TLS}）", flush=True)
+    report_name = str(cfg.get("report_name", "report.json"))
+
     # 0) 服务端与 CDP 可达性（不可达 → 退出码 2，如实记未运行）
     status, _, _ = http("GET", f"{base}/admin/login")
     if status != 200:
@@ -522,7 +556,8 @@ def main() -> int:
 
     def screenshot(name: str, **kwargs) -> dict:
         result = cdp.call("Page.captureScreenshot", {"format": "png", "captureBeyondViewport": False})
-        return report.shot(name, base64.b64decode(result["data"]), viewport=viewport, **kwargs)
+        return report.shot(f"{SHOT_PREFIX}{name}", base64.b64decode(result["data"]),
+                           viewport=viewport, **kwargs)
 
     # ------------------------------------------------------------------ ① 登录
     print("\n=== ① 登录（浏览器真实表单提交）===", flush=True)
@@ -549,7 +584,7 @@ def main() -> int:
                  + str(js(cdp, "!!document.querySelector('#login-form input[name=username]')"))
                  + " has_pass_input="
                  + str(js(cdp, "!!document.querySelector('#login-form input[name=password]')")))
-    screenshot("01_login_page", green_min=200)
+    shot01 = screenshot("01_login_page", green_min=200)
 
     js(cdp, f"document.querySelector('#login-form input[name=username]').value = {json.dumps(admin_user)};"
             f"document.querySelector('#login-form input[name=password]').value = {json.dumps(admin_pass)};"
@@ -566,7 +601,8 @@ def main() -> int:
     report.check("① 会话令牌是 HttpOnly（页面脚本读不到）",
                  js(cdp, "document.cookie.indexOf('carbonboo_admin_token') < 0") is True,
                  "document.cookie 不含 carbonboo_admin_token")
-    shot01 = report.shots_by_name.get("01_login_page")
+    # t76：截图名带 SHOT_PREFIX（第二遍走 nginx 时为 `nginx_`），故不再按裸名查回，
+    # 直接用上面那次 screenshot() 的返回值（裸名查回在有前缀时会拿到 None → TypeError）。
     shot02 = screenshot("02_after_login")
     report.check("① 登录后画面与登录页确实不同（截图 md5 不同）",
                  shot02["md5"] != shot01["md5"],
@@ -825,20 +861,42 @@ def main() -> int:
                  f"location.pathname={js(cdp, 'location.pathname')}")
     screenshot("13_relogin_new_password")
 
+    # ---------------------------------------------------------------- ⑧ t76：资源加载路径
+    if cfg.get("resource_probe"):
+        print("\n=== ⑧ 资源加载路径（浏览器实际请求，用于校验反代与直连一致）===", flush=True)
+        entries = json.loads(js(cdp,
+            "JSON.stringify((performance.getEntriesByType('resource')||[])"
+            ".map(function(e){return {name:e.name,type:e.initiatorType};}))" ) or "[]")
+        paths = sorted({urlsplit(str(e["name"])).path for e in entries})
+        off_base = [str(e["name"]) for e in entries
+                    if not str(e["name"]).startswith(base)]
+        report.check("⑧ 页面资源全部同源于浏览器 origin（无反代改写/外链）",
+                     not off_base, f"origin={base} 资源数={len(entries)} 非同源={off_base[:3]}")
+        report.check("⑧ 静态资源路径命中 /admin/static/（或图标 /admin/icons/）",
+                     any(p.startswith("/admin/static/") for p in paths),
+                     "实测路径集合=" + json.dumps(paths, ensure_ascii=False))
+        report.info("⑧ 资源路径集合=" + json.dumps(paths, ensure_ascii=False))
+        screenshot("14_resource_paths", dup_ok=True)
+    else:
+        paths = []
+
     try:
         browser = Cdp(browser_ws)
         browser.call("Browser.close", timeout=10)
     except Exception as exc:  # noqa: BLE001 - 关浏览器失败不影响结论，run.sh 还有兜底
         print(f"  [WARN] Browser.close 未成功（{exc}），由 run.sh 兜底清理", flush=True)
 
-    report_path = report.save({
+    extra: dict = {
         "dialogs": cdp.dialogs,
         "base_url": base,
         "browser": version.get("Browser"),
         "viewport": list(viewport),
         "admin_username": admin_user,
         "item_id": item_id,
-    })
+    }
+    if cfg.get("resource_probe"):
+        extra["resources"] = paths
+    report_path = report.save(extra, name=report_name)
     print(f"\n[REPORT] {report_path}", flush=True)
     print(f"[RESULT] checks={len(report.items)} failed={report.failed}", flush=True)
     return 0 if report.failed == 0 else 1
