@@ -8,6 +8,12 @@
  *     按附录 B §6 的 LWW 应用：`updated_at` 大者胜；**相等时按 `deviceId` 字典序大者胜**
  *     （`deviceId` 也相同 = 同一版本，保留本机）；对端时间戳先按 `offsetMs` 换算到本机基准；
  *     「真冲突」仅当两端自上次同步后都改过这一行（§6.3）；
+ *     合并前先**认领本机行**（`RowClaim`）：单例表按 `user_id`、有业务键的表按 `(user_id, 业务键)`、
+ *     其余按 `id`（与服务端 `_find_business_key_row` 同规则，t62 的 F1 修复）；覆盖时删的是
+ *     **本机那一行的 `id`**；`INSERT OR IGNORE` 兜底，被丢弃的计 `skipped`（不计 `written`/`conflicts`）；
+ *     `append_only` 表（`point_record`/`carbon_include`）**只去重、永不 UPDATE**（`SYNC_MODES`，
+ *     与服务端 `_merge_append_only` 同规则，t62 的 F3 修复）；
+ *     时钟偏移取自 **push 响应**（§5.3:855：pull 不带 `offsetMs`），取反后用于本次合并（t62 的 F2 修复）；
  *  ③ **未登录时一行都不发**：`sync()`/`fullUpload()`/`fullRestore()` 第一件事就是判登录态，
  *     未登录直接返回失败，**不会**创建任何 HTTP 请求（验收 D6 的「未登录态不发起任何上传请求」
  *     靠 `FakeHttpClient.count()` 断言）；
@@ -116,6 +122,115 @@ const TAG: string = 'CarbonBooSync';
  */
 const KEY_PRE_RESTORE: string = 'cloud_pre_restore';
 
+/**
+ * 合并模式（`SYNC_MODES` 的取值）。
+ *
+ * 与服务端 `server/app/services/sync_service.py:54-55` 同名同值 ——
+ * 「两端用同一规则，结论一致」（附录 B §6.4-6）要求模式表逐字对应，不许各自发明。
+ */
+export const MODE_APPEND_ONLY: string = 'append_only';
+export const MODE_LWW: string = 'lww';
+
+/**
+ * 表 → 合并模式（**逐字对应** `server/app/services/sync_service.py:58-70`，键名与顺序一致）。
+ *
+ *  - `append_only`（只增账本 `point_record` / `carbon_include`）：同 id 或同业务唯一键即**去重丢弃**，
+ *    **永不 UPDATE**（铁律 4「流水只增不删」）—— 对应服务端 `_merge_append_only`；
+ *  - `lww`：完整 LWW（`updated_at` 大者胜，平局按 `deviceId`，见 `applyRow`）。
+ *
+ * 为什么必须显式登记：客户端原来的合并路径**对 9 张表一视同仁**地走 LWW，于是
+ * `point_record` 这种只增表在「两端各自真实编辑过同一记录」时会被 UPDATE（或重复插入），
+ * 与服务端口径分叉 —— t62 修复的 F3 即此。
+ */
+export const SYNC_MODES: Record<string, string> = {
+  'point_record': MODE_APPEND_ONLY,
+  'carbon_include': MODE_APPEND_ONLY,
+  'carbon_record': MODE_LWW,
+  'user_goal': MODE_LWW,
+  'user_badge': MODE_LWW,
+  'user_purchase': MODE_LWW,
+  'user_appearance': MODE_LWW,
+  'science_progress': MODE_LWW,
+  'user_profile': MODE_LWW,
+};
+
+/**
+ * 业务唯一键（**不含** `user_id`；判定时一律与 `user_id` 组合）。
+ * **逐字对应** `server/app/services/sync_service.py:74-84`（键名与顺序一致）。
+ *
+ * 空数组 = 该表除主键 `id` 外没有业务唯一键；键值缺任意一个即**不判重、退回按 `id`**
+ * （服务端 `_find_business_key_row:237-240` 同规则）。
+ */
+export const BUSINESS_KEYS: Record<string, string[]> = {
+  'point_record': ['source_type', 'source_id', 'flow_kind'],
+  'user_goal': ['goal_id', 'period_key'],
+  'user_badge': ['badge_id'],
+  'user_purchase': ['item_id'],
+  'science_progress': ['article_id'],
+  'carbon_record': [],
+  'carbon_include': [],
+  'user_appearance': [],
+  'user_profile': [],
+};
+
+/** 每个 `user_id` 恒一行的单例表（`uq_ua` / `uq_uprofile`）—— 逐字对应服务端 `:87`。 */
+export const SINGLETON_TABLES: string[] = ['user_appearance', 'user_profile'];
+
+/**
+ * 认领「本机已有行」的唯一键（附录 B §6.3：先认领本机行，再按 LWW 裁决要不要覆盖它）。
+ *
+ * 为什么不能只按 `id` 认领（t62 的 F1，blocker）：两台设备各自全新安装时，
+ * `AppState.ensureUser()` 会给**同一个 `user_id`** 各生成一行 `user_profile` /
+ * `user_appearance`，两行的 `id` 是**不同**的 UUID（B35 契约）。只按 `id` 认领时，
+ * 第二台设备 pull 到的单例行在本地「查不到」→ 裸 INSERT → 撞 `uq_uprofile`/`uq_ua`
+ * **抛错**，「两台设备首次协同」直接失败。故必须与服务端同规则按业务键认领。
+ *
+ * 认领顺序（与服务端 `sync_service.py:223-243` 逐字同规则）：
+ *  ① 单例表（`user_appearance` / `user_profile`）→ `user_id`；
+ *  ② 有业务唯一键的表且**键值齐全** → `(user_id, 业务键…)`；
+ *  ③ 其余（无业务键、或业务键值缺失、或缺 `user_id` 的畸形行）→ `id`。
+ *
+ * `SELECT` 的列固定为 `id, updated_at, device_id`：`updated_at`/`device_id` 供 LWW 与
+ * 平局裁决使用，`id` 是覆盖时 `DELETE` 的**依据**（认领到的本机行 id 可能与远端 id 不同）。
+ */
+export class RowClaim {
+  readonly sql: string;
+  readonly args: SqlValue[];
+
+  constructor(sql: string, args: SqlValue[]) {
+    this.sql = sql;
+    this.args = args;
+  }
+
+  static of(table: string, row: RowShape): RowClaim {
+    const userId: string = textOf(row, 'user_id');
+    if (userId.length > 0 && SINGLETON_TABLES.indexOf(table) >= 0) {
+      return new RowClaim(`SELECT id, updated_at, device_id FROM ${table} WHERE user_id = ?`, [userId]);
+    }
+    const keys: string[] | undefined = userId.length > 0 ? BUSINESS_KEYS[table] : undefined;
+    if (keys !== undefined && keys.length > 0) {
+      const args: SqlValue[] = [userId];
+      const conds: string[] = [];
+      let missing: boolean = false;
+      let i: number = 0;
+      while (i < keys.length) {
+        const v: SqlValue | undefined = row[keys[i]];
+        if (v === undefined || v === null) {
+          missing = true;                      // 缺键值就不判重（服务端 :237-240 同规则）
+        }
+        conds.push(`${keys[i]} = ?`);
+        args.push(v === undefined ? null : v);
+        i = i + 1;
+      }
+      if (!missing) {
+        return new RowClaim(
+          `SELECT id, updated_at, device_id FROM ${table} WHERE user_id = ? AND ${conds.join(' AND ')}`, args);
+      }
+    }
+    return new RowClaim(`SELECT id, updated_at, device_id FROM ${table} WHERE id = ?`, [textOf(row, 'id')]);
+  }
+}
+
 export class SyncService {
   private readonly store: StorePort;
   private readonly state: AppState;
@@ -196,7 +311,17 @@ export class SyncService {
       await this.writeLog(userId, 'pull', 'failed', 0, pushed, 0, SyncService.errorOf(pullRes), t0, Date.now());
       return fail<SyncOutcome>('SYNC_FAILED', `同步失败：${SyncService.errorOf(pullRes)}（未更新最后同步时间）`);
     }
-    const applied: SyncOutcome = await this.applyPull(pullRes.body, since);
+    // 时钟偏移的**唯一来源是 push 握手腿**：附录 B §5.3:855 明确 `offsetMs` 只在
+    // `POST /sync/push` 响应里回带，`pull` 只回 `serverTime`/`since`/`tables`。
+    // （t62 修复的 F2：原来只把 pull 响应体喂给 `applyPull` ⇒ `offsetMsClient` 恒为 0，
+    //  §6.4-6 的时钟校正等于没生效。）此处取反后传给 `applyPull`，pull 体里若有仍作兜底。
+    const handshakeOffsetMs: number = SyncService.handshakeOffsetOf(pushRes.body);
+    const pushWarning: string = SyncService.clockWarningOf(pushRes.body);
+    if (pushWarning.length > 0) {
+      hilog.warn(DOMAIN, TAG, '同步时钟告警（push 握手）：%{public}s（已按 clientOffsetMs=%{public}d 换算后继续合并）',
+        pushWarning, handshakeOffsetMs);
+    }
+    const applied: SyncOutcome = await this.applyPull(pullRes.body, since, handshakeOffsetMs);
     const serverTime: number = applied.serverTime > 0 ? applied.serverTime : Date.now();
     await this.cfg.set(ConfigKeys.LAST_SYNC_AT, `${serverTime}`);
     await this.writeLog(userId, 'both', 'success', applied.pulled, pushed, applied.conflicts, '', t0, Date.now());
@@ -548,7 +673,7 @@ export class SyncService {
    * 应用拉取结果（LWW：`updated_at` 大者胜；相等跳过；本地较新记冲突并保留本地）。
    * 服务端若返回 `data.merged`（附录 B §5.3），同样按 LWW 应用。
    */
-  private async applyPull(body: string, since: number): Promise<SyncOutcome> {
+  private async applyPull(body: string, since: number, handshakeOffsetMs: number): Promise<SyncOutcome> {
     let pulled: number = 0;
     let conflicts: number = 0;
     let skipped: number = 0;
@@ -575,8 +700,14 @@ export class SyncService {
     //   offsetMsClient = -respOffsetMs
     // 判据：respOffsetMs = +60000（服务端快 60 秒）→ offsetMsClient = -60000
     //      → 同一条服务端时间戳相对本机**显得更旧**，绝不能显得更新。
+    //
+    // 取值优先级（t62 的 F2 修复）：
+    //  ① pull 响应体里的 `offsetMs`（若服务端给了，仍按原口径取反）—— 兜底；
+    //  ② 否则用 **push 握手腿**测得的 `handshakeOffsetMs`（`sync()` 已取反传入）。
+    //     附录 B §5.3:855 写死 pull 不带该字段 ⇒ 正常增量同步路径走的就是 ②，
+    //     校正因此**真正生效**；只走 pull（不经 `sync()`）的调用方按 0（＝不校正）。
     const respOffset: number | undefined = optNum(data, 'offsetMs');
-    const offsetMsClient: number = respOffset === undefined ? 0 : -respOffset;
+    const offsetMsClient: number = respOffset === undefined ? handshakeOffsetMs : -respOffset;
     const warning: string | undefined = optStr(data, 'clockWarning');
     if (warning !== undefined && warning.length > 0) {
       // 超 ±5 分钟容差：服务端已给提示，**仍继续合并**（§6.4-6），只在本地留一行告警日志。
@@ -601,6 +732,11 @@ export class SyncService {
           if (decision.action === 'written') {
             pulled = pulled + 1;
           } else if (decision.action === 'kept') {
+            skipped = skipped + 1;
+          } else {
+            // `insertRow` 的 `INSERT OR IGNORE` 被丢弃（撞唯一索引 / NOT NULL 兜底）
+            // → 按 §6.4-3 计 **ignored/skipped**：既不算 `written`（没写进去），
+            //   也不算 `conflicts`（去重丢弃与"两端都改过"无关）。
             skipped = skipped + 1;
           }
           // ⚠️ 冲突只按 §6.3 的「真冲突」条件计数（`l.updatedAt > since && r.updatedAt > since`），
@@ -639,12 +775,19 @@ export class SyncService {
     if (id.length === 0) {
       return new LwwDecision('skipped', false);
     }
-    const local: RowShape[] = await this.store.query(
-      `SELECT updated_at, device_id FROM ${table} WHERE id = ?`, [id]);
+    // 认领本机已有行：按业务唯一键（单例表按 `user_id`），不是只按 `id`（见 `RowClaim` 注释）。
+    const claim: RowClaim = RowClaim.of(table, row);
+    const local: RowShape[] = await this.store.query(claim.sql, claim.args);
     const remoteRaw: number = numOf(row, 'updated_at');
     // 对端时间戳 → 本机基准（§6.4-6）。offsetMs 已由 applyPull 取反，这里用加号与 §6.3 伪码一致。
     const remoteUpdated: number = remoteRaw + offsetMs;
     if (local.length > 0) {
+      // 只增表（`point_record` / `carbon_include`）：本机已有同 id / 同业务键的行即**去重丢弃**，
+      // 永不 UPDATE（铁律 4；与服务端 `_merge_append_only` 同规则）。计 skipped，不计 conflicts
+      //（§6.4-3：去重丢弃不算冲突）。
+      if (SYNC_MODES[table] === MODE_APPEND_ONLY) {
+        return new LwwDecision('skipped', false);
+      }
       const localUpdated: number = numOf(local[0], 'updated_at');
       // 「真冲突」= 两端自上次同步后**都改过这一行**（§6.3:959/966）。
       // ⚠️ 用**原始** remoteRaw 与 since 比较（协议里落库的就是原始对端时间戳）。
@@ -658,23 +801,39 @@ export class SyncService {
         const localDevice: string = textOf(local[0], 'device_id');
         if (remoteDevice > localDevice) {
           // 远端胜出 → 走下面的写回
-          await this.store.exec(`DELETE FROM ${table} WHERE id = ?`, [id]);
+          await this.deleteLocal(table, local[0]);
           return this.insertRow(table, row, trueConflict);
         }
         // 远端 deviceId 更小、或两端相同（同一版本）→ 保留本机
         return new LwwDecision('kept', trueConflict);
       }
       // 对端更新 → 覆盖本机
-      await this.store.exec(`DELETE FROM ${table} WHERE id = ?`, [id]);
+      await this.deleteLocal(table, local[0]);
       return this.insertRow(table, row, trueConflict);
     }
     // 本机没有该行 → 直接接纳（本机没有的行走不到"真冲突"条件，恒为 false）
     return this.insertRow(table, row, false);
   }
 
-  /** 落一行（`applyRow` 的写回半段）：列集合取自远端行，写成功返回 `written`。
+  /**
+   * 删掉**被认领的那一行本机数据**（覆盖写回的前半段）。
    *
-   * 列名/表名一律经 `quoted` / `quotedAll` 加引号 —— 列名来自远端 JSON 键，裸拼遇保留字即语法错（见 `quoted` 注释）。 */
+   * ⚠️ `DELETE` 必须用**本机那一行的 `id`**，不能用远端 `id`：认领可能是按 `user_id`（单例表）
+   * 或业务唯一键命中的，此时本机行的 `id` 与远端行的 `id` **不同**（如两台设备各自的
+   * `user_profile` UUID）。用远端 id 删会删不到东西 → 残留本机行 → 紧随的 INSERT 撞唯一索引。
+   */
+  private async deleteLocal(table: string, localRow: RowShape): Promise<void> {
+    await this.store.exec(`DELETE FROM ${table} WHERE id = ?`, [textOf(localRow, 'id')]);
+  }
+
+  /** 落一行（`applyRow` 的写回半段）：列集合取自远端行；**被 `OR IGNORE` 丢弃时返回 `skipped`**。
+   *
+   * 列名/表名一律经 `quoted` / `quotedAll` 加引号 —— 列名来自远端 JSON 键，裸拼遇保留字即语法错（见 `quoted` 注释）。
+   *
+   * `INSERT OR IGNORE`（B41 第二道兜底）：业务键/单例唯一索引一旦仍被撞上（例如远端行本身
+   * 畸形、或缺列触发 NOT NULL），**静默丢弃并计 skipped**，绝不让一次同步整批抛错。
+   * 判定方式：插完回读该 `id` —— 在表里 = 确实写进去了（`written`）；不在 = 被 IGNORE 丢弃（`skipped`）。
+   */
   private async insertRow(table: string, row: RowShape, conflict: boolean): Promise<LwwDecision> {
     const columns: string[] = Object.keys(row);
     if (columns.length === 0) {
@@ -694,9 +853,13 @@ export class SyncService {
       m = m + 1;
     }
     await this.store.exec(
-      `INSERT INTO ${table} (${SyncService.quotedAll(columns).join(', ')}) VALUES (${marks.join(', ')})`,
+      `INSERT OR IGNORE INTO ${table} (${SyncService.quotedAll(columns).join(', ')}) VALUES (${marks.join(', ')})`,
       args
     );
+    const back: RowShape[] = await this.store.query(`SELECT id FROM ${table} WHERE id = ?`, [textOf(row, 'id')]);
+    if (back.length === 0) {
+      return new LwwDecision('skipped', conflict);
+    }
     return new LwwDecision('written', conflict);
   }
 
@@ -864,5 +1027,49 @@ export class SyncService {
       return res.error;
     }
     return `HTTP ${res.status}`;
+  }
+
+  /**
+   * 解析 `{ok, data:{…}}` 信封的 `data`；体为空 / 不是 JSON / 无 `data` 一律返回 `undefined`
+   * （时钟信息是**可选**的，绝不能因为它缺失或畸形就让整次同步失败）。
+   */
+  private static envelopeOf(body: string): JsonObject | undefined {
+    if (body.length === 0) {
+      return undefined;
+    }
+    try {
+      const root: JsonObject = asObject(JSON.parse(body), 'sync');
+      const dataNode: Object | undefined = root['data'];
+      return dataNode === undefined ? undefined : asObject(dataNode, 'sync.data');
+    } catch (e) {
+      return undefined;
+    }
+  }
+
+  /**
+   * 从 **push 响应**里取「客户端视角」的时钟偏移（`clientOffsetMs = -offsetMs`）。
+   *
+   * 为什么必须由客户端在这一腿取：附录 B §5.3:855 写死 `offsetMs` 只在 `POST /sync/push`
+   * 响应里回带（`pull` 只回 `serverTime`/`since`/`tables`），而 §6.3 伪码需要的却是
+   * **客户端视角**的偏移 ⇒ 客户端必须自己取反并在本次 pull 合并时使用（t62 的 F2）。
+   * 缺失即 0（＝不校正），与服务端「客户端未提供 `clientNow` 时为 0」同一口径。
+   */
+  private static handshakeOffsetOf(body: string): number {
+    const data: JsonObject | undefined = SyncService.envelopeOf(body);
+    if (data === undefined) {
+      return 0;
+    }
+    const respOffset: number | undefined = optNum(data, 'offsetMs');
+    return respOffset === undefined ? 0 : -respOffset;
+  }
+
+  /** 取 push 响应里的 `clockWarning`（超 ±5 分钟容差时的提示；无则空串）。 */
+  private static clockWarningOf(body: string): string {
+    const data: JsonObject | undefined = SyncService.envelopeOf(body);
+    if (data === undefined) {
+      return '';
+    }
+    const warning: string | undefined = optStr(data, 'clockWarning');
+    return warning === undefined ? '' : warning;
   }
 }
