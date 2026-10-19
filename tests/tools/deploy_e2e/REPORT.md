@@ -295,7 +295,11 @@ docker run --rm -v "$REPO/server/deploy/nginx/carbonboo.conf:/etc/nginx/conf.d/c
 - **run1**：`EXIT=1`，`PASS=40 FAIL=5` —— 失败项 `8.3 gzip 文件损坏 / 8.4 dump 内 table 数 = 0 / 8.7 还原 rc=1 / 8.8 行数不一致 / 9.6 systemd-analyze 报错`。
   **根因**：① dump 由容器内 `root:600` 写出，宿主用户读不了 ⇒ `gzip -t`/`zcat` 全部失败（**工具自身的缺陷，不是备份坏了**）；② `systemd-analyze verify` 的报错全是环境性的（drvfs 权限位 + `/opt/carbonboo` 不存在），断言写得太粗。
   **修法**：dump 的校验与还原改到**容器内**做；systemd 校验拆成 9.6a（原样，按错误类别归因）+ 9.6b（S5 副本，`verify` 必须 rc=0）+ 9.6c/9.6d/9.6e（单元内容逐条）。
-- **run2 / run3**：`EXIT=0`，`PASS=49 FAIL=0`，两次 [PASS] 行名与计数**逐条一致**（同一 HEAD 的字节）。
+- **run2 / run3**：`EXIT=0`，`PASS=49 FAIL=0`。
+- **run4（提交后重跑，绑定提交字节）**：提交 `148c3f9b64581d8e72fd5f80d3cfc44bf0b6e78e` 之后**再跑一次** ⇒ `EXIT=0`，`PASS=49 FAIL=0`。
+  连跑的一致性口径（避免把「一致」说满）：**探针名称与条数逐条一致（49/49）**，只有两处**动态值**必然不同 ——
+  证书 `notAfter`（现场签发时刻）与 dump 文件名/字节数/健康响应里的时间戳。归一化后（把时间戳与 dump 名替换掉）比对：
+  除 `3.3 notAfter=<时刻>` 一行外，`[PASS]` 行**逐字节相同**。
 
 ---
 
