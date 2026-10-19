@@ -15,9 +15,12 @@
  */
 const upstream = process.argv[2];
 if (upstream === undefined) {
-  console.error('用法: node proxy.mjs <upstreamBaseUrl>');
+  console.error('用法: node proxy.mjs <upstreamBaseUrl> [forceOffsetMs]');
   process.exit(2);
 }
+// 可选第三参：把 pull 响应的 offsetMs **强制**写成这个值（缺省则用该轮 push 响应的真实 offsetMs）。
+// 用于验证附录 B §6.4-6 ①「响应里给了 offsetMs 就以响应为准」这条优先顺序。
+const forceOffset = process.argv[3] === undefined ? null : Number(process.argv[3]);
 const nodeHttp = await import('node:http');
 let lastOffset = 0;
 
@@ -48,7 +51,7 @@ const server = nodeHttp.createServer((req, res) => {
         if (req.url.includes('/sync/pull')) {
           try {
             const o = JSON.parse(text);
-            o.data.offsetMs = lastOffset;
+            o.data.offsetMs = forceOffset === null ? lastOffset : forceOffset;
             text = JSON.stringify(o);
           } catch (e) {
             /* 上游不是 JSON 就原样透传 */

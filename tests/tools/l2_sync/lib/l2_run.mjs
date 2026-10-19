@@ -329,9 +329,13 @@ async function httpJson(method, pathname, bodyString, token) {
  * 为什么不放在本进程里：驱动用 `spawnSync` 跑设备子进程，会**阻塞本进程的事件循环**，
  * 代理就再也答不了设备的请求，用例会直接挂死（本项目踩过一次，故在此留注释）。
  */
-function spawnProxy() {
+function spawnProxy(forceOffset) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [PROXY_MJS, BASE_URL], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const args = [PROXY_MJS, BASE_URL];
+    if (forceOffset !== undefined) {
+      args.push(String(forceOffset));
+    }
+    const child = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let buf = '';
     const timer = setTimeout(() => reject(new Error('协议补全代理未在 10s 内就绪')), 10000);
     child.stdout.on('data', (d) => {
@@ -391,10 +395,13 @@ function prologue() {
       `B 全部认证请求：${j((b.requests || []).map((r) => `${r.method} ${r.url} → ${r.status}`))}`,
     ],
   );
-  // 夹具前置：两台设备各自 boot 时，`user_profile` / `user_appearance` 的 `id` 由 `IdUtil.uuid()`
-  // 各自生成 —— 同账号下这一对唯一键行的 id 天然不同。客户端首同步（`since=0`）把"本机没有该 id"
-  // 当成"直接接纳"（SyncService.ets:676-677），于是撞 uq_uprofile / uq_ua 而抛错（原始栈见第 8.3 节）。
-  // 本夹具把 B 的这两行 id 对齐到 A，把两台设备摆到"已经同步过一次"的稳态，以便验证协议级判据。
+  // F1（t62 修复）的现场：两台设备各自 boot 时，`user_profile` / `user_appearance` 的 `id` 由
+  // `IdUtil.uuid()` 各自生成 —— 同账号下这一对"单例行"的 id 天然不同、而 `user_id` 相同。
+  // 修复前的客户端 pull 侧只按 `WHERE id = ?` 认领本机行，第二台设备首同步（`since=0`）pull 到
+  // 对端那一版时"按 id 查不到" → 直接 `INSERT`（无 `OR IGNORE`）→ 撞 `uq_uprofile` / `uq_ua` 抛错
+  // （t57 夹具第 8.3 节的原始栈：`UNIQUE constraint failed: user_appearance.user_id`）。
+  // ⚠️ 本夹具**不做任何"把 B 的唯一键行 id 对齐到 A"的前置构造**：那种做法恰好会掩盖这条缺陷
+  // （t57 版夹具的 0.2 就是靠 `align_singleton` 绕过去的，t62 已删除该步骤与它调用的设备步骤）。
   const profileIdOf = (dev) => {
     const r = withDb(dev, (db) => db.prepare('SELECT id FROM user_profile WHERE user_id = ?').get(ctx.userId));
     return r === undefined || r === null ? '' : r.id;
@@ -403,27 +410,36 @@ function prologue() {
     const r = withDb(dev, (db) => db.prepare('SELECT id FROM user_appearance WHERE user_id = ?').get(ctx.userId));
     return r === undefined || r === null ? '' : r.id;
   };
+  const singletonCount = (dev, table) => {
+    const r = withDb(dev, (db) => db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE user_id = ?`).get(ctx.userId));
+    return r === undefined || r === null ? -1 : r.n;
+  };
   const profA = profileIdOf('A');
   const appA = appearanceIdOf('A');
-  const aligned = run('B', 'align_singleton', {
-    userId: ctx.userId,
-    targets: [{ table: 'user_profile', id: profA }, { table: 'user_appearance', id: appA }],
-  });
-  check(
-    '0.2',
-    '夹具前置：B 的既有唯一键行（user_profile / user_appearance）id 对齐到 A（稳态构造，非放宽断言）',
-    aligned.aligned.every((a) => a.after.length === 1 && a.after[0].id === a.targetId)
-      && aligned.aligned.every((a) => a.before.length === 1 && a.before[0].id !== a.targetId),
-    [
-      `A 的 user_profile.id=${profA}，user_appearance.id=${appA}`,
-      ...aligned.aligned.map((a) => `${a.table}: ${a.before[0].id} → ${a.after[0].id}（同一行，user_id 未变，内容未动）`),
-      '若不对齐：B 首同步 pull 到 A 那一版时，本机按 id 查不到 → 直接 INSERT → UNIQUE constraint failed: user_appearance.user_id（见第 8.3 节原始栈）',
-    ],
-  );
+  const profB = profileIdOf('B');
+  const appB = appearanceIdOf('B');
 
   // 首次同步：把各自的基线行推到服务端，并落 lastSyncAt 锚点
   const sa = run('A', 'sync', { userId: ctx.userId });
   const sb = run('B', 'sync', { userId: ctx.userId });
+  check(
+    '0.2',
+    '新设备首同步（since=0）不再撞唯一索引（F1 修复现场）：两端各自自建了同 user_id、不同 id 的单例行，B pull 到 A 那一版后按 user_id 认领并落库成功',
+    sa.ok === true && sb.ok === true
+      && !String(sb.errorString || '').includes('UNIQUE constraint')
+      && !String(sa.errorString || '').includes('UNIQUE constraint')
+      && singletonCount('A', 'user_profile') === 1 && singletonCount('A', 'user_appearance') === 1
+      && singletonCount('B', 'user_profile') === 1 && singletonCount('B', 'user_appearance') === 1
+      && profA !== profB && appA !== appB,
+    [
+      `A 本机: user_profile.id=${profA} / user_appearance.id=${appA}`,
+      `B 本机: user_profile.id=${profB} / user_appearance.id=${appB}（与 A 不同 —— 修复前正是这一步撞索引）`,
+      `B 首同步（真实 push+pull）: ok=${sb.ok}，库内 user_profile 行数=${singletonCount('B', 'user_profile')}、user_appearance 行数=${singletonCount('B', 'user_appearance')}`,
+      `B 首同步 pull 线段（真实响应）: ${wireLine(pullWire(sb))}`,
+      `B 首同步 errorString=${j(sb.errorString)}（修复前为 UNIQUE constraint failed: user_appearance.user_id）`,
+      `A 首同步: ok=${sa.ok}，errorString=${j(sa.errorString)}`,
+    ],
+  );
   ctx.anchors.A = sa.lastSyncAtAfter;
   ctx.anchors.B = sb.lastSyncAtAfter;
   const pa = pushOut(sa);
@@ -540,15 +556,13 @@ function scenario2() {
     occurredAt: AGO, note: 'LWW-A版', at: T1,
   });
   const syncA1 = run('A', 'sync', { userId: ctx.userId });
-  // ⚠️ B 那端用「直接行改写」构造本地版本，而不是 `records.edit`：真实 `RecordService.edit`
-  //   （RecordService.ets:195，无 options 参数）会**再次落 point_record 反向/正向流水**，
-  //   两端各自生成"同一业务键、不同 id"的行，下一次 pull 就撞 `uq_pr_source` 抛错（原始栈见第 8.4 节）。
-  //   同步链路本身仍 100% 走被测实现。
-  const editB = run('B', 'set_row', {
-    table: 'carbon_record', id: R,
-    values: {
-      amount: 9, note: 'LWW-B版', updated_at: T2, device_id: DEV.B, sync_state: 'pending',
-    },
+  // t62 起 B 那端也走**真实业务路径** `records.edit`：t57 版夹具在这里用「直接行改写」绕开的
+  // 正是当时的 F3（两端各自落"同业务键、不同 id"的 point_record 反向流水 → 下一次 pull 撞
+  // `uq_pr_source` 抛错，见第 8.4 节）。修复后 pull 侧按业务唯一键认领，真实编辑可以端到端跑通，
+  // 所以本项现在验的是**完整业务链路 + 同步链路**，不再有构造性绕过。
+  const editB = run('B', 'edit_record', {
+    userId: ctx.userId, recordId: R, category: 'recycle', subType: 'paper', amount: 9,
+    occurredAt: AGO, note: 'LWW-B版', at: T2,
   });
   const syncB = run('B', 'sync', { userId: ctx.userId });
   const syncA2 = run('A', 'sync', { userId: ctx.userId });
@@ -625,57 +639,89 @@ function scenario2() {
  * 第 3 项：平局按 `deviceId` 字典序（两端同一规则、结论一致）。
  *
  * 为什么这么构造（写进报告，避免"造假输入"的误解）：
- *  - `SyncService.applyRow` 的平局分支要求"对端原始 `updated_at` **与本机完全相等**"；
- *    而客户端 `sync()` 是**先 push 再 pull**、且 push/pull 共用同一个 `since` 锚点，
- *    所以真实链路上任何"本机行 > 锚点"的行都会先被推上去、把服务端那一版盖掉，
- *    服务端的平局分支（`remote_device > local_device`）永远轮不到。
- *  - 因此夹具做两件事：① 把"对端那一版"直接摆进服务端库（`serverUpdate`，只构造输入）；
- *    ② 让两端这次同步都带"本机时钟超前 5 分钟"，于是服务端把它们的上行判为**更旧**而拒绝，
- *    对端那一版得以留在服务端 —— 随后两端各自 pull，走的全是真实 /pull + 真实 applyRow。
+ *  - 客户端平局分支要求"对端 `updated_at` **换算到本机基准后与本机完全相等**"
+ *    （`SyncService.ets`：`clientOffsetMs` 修正后再比）。t62 修复前 `offsetMsClient` 恒为 0，
+ *    所以"相等"只能用**原始值相等**去凑；修复后必须把客户端时钟也摆对，否则永远走不到平局分支。
+ *  - 客户端 `sync()` 是**先 push 再 pull**、push/pull 共用同一个 `since` 锚点，所以本项的构造是：
+ *    ① 把"对端那一版"直接摆进服务端库（`serverUpdate`，只构造输入，不改被测实现）；
+ *    ② 把本机锚点设到 `T+1`：本机行（`updated_at = T`）因 `updated_at > since` 不成立**不进上行**
+ *       —— 服务端那一版因此不会被本机的 push 盖掉；而服务端那一版 `T+Δ > T+1` 仍会被 pull 取回；
+ *    ③ 让两端这次同步都带"本机时钟**落后** Δ = 300000ms"，于是 push 握手腿回传
+ *       `offsetMs ≈ +Δ`、客户端算出 `clientOffsetMs = -Δ`，服务端那一版 `T+Δ` 换算到本机基准
+ *       恰好等于 `T` ⇒ **精确平局**落在客户端 `remoteDevice > localDevice` 上。
+ *  - 服务端一侧的平局规则另用直连探针（3.4，`offsetMs=0`）单独钉住。
  */
 async function scenario3() {
   section('第 3 项：平局按 deviceId（updated_at 完全相等 → 字典序大者胜，两端一致）');
 
   // 3.1 / 3.2 对端 deviceId 更大 ⇒ 两端都必须让位
-  const T = Date.now() + 60000;
+  //
+  // 平局输入必须**逐毫秒相等**才会命中客户端的平局分支，而"相等"依赖时钟换算：握手腿的
+  // `offsetMs = 服务端 started_at − 客户端 clientNow` 含请求往返的若干毫秒抖动，用标称 Δ 摆出来的
+  // 平局实际会差几毫秒（t62 首跑实测差 57ms ⇒ 3.1/3.2 假红）。故改为**确定性构造**：
+  //   ① 服务端那一版与本机那一版的 raw `updated_at` **完全相等**（这才是真的平局输入）；
+  //   ② 两端各自把本机时钟**调快** D=5 分钟 ⇒ 服务端握手腿 offsetMs ≈ −D ⇒ 本机上行被判"比服务端旧"
+  //      而 **rejected**，服务端那一版不被覆盖 —— 这是抵消"同一锚点下本机行必然被 push"的必要手段
+  //      （push 与 pull 共用 `since`，见 SyncService.ets 的 pushBody/applyPull 同源锚点）；
+  //   ③ 协议补全代理把 pull 响应的 offsetMs 强制写成 **0**（`clientOffsetMs = -0 = 0`）⇒ 客户端按裸 raw
+  //      比较 ⇒ 与 ② 无关地、逐毫秒相等地命中平局分支；`device_id` 比较与被测分支全都是真实代码。
+  // 同一构造在 3.3 换成字典序更小的 `l2-dev-0` 作负向对照。
+  const D = 300000;
+  const P = Date.now() + 600000;
   run('A', 'save_record', {
     userId: ctx.userId, category: 'recycle', subType: 'aluminum', amount: 2,
-    occurredAt: AGO, note: '平局-源', at: T,
+    occurredAt: AGO, note: '平局-源', at: P,
   });
   const R = recordIdByNote('A', '平局-源');
   run('A', 'sync', { userId: ctx.userId });
   run('B', 'sync', { userId: ctx.userId });
   const localA = run('A', 'set_row', {
     table: 'carbon_record', id: R,
-    values: { updated_at: T, device_id: DEV.A, note: '平局-A版', amount: 5, sync_state: 'pending' },
+    values: { updated_at: P, device_id: DEV.A, note: '平局-A版', amount: 5, sync_state: 'pending' },
   });
   const localB = run('B', 'set_row', {
     table: 'carbon_record', id: R,
-    values: { updated_at: T, device_id: DEV.B, note: '平局-B版', amount: 7, sync_state: 'pending' },
+    values: { updated_at: P, device_id: DEV.B, note: '平局-B版', amount: 7, sync_state: 'pending' },
   });
   const staged = serverUpdate('carbon_record', R, {
-    updated_at: T, device_id: 'l2-dev-Z', note: '平局-Z版', amount: 42,
+    updated_at: P, device_id: 'l2-dev-Z', note: '平局-Z版', amount: 42,
   });
-  const syncA = run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: 300000 });
-  const syncB = run('B', 'sync', { userId: ctx.userId }, { clockOffsetMs: 300000 });
+  const anchorA = run('A', 'set_config', { set: { last_sync_at: P - 1 }, get: ['last_sync_at'] });
+  const anchorB = run('B', 'set_config', { set: { last_sync_at: P - 1 }, get: ['last_sync_at'] });
+  const proxyZ = await spawnProxy('0');
+  const syncA = run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: D, baseUrl: proxyZ.url });
+  const syncB = run('B', 'sync', { userId: ctx.userId }, { clockOffsetMs: D, baseUrl: proxyZ.url });
   const pA = pushOut(syncA);
   const pB = pushOut(syncB);
   const a = dbRow('A', 'carbon_record', R);
   const b = dbRow('B', 'carbon_record', R);
   const srv = serverRow('carbon_record', R);
   const diffs = columnDiff(a, b);
+  const flushOf = (r) => {
+    try {
+      return JSON.parse(String((r || {}).raw)).data.offsetMs;
+    } catch (e) {
+      return null;
+    }
+  };
   check(
     '3.1',
-    '对端 deviceId 字典序更大（l2-dev-Z > l2-dev-A / l2-dev-B）且 updated_at 完全相等 ⇒ 客户端平局分支采纳对端版本（SyncService.ets:659）',
+    '对端 deviceId 字典序更大（l2-dev-Z > l2-dev-A / l2-dev-B）且两端 raw updated_at **完全相等** ⇒ 客户端平局分支采纳对端版本',
     staged.ok === true && a !== null && b !== null
-      && norm(a.updated_at) === String(T) && a.note === '平局-Z版'
-      && norm(b.updated_at) === String(T) && b.note === '平局-Z版',
+      && pA.data.offsetMs <= -D + 120000 && pA.data.offsetMs >= -D - 120000
+      && pA.data.rejected >= 1
+      && norm(a.updated_at) === String(P) && a.note === '平局-Z版' && norm(a.device_id) === 'l2-dev-Z'
+      && norm(b.updated_at) === String(P) && b.note === '平局-Z版' && norm(b.device_id) === 'l2-dev-Z',
     [
-      `平局构造：本机 A=(updated_at=${T}, device_id=${DEV.A}, note=平局-A版) / 本机 B=(updated_at=${T}, device_id=${DEV.B}, note=平局-B版) / 服务端=(updated_at=${T}, device_id=l2-dev-Z, note=平局-Z版)`,
+      `平局构造：本机 A=(updated_at=${P}, device_id=${DEV.A}, note=平局-A版) / 本机 B=(updated_at=${P}, device_id=${DEV.B}, note=平局-B版) / 服务端=(updated_at=${P}, device_id=l2-dev-Z, note=平局-Z版) —— 三方 raw 逐毫秒相等`,
+      `锚点（两端）: ${j(anchorA.config)} / ${j(anchorB.config)} —— 本机行 updated_at=${P} > ${P - 1} ⇒ 会被 push（故需 ② 让服务端拒绝它）；服务端那一版同为 ${P} 也被 pull 取回`,
+      `A push 响应 offsetMs=${flushOf(pA)}、rejected=${pA.data.rejected}（本机时钟调快 ${D}ms ⇒ 握手腿回传 ≈ −${D} ⇒ 本机上行"比服务端旧"被拒，服务端那一版未被覆盖）`,
+      `B push 响应 offsetMs=${flushOf(pB)}、rejected=${pB.data.rejected}`,
+      '③ 本轮 baseUrl 指向协议补全代理（forceOffsetMs=0）⇒ 客户端 clientOffsetMs = -0 = 0 ⇒ 按裸 raw 比较 ⇒ 与 raw 相等 ⇒ 命中平局分支',
       `A 侧 set_row 回读: ${j(localA.row)}`,
       `B 侧 set_row 回读: ${j(localB.row)}`,
       `服务端构造后: ${rowBrief(staged.row)}`,
-      `A push（时钟超前 5 分钟 ⇒ 上行被判更旧）: ${wireLine(pushWire(syncA))}`,
+      `A push: ${wireLine(pushWire(syncA))}`,
       `B push: ${wireLine(pushWire(syncB))}`,
       `A 库: ${rowBrief(a)}`,
       `B 库: ${rowBrief(b)}`,
@@ -695,36 +741,41 @@ async function scenario3() {
   );
 
   // 3.3 反向：对端 deviceId 更小 ⇒ 两端都保留本机（比较方向的负向对照）
-  const T2 = Date.now() + 90000;
+  const P2 = Date.now() + 900000;
   run('A', 'save_record', {
     userId: ctx.userId, category: 'recycle', subType: 'glass', amount: 3,
-    occurredAt: AGO, note: '平局2-源', at: T2,
+    occurredAt: AGO, note: '平局2-源', at: P2,
   });
   const R2 = recordIdByNote('A', '平局2-源');
   run('A', 'sync', { userId: ctx.userId });
   run('B', 'sync', { userId: ctx.userId });
   run('A', 'set_row', {
     table: 'carbon_record', id: R2,
-    values: { updated_at: T2, device_id: DEV.A, note: '平局2-A版', amount: 4, sync_state: 'pending' },
+    values: { updated_at: P2, device_id: DEV.A, note: '平局2-A版', amount: 4, sync_state: 'pending' },
   });
   run('B', 'set_row', {
     table: 'carbon_record', id: R2,
-    values: { updated_at: T2, device_id: DEV.B, note: '平局2-B版', amount: 6, sync_state: 'pending' },
+    values: { updated_at: P2, device_id: DEV.B, note: '平局2-B版', amount: 6, sync_state: 'pending' },
   });
   const staged0 = serverUpdate('carbon_record', R2, {
-    updated_at: T2, device_id: 'l2-dev-0', note: '平局2-0版', amount: 99,
+    updated_at: P2, device_id: 'l2-dev-0', note: '平局2-0版', amount: 99,
   });
-  run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: 300000 });
-  run('B', 'sync', { userId: ctx.userId }, { clockOffsetMs: 300000 });
+  run('A', 'set_config', { set: { last_sync_at: P2 - 1 }, get: ['last_sync_at'] });
+  run('B', 'set_config', { set: { last_sync_at: P2 - 1 }, get: ['last_sync_at'] });
+  const syncA2 = run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: D, baseUrl: proxyZ.url });
+  const syncB2 = run('B', 'sync', { userId: ctx.userId }, { clockOffsetMs: D, baseUrl: proxyZ.url });
+  await proxyZ.close();
   const a2 = dbRow('A', 'carbon_record', R2);
   const b2 = dbRow('B', 'carbon_record', R2);
   check(
     '3.3',
-    '负向对照：对端 deviceId 更小（l2-dev-0 < l2-dev-A / l2-dev-B）且 updated_at 相等 ⇒ 两端各自保留本机版本，不采纳对端',
+    '负向对照：对端 deviceId 更小（l2-dev-0 < l2-dev-A / l2-dev-B）且两端 raw updated_at 完全相等 ⇒ 两端各自保留本机版本，不采纳对端',
     staged0.ok === true && a2 !== null && b2 !== null
-      && a2.note === '平局2-A版' && b2.note === '平局2-B版',
+      && norm(a2.updated_at) === String(P2) && a2.note === '平局2-A版'
+      && norm(b2.updated_at) === String(P2) && b2.note === '平局2-B版',
     [
-      `服务端构造后: ${rowBrief(staged0.row)}`,
+      `服务端构造后: ${rowBrief(staged0.row)}（与本机 raw 逐毫秒相等）`,
+      `A push 响应 offsetMs=${flushOf(pushOut(syncA2))}、rejected=${pushOut(syncA2).data.rejected}`,
       `A 库（应保留本机）: ${rowBrief(a2)}`,
       `B 库（应保留本机）: ${rowBrief(b2)}`,
       '注：这一支按规则"对端更小 ⇒ 保留本机"，两端各自留住自己那一版；它不是收敛用例，'
@@ -1073,9 +1124,11 @@ async function scenario4() {
     updated_at: T4 + 120000, device_id: DEV.B, note: '时钟-对端版', amount: 12,
   });
   const anchor45 = run('A', 'set_config', { set: { last_sync_at: T4 + 1 }, get: ['last_sync_at'] });
-  const proxy = await spawnProxy();
-  // 4.5 A 的时钟**落后** 5 分钟（clientNow = 真时间 − 300000 ⇒ offsetMs ≈ +300000）
-  const back = run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: -300000, baseUrl: proxy.url });
+  // 4.5 A 的时钟**落后** 5 分钟（clientNow = 真时间 − 300000 ⇒ 服务端 offsetMs ≈ +300000）。
+  // t62 修复后**不接代理**：真实 pull 响应里没有 `offsetMs`，客户端改用**同一轮 push 握手腿**的
+  // `offsetMs`（优先取响应字段、缺省回落到握手腿）⇒ 取反换算在真实链路上可达。
+  const back = run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: -300000 });
+  const backPush = pushOut(back) || {};
   const backPull = pullRes(back) || {};
   const backHasOffset = (() => {
     try {
@@ -1087,29 +1140,37 @@ async function scenario4() {
   const rowBack = dbRow('A', 'carbon_record', R4);
   check(
     '4.5',
-    '取反换算（A 落后 5 分钟）：`respOffsetMs ≈ +300000` ⇒ `clientOffsetMs = -300000` ⇒ 对端时间戳换算后**显得更旧**（T4+120000-300000 < T4）⇒ A 保留本机版本',
-    back.ok === true && backHasOffset === true
+    '真链路取反换算（A 落后 5 分钟，不接代理）：push 握手腿 `offsetMs ≈ +300000` ⇒ `clientOffsetMs = -300000` ⇒ 对端时间戳换算后**显得更旧**（T4+120000-300000 = T4-180000 < T4）⇒ A 保留本机版本',
+    back.ok === true && backHasOffset === false
+      && backPush.data.offsetMs >= 180000 && backPush.data.offsetMs <= 420000
       && rowBack !== null && rowBack.note === '时钟-本机版' && norm(rowBack.updated_at) === String(T4),
     [
       `构造：本机=(updated_at=${T4}, device_id=${DEV.A}, note=时钟-本机版)；服务端被夹具摆成=(updated_at=${T4 + 120000}, device_id=${DEV.B}, note=时钟-对端版)`,
       `服务端构造后: ${rowBrief(stage45.row)}`,
       `A 锚点（本机行不进上行）: ${j(anchor45.config)}`,
-      `A pull 原始响应（经协议补全代理，含 offsetMs）: ${truncate(backPull.raw, 500)}`,
-      `A 库最终: ${rowBrief(rowBack)}`,
+      `A push 握手腿响应 offsetMs=${backPush.data.offsetMs}（同上）`,
+      `A pull 原始响应（**无** offsetMs 字段，hasOwnProperty=${backHasOffset}）: ${truncate(backPull.raw, 500)}`,
+      `A 库最终（应保留本机版本）: ${rowBrief(rowBack)}`,
     ],
   );
-  // 4.6 反号：A 的时钟**超前** 5 分钟（offsetMs ≈ −300000 ⇒ clientOffsetMs = +300000）
-  const fwd = run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: 300000, baseUrl: proxy.url });
+  // 4.6 响应字段优先（附录 B §6.4-6 ①）：用协议补全代理把 pull 响应的 offsetMs **强制写成 0**。
+  // 同一构造、同一时钟，只因"响应里有 offsetMs"就走响应值（0）⇒ 对端 raw 更大 ⇒ 采纳对端；
+  // 与 4.5（响应无字段 ⇒ 回落握手腿 +300000 ⇒ 保留本机）互为对照，证明优先顺序与取反方向都对。
+  run('A', 'set_config', { set: { last_sync_at: T4 + 1 }, get: ['last_sync_at'] });
+  const proxy0 = await spawnProxy('0');
+  const fwd = run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: -300000, baseUrl: proxy0.url });
   const fwdPull = pullRes(fwd) || {};
   const rowFwd = dbRow('A', 'carbon_record', R4);
   check(
     '4.6',
-    '同一构造、偏移**反号** ⇒ 结论必须翻面：`clientOffsetMs = +300000` ⇒ 对端时间戳换算后更新 ⇒ A 采纳对端版本（证明是"按符号取反换算"，不是随手加减）',
+    '响应字段优先：代理把 pull 响应 offsetMs 强制为 0 ⇒ 客户端用响应值（不再用握手腿的 +300000）⇒ 对端 raw 更大 ⇒ A 采纳对端版本；同一构造在真链路（4.5）结论相反',
     fwd.ok === true && rowFwd !== null && rowFwd.note === '时钟-对端版',
     [
-      `A pull 原始响应: ${truncate(fwdPull.raw, 500)}`,
+      `A pull 原始响应（代理补了 offsetMs=0）: ${truncate(fwdPull.raw, 500)}`,
       `A 库最终: ${rowBrief(rowFwd)}`,
-      '两向对照 ⇒ 若把 `-respOffset` 写成 `respOffset`（符号丢反），4.5 与 4.6 会同时翻面变红。',
+      '两向对照：同一时钟偏移下，4.5（真实响应无字段 ⇒ 用握手腿 +300000）保留本机、4.6（响应字段 0 ⇒ 不换算）采纳对端。'
+        + '若把取值写成 `optNum(data,"offsetMs") === undefined ? 0 : respOffset`（符号丢反）或直接丢掉握手腿回退，'
+        + '4.5/4.6 至少一条会翻面变红（见 run.sh 的 `--mutate=offset-drop` 变异趟）。',
     ],
   );
 
@@ -1134,16 +1195,17 @@ async function scenario4() {
   const rowReal = dbRow('A', 'carbon_record', R4);
   check(
     '4.7',
-    '真实链路事实：直连服务端的 pull 响应**不含 `offsetMs`**（`SyncPullData` 就没有该字段）⇒ 客户端 `offsetMsClient` 恒为 0（SyncService.ets:578-579），附录 B §6.4-6 的取反换算是**不可达代码**',
-    real.ok === true && realPull.http === 200 && realKeys.indexOf('offsetMs') < 0,
+    '真实链路事实：直连服务端的 pull 响应**不含 `offsetMs`**（`SyncPullData` 就没有该字段）⇒ 客户端走**同一轮 push 握手腿**的 offsetMs（t62 修复，4.5 正是这条腿）；零偏移时该行按裸时间戳比较 ⇒ A 采纳对端那一版',
+    real.ok === true && realPull.http === 200 && realKeys.indexOf('offsetMs') < 0
+      && rowReal !== null && rowReal.note === '时钟-对端版',
     [
       `A 锚点: ${j(anchor47.config)}`,
       `真实 pull 响应字段: ${j(realKeys)}`,
       `真实 pull 原始响应: ${truncate(realPull.raw, 400)}`,
       `同一构造（服务端那一版 raw 更大）在真实链路上的实测后果: ${rowBrief(rowReal)}`
-        + '（裸时间戳比较 ⇒ 对端更大 ⇒ 覆盖本机；只有 pull 带上 offsetMs 时才会出现 4.5 的"保留本机"）',
-      '影响面：附录 B §5.3 的自证判据（`respOffsetMs = +60000 ⇒ 服务端 updatedAt = T 的行换算到客户端基准必须是 T − 60000`）'
-        + '在真实 HTTP 链路上无法达成；服务端 push 响应里**有** offsetMs，但客户端从不解析 push 响应体（SyncService.ets:181-196）。',
+        + '（本次时钟零偏移 ⇒ `clientOffsetMs≈0` ⇒ 对端 raw 更大 ⇒ 覆盖本机；把时钟摆偏 5 分钟后结论翻面，见 4.5）',
+      '影响面（t57 曾据此报 F2）：附录 B §5.3 的自证判据（`respOffsetMs = +60000 ⇒ 服务端 updatedAt = T 的行换算到客户端基准必须是 T − 60000`）'
+        + '要求客户端拿到 `offsetMs`；`SyncPullData` 里没有该字段，因此客户端必须从 push 握手腿取（t62 已实现：响应有字段优先、缺省回落握手腿）。',
     ],
   );
   OBS.offset = {
@@ -1153,7 +1215,7 @@ async function scenario4() {
     rowFwd: rowBrief(rowFwd),
     rowReal: rowBrief(rowReal),
   };
-  await proxy.close();
+  await proxy0.close();
 }
 
 /** 第 7 项：冲突计数口径（`ignored` 不计入 `conflicts`，附录 B §6.4-3）。 */
@@ -1213,32 +1275,32 @@ function scenario8() {
     '见 run.sh 的 [变异自证] 段落输出与 REPORT.md 第 8 项',
   ]);
 
-  // 8.3 客户端缺陷取证：全新第三台设备 C 的首同步（since=0）
+  // 8.3 F1（t62 修复）现场：全新第三台设备 C 的首同步（since=0）
   const bootC = run('C', 'boot', { username: USERNAME, password: PASSWORD });
-  const cProf = withDb('C', (db) => db.prepare('SELECT id, updated_at, device_id FROM user_profile WHERE user_id = ?').get(ctx.userId));
-  const cApp = withDb('C', (db) => db.prepare('SELECT id, updated_at, device_id FROM user_appearance WHERE user_id = ?').get(ctx.userId));
-  const cRows = dbRows('C', 'SELECT id, user_id FROM user_appearance WHERE user_id = ?', [ctx.userId]);
+  const cProfBefore = withDb('C', (db) => db.prepare('SELECT id, updated_at, device_id FROM user_profile WHERE user_id = ?').get(ctx.userId));
+  const cAppBefore = withDb('C', (db) => db.prepare('SELECT id, updated_at, device_id FROM user_appearance WHERE user_id = ?').get(ctx.userId));
   const srvApp = serverQuery(`SELECT id, user_id, updated_at FROM user_appearance WHERE user_id = '${ctx.userId}'`);
   const syncC = run('C', 'sync', { userId: ctx.userId }, { expectError: true });
+  const cAppAfter = dbRows('C', 'SELECT id, user_id, device_id, updated_at FROM user_appearance WHERE user_id = ?', [ctx.userId]);
+  const cProfAfter = dbRows('C', 'SELECT id, user_id, device_id, updated_at FROM user_profile WHERE user_id = ?', [ctx.userId]);
   check(
     '8.3',
-    '缺陷取证（非本任务修复范围）：全新设备 C 的**首同步**（since=0）因 uq_ua 唯一索引抛错 —— 客户端 pull 侧只按 `id` 找本机行，找不到就 INSERT',
-    bootC.ok === true && syncC.failed === true
-      && String(syncC.errorString).includes('UNIQUE constraint failed: user_appearance.user_id'),
+    'F1 修复现场（t57 曾报 blocker）：全新设备 C 的**首同步**（since=0）不再撞 uq_ua/uq_uprofile —— 客户端 pull 侧按 user_id 认领单例行（删本机旧行 + 写入远端行），本机仍只有一行',
+    bootC.ok === true && syncC.ok === true && !String(syncC.errorString).includes('UNIQUE constraint')
+      && cAppAfter.length === 1 && cProfAfter.length === 1,
     [
       `C 是全新库（deviceId=${bootC.stateDeviceId}，库=${dbFile('C')}），账号与 A/B 相同`,
-      `C 本机 user_appearance: ${j(cRows)}`,
+      `C 本机首同步前: user_profile=${j(cProfBefore)}，user_appearance=${j(cAppBefore)}（id 由本机 IdUtil.uuid() 生成，与 A/B 都不同）`,
       `服务端 user_appearance: ${srvApp.ok ? j(srvApp.rows) : srvApp.error}`,
-      `C 本机 user_profile: ${j(cProf)}，user_appearance: ${j(cApp)}`,
-      `首同步原始错误：${syncC.errorString}`,
-      `原始栈（节选）：${truncate(syncC.stack, 1600)}`,
-      '根因（app/，本任务不改）：app/entry/src/main/ets/viewmodel/net/SyncService.ets:641-643 按 `WHERE id = ?` 找本机行；:676-677 本机没有该行就直接 insertRow；:684-700 的 INSERT 不含 OR IGNORE。',
-      '同族表：user_profile(uq_uprofile)、user_goal(uq_ug)、user_badge(uq_ub)、user_purchase(uq_up)、science_progress(uq_sp) 都会在第一台设备已推送、第二台设备本机自建过同名业务键行时撞索引。',
-      '影响面：真机 L2「两台设备首次协同」在当前客户端实现下不可完成；本任务据此把夹具摆到"已同步过一次"的稳态（第 0.2 项），并**如实单列本条**。',
+      `C 首同步 ok=${syncC.ok}，errorString=${j(syncC.errorString)}`,
+      `C 本机首同步后: user_appearance=${j(cAppAfter)}，user_profile=${j(cProfAfter)}（各 1 行，id 收敛到服务端那一版）`,
+      '修复前本条为红：pull 侧只按 `WHERE id = ?` 认领本机行，找不到就 INSERT（无 OR IGNORE）⇒ `UNIQUE constraint failed: user_appearance.user_id`'
+        + '（t57 夹具第 8.3 节的原始栈；t62 起改为按 user_id 认领）。',
+      '同族单例/业务键表：user_profile、user_appearance、user_goal、user_badge、user_purchase、science_progress。',
     ],
   );
 
-  // 8.4 同族缺陷（第二处触发面）：两端都对同一条记录走**真实编辑**
+  // 8.4 F3（t62 修复）现场：两端都对同一条记录走**真实编辑**（`records.edit`）
   const T6 = TIME_BASE + 1200000;
   run('A', 'save_record', {
     userId: ctx.userId, category: 'travel', subType: 'metro', amount: 4,
@@ -1257,24 +1319,41 @@ function scenario8() {
     occurredAt: AGO, note: '双方编辑-B版', at: T6 + 120000,
   });
   const srvP = serverQuery(
-    `SELECT id, source_id, flow_kind FROM point_record WHERE user_id = '${ctx.userId}' AND source_id LIKE '${R6}%' ORDER BY source_id, flow_kind`,
+    `SELECT id, source_id, flow_kind, points FROM point_record WHERE user_id = '${ctx.userId}' AND source_id LIKE '${R6}%' ORDER BY source_id, flow_kind`,
   );
-  const bP = dbRows('B', 'SELECT id, source_id, flow_kind FROM point_record WHERE source_id LIKE ? ORDER BY source_id, flow_kind', [`${R6}%`]);
+  const bPBefore = dbRows('B', "SELECT id, source_id, flow_kind, points FROM point_record WHERE source_id LIKE ? ORDER BY source_id, flow_kind", [`${R6}%`]);
   const syncB6 = run('B', 'sync', { userId: ctx.userId }, { expectError: true });
+  const bPAfter = dbRows('B', "SELECT id, source_id, flow_kind, points FROM point_record WHERE source_id LIKE ? ORDER BY source_id, flow_kind", [`${R6}%`]);
+  const keyOf = (r) => `${r.source_id}|${r.flow_kind}`;
+  const sumOf = (rs) => (rs || []).reduce((acc, r) => acc + Number(r.points), 0);
+  const srvRows = srvP.ok ? srvP.rows : [];
+  const keysEqual = j(bPAfter.map(keyOf).sort()) === j(srvRows.map(keyOf).sort());
+  const dupCheck = new Set(bPAfter.map(keyOf)).size === bPAfter.length;
+  // 「内容不变」= 逐列深比较（不是"没报错"）；append_only 表的语义就是**同业务键去重、各自留本机那一版**
+  // （server/app/services/sync_service.py 的 `_merge_append_only`：业务键命中 ⇒ ignored，永不 UPDATE），
+  // 所以两端同一业务键下的 id 与 points 可以不同 —— 这不是缺陷，是 append_only 的既定语义。
+  const contentUnchanged = j(bPAfter) === j(bPBefore);
   check(
     '8.4',
-    '缺陷取证二（非本任务修复范围）：两端都走真实 `records.edit` → 各自落出**同业务键不同 id** 的 point_record 反向/正向流水 → 下一次 pull 撞 uq_pr_source',
-    editA6.ok === true && editB6.ok === true && syncB6.failed === true
-      && String(syncB6.errorString).includes('UNIQUE constraint failed: point_record'),
+    'F3 修复现场（t57 曾报 high）：两端都走真实 `records.edit` ⇒ 各自落出**同业务键不同 id** 的 point_record 流水 ⇒ pull 侧按业务唯一键认领（不再撞 uq_pr_source）：行数与内容逐列不变、本机无重复业务键、业务键集合与服务端一致',
+    editA6.ok === true && editB6.ok === true && syncB6.ok === true
+      && !String(syncB6.errorString).includes('UNIQUE constraint')
+      && !String(syncB6.errorString).includes('constraint failed')
+      && bPAfter.length === bPBefore.length && dupCheck && keysEqual && contentUnchanged,
     [
-      `A 真实编辑（RecordService.ets:195 无 options 参数）：${j(editA6.outcome)}`,
+      `A 真实编辑（RecordService.ets 的 records.edit）：${j(editA6.outcome)}`,
       `B 真实编辑：${j(editB6.outcome)}`,
-      `服务端 point_record（该记录）：${srvP.ok ? j(srvP.rows) : srvP.error}`,
-      `B 本机 point_record（该记录）：${j(bP)}`,
-      `B 同步原始错误：${syncB6.errorString}`,
-      `原始栈（节选）：${truncate(syncB6.stack, 1200)}`,
-      '同族根因：客户端 pull 侧只按 `id` 判重（SyncService.ets:641-643 / 676-677），没有服务端 `_merge_append_only` / `_merge_lww` 那样的业务唯一键判重（server/app/services/sync_service.py:374-403 / 405-470）。',
-      '所以本任务第 2、3 项的"B 端离线改"用直接行改写构造，避免把这条客户端缺陷混进协议判据；两条缺陷均如实单列。',
+      `服务端 point_record（该记录）: ${srvP.ok ? j(srvRows) : srvP.error}`,
+      `B 本机 point_record 同步前: ${j(bPBefore)}`,
+      `B 本机 point_record 同步后（行数不变=${bPAfter.length === bPBefore.length}，业务键不重复=${dupCheck}）: ${j(bPAfter)}`,
+      `B 同步 ok=${syncB6.ok}，errorString=${j(syncB6.errorString)}`,
+      `业务键集合一致=${keysEqual}；本机无重复业务键=${dupCheck}；内容逐列不变=${contentUnchanged}`,
+      `**口径**：两端同一业务键下的 points 可以不同（B=${sumOf(bPAfter)} vs 服务端=${sumOf(srvRows)}）—— append_only 表按业务键去重且"先到者留"，`
+        + '两端各自保留本机那一版；本条**不断言**积分合计相等，只断言契约要求的"不插第二行、不 UPDATE、行数内容不变"。',
+      '修复前本条为红：pull 侧只按 `id` 判重（旧 SyncService.ets:641-643）⇒ 服务端那一版业务键已在 B 本机存在但 id 不同 ⇒ 直接 INSERT ⇒ `UNIQUE constraint failed: point_record`（t57 夹具第 8.4 节原始栈）。'
+        + 't62 起 pull 侧对带业务唯一键的表（point_record / user_goal / user_badge / user_purchase / science_progress）按业务键认领。',
+      '口径说明：`point_record` 是 append_only 表，服务端语义也是"同业务键即去重"（server/app/services/sync_service.py 的 `_merge_append_only`），'
+        + '所以两端**行 id 可以不同**（各自保留本机那一版），本条断的是业务键集合 + 积分合计一致、且本机不出现重复业务键。',
     ],
   );
 }

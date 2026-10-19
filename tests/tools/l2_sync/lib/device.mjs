@@ -220,26 +220,6 @@ async function setRow() {
   emit({ table: params.table, id: params.id, row: rows.length === 0 ? null : rows[0] });
 }
 
-/**
- * 把本机"按唯一业务键组织"的既有行的 `id` 对齐到对端那一版 —— **只用于构造被测输入**，
- * 不是绕过任何断言：两台设备在同账号下各自 boot 时会给 `user_profile` / `user_appearance`
- * 生成各自的 `id`（`AppState.ensureUser` 用 `IdUtil.uuid()`），而客户端首同步把"本机没有该 id"
- * 直接当成"直接接纳"（SyncService.ets:676-677），于是撞上 `uq_uprofile` / `uq_ua` 唯一索引并抛出。
- * 这一缺陷由本任务单独取证并 STOP 上报（REPORT.md 第 8.3 节），本夹具只是把两台设备摆到
- * "已经同步过一次"的稳态（真实产品里第二次之后的同步就是稳态）。
- */
-async function alignSingleton() {
-  const { store } = await openDevice();
-  const out = [];
-  for (const t of params.targets) {
-    const before = await store.query(`SELECT id, user_id, updated_at FROM ${t.table} WHERE user_id = ?`, [params.userId]);
-    await store.exec(`UPDATE ${t.table} SET "id" = ? WHERE user_id = ? AND "id" <> ?`, [t.id, params.userId, t.id]);
-    const after = await store.query(`SELECT id, user_id, updated_at FROM ${t.table} WHERE user_id = ?`, [params.userId]);
-    out.push({ table: t.table, targetId: t.id, before, after });
-  }
-  emit({ aligned: out });
-}
-
 /** 把行重新标脏 —— 模拟"上一次 push 的响应丢了、客户端仍在重试同一批行"。 */
 async function markPending() {
   const { store } = await openDevice();
@@ -319,7 +299,6 @@ async function main() {
   const table = {
     boot, save_record: saveRecord, edit_record: editRecord, remove_record: removeRecord,
     insert_raw: insertRaw, set_row: setRow, set_config: setConfig, mark_pending: markPending,
-    align_singleton: alignSingleton,
     sync, status, dump, egress,
   };
   const fn = table[step];
