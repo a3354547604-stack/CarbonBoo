@@ -587,3 +587,104 @@ L1_KEEP=1 bash tests/tools/deploy_e2e/run.sh                # 保留现场 $WORK
 5. 本节的 `/admin` 端到端用的是 `run.sh` 的 **S1/S3/S6 派生**（两容器拓扑 + 派生 `.env` + 可写上传目录），
    与「单机 systemd + nginx 同宿主」的生产拓扑在**容器边界**上不同；单元本身的真启动由 §12.1 单独覆盖。
 
+### 12.3.3 请求/响应原文（本轮最终一趟的证据目录 `/tmp/cbe2e.2F86sc/logs/`）
+
+真 HTTP 客户端（curl + `--cacert` 自签证书 + `--resolve api.example.com:10443:127.0.0.1` + Cookie 罐）。
+下面是逐字原文（大响应按 900 字节截断，全文见证据目录同名文件）：
+
+**① 登录（JSON）—— 原始响应头（含 `Set-Cookie`）**
+
+```http
+HTTP/2 200 
+server: nginx/1.31.6
+date: Mon, 19 Oct 2026 08:16:20 GMT
+content-type: application/json
+content-length: 491
+cache-control: no-store
+set-cookie: carbonboo_admin_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0N2M0NmRkZC0xYTM0LTQyYjUtOGI0MS03MzliYzk5ZDFjMTYiLCJ1c2VybmFtZSI6ImNiYWRtaW4iLCJhdWQiOiJjYXJib25ib28tYWRtaW4iLCJpc3MiOiJjYXJib25ib28tc2VydmVyIiwiaWF0IjoxNzkyMzk3NzgwLCJuYmYiOjE3OTIzOTc3ODAsImV4cCI6MTc5MjQwNDk4MCwianRpIjoiYzM4MzA0NmNjMzUwNDgyNGFkYWQ3MTA3ZTE2YzhiMGMifQ.moIxENuwHFIFrFZ2DCSv4P5xtddn_7vZQvIRrAs3gfw; HttpOnly; Max-Age=7200; Path=/admin; SameSite=lax; Secure
+strict-transport-security: max-age=31536000
+x-content-type-options: nosniff
+x-frame-options: SAMEORIGIN
+```
+
+**② 登录（JSON）—— 原始响应体**
+
+```json
+{"ok":true,"data":{"adminToken":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI0N2M0NmRkZC0xYTM0LTQyYjUtOGI0MS03MzliYzk5ZDFjMTYiLCJ1c2VybmFtZSI6ImNiYWRtaW4iLCJhdWQiOiJjYXJib25ib28tYWRtaW4iLCJpc3MiOiJjYXJib25ib28tc2VydmVyIiwiaWF0IjoxNzkyMzk3NzgwLCJuYmYiOjE3OTIzOTc3ODAsImV4cCI6MTc5MjQwNDk4MCwianRpIjoiYzM4MzA0NmNjMzUwNDgyNGFkYWQ3MTA3ZTE2YzhiMGMifQ.moIxENuwHFIFrFZ2DCSv4P5xtddn_7vZQvIRrAs3gfw","adminId":"47c46ddd-1a34-42b5-8b41-739bc99d1c16","username":"cbadmin","expiresAt":1792404980000}}
+```
+
+**③ HTML 登录页（`Accept: text/html`，前 900 字节）**
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>管理员登录 · 碳小布后台</title>
+  <link rel="stylesheet" href="/admin/static/admin.css">
+</head>
+<body class="login-body">
+<main class="login-card">
+  <div class="brand brand-login">
+    <span class="brand-mark">碳</span>
+    <span class="brand-text">
+      <strong>碳小布</strong>
+      <small>Web 后台管理端</small>
+    </span>
+  </div>
+
+  <h1>管理员登录</h1>
+  <p class="muted small">
+    独立于 App 用户体系的账号；登录后签发<b>管理侧独立 JWT</b>（与客户端令牌不同密钥、不同 audience）。
+    客户端令牌访问本页或任何 <code>/admin/*</code> 一律 403。
+  </p>
+
+  
+  <div id="flash" class="flash is-error" role="alert" hidden>None</div>
+
+  <form id="login-form" method="post" action="/admin/login" autocomplete="off">
+    <input type="hidden" name="next" value="/admin">
+    <la
+…（截断，全文见证据目录 /tmp/cbe2e.2F86sc/logs/admin_login_page.html）
+```
+
+**④ 用户列表（带会话 Cookie）**
+
+```json
+{"ok":true,"data":{"total":1,"page":1,"pageSize":20,"items":[{"userId":"u-7f40020f9a044d47a9f9fa33ae366f61","username":"deploy_e2e_1","isActive":1,"accountCreatedAt":1792397779214,"lastLoginAt":1792397779214,"firstSeenAt":null,"lastSyncAt":null,"recordCount":0,"rowCount":0,"deviceCount":0,"devices":[]}]}}
+```
+
+**⑤ 数据总览**
+
+```json
+{"ok":true,"data":{"accountCount":1,"activeAccountCount":1,"deviceCount":0,"recordCount":0,"todayRecordCount":0,"totalReductionKg":0.0,"reductionByCategory":{},"totalPointsIssued":0,"totalPointsSpent":0,"totalPointsBalance":0,"orderCount":0,"itemCount":9,"onShelfItemCount":9,"shopVersion":"2026.02.01-1","lastSyncAt":null}}
+```
+
+**⑥ 配置写入（`PUT /admin/config {"dailyCap":250}`）—— 回显**
+
+```json
+{"ok":true,"data":{"dailyCap":250,"badgesEnabled":1,"shopVersion":"2026.02.01-1","goalRewards":[{"id":"S1","name":"零碳出行","tier":"short","reward":20},{"id":"S2","name":"省电小标兵","tier":"short","reward":20},{"id":"S3","name":"光盘卫士","tier":"short","reward":15},{"id":"S4","name":"回收一袋","tier":"short","reward":40},{"id":"S5","name":"记录不间断","tier":"short","reward":60},{"id":"M1","name":"百公里绿色出行","tier":"mid","reward":200},{"id":"M2","name":"减碳吨目标","tier":"mid","reward":300},{"id":"M3","name":"回收百千克","tier":"mid","reward":200},{"id":"M4","name":"光盘习惯养成","tier":"mid","reward":150},{"id":"M5","name":"减碳达人","tier":"mid","reward":500},{"id":"L1","name":"种树百天计划","tier":"long","reward":1000}],"changed":["dailyCap"]}}
+```
+
+**⑦ 图标上传（`POST /admin/items/frame_01/icon`，`Content-Type: image/png`）**
+
+```json
+{"ok":true,"data":{"id":"frame_01","section":"frame","name":"嫩芽","description":"初生的绿色","price":1500,"icon":"/admin/icons/frame_01-9fb285daed.png","order":1,"onShelf":1,"isDefaultFree":0}}
+```
+
+**⑧ 客户端令牌经 nginx 打 `/admin/users` —— 403 原文**
+
+```json
+{"ok":false,"code":"FORBIDDEN","message":"客户端令牌无权访问管理端（客户端与管理端是两套独立令牌）"}
+```
+
+**⑨ 该轮门禁总体**
+
+```text
+探针：PASS=62 FAIL=0
+证据目录：/tmp/cbe2e.2F86sc（nginx -T 原文、证书、dump、逐表行数、各探针原始输出）
+RESULT: PASS —— server/deploy/ 四件实物容器化实跑全部通过
+DEPLOY_EXIT=0
+```
