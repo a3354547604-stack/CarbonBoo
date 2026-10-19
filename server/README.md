@@ -232,6 +232,17 @@ except Exception:   # 目录不存在/导入失败 → 静默跳过，服务端�
   `test_authz.py` 断言了双向不通用（用户令牌→`decode_admin_token` 失败、管理令牌→`decode_user_token` 失败、管理令牌调 `/api/v1/auth/me` → 401）。
 - 反向：管理端令牌调客户端接口 → 401 `TOKEN_INVALID`。`/admin/*` 在未挂载时是 **404**（不是 403）。
 
+### 管理端登出语义（`POST /admin/logout`）：清 Cookie **不等于**吊销令牌
+
+- **事实**：管理端 JWT 是**无状态**的（`server/admin_web/api.py:214` 自述「清掉会话 Cookie；管理端 JWT 无状态，过期自然失效」，
+  `ADMIN_JWT_EXPIRES_MINUTES` 默认 **120**）。所以 `POST /admin/logout` 只做一件事：**清掉浏览器侧的会话 Cookie**。
+  被清掉的那张令牌在其有效期内**原样重放仍会被接受** —— t55 用真实浏览器实测：登出后重放旧 Cookie → **HTTP 200、312 字节**，
+  见 `docs/VERIFICATION.md §R12.6-2`（以及 §R13.3 的复述）。
+- **边界**：这不是缺陷，是无状态令牌的必然结果 —— **不要把「已登出」当成「令牌已失效」**。真正的失效只有两条路：
+  等它过期，或换 `ADMIN_JWT_SECRET`（会让**所有**管理端令牌一起失效）。
+- **若要「登出即吊销」**：需要引入令牌黑名单（Redis / 数据表）或改为「短时令牌 + 刷新机制」——**本项目未实现**，
+  **属产品决策**，不在本轮范围内。
+
 ---
 
 ## 5. `AuthProvider` 抽象（ADR-0001 / 附录 B §7.1）

@@ -9,6 +9,73 @@
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
 
+## §R13 round 13（t59 · 收 §R12.6 的两条实测项：登录页 `#flash` 修复 + 登出语义留档 + `admin_e2e` 清理时机）
+
+> **本节绑定**：基准 HEAD（本节开工时 `git rev-parse HEAD`）= `4a295698bdfbf259db9863a57631dc3d416b5b03`（与 `git ls-remote origin main` 同值）；
+> 修复提交 = `dac2eb875f9590772b6549b91757c2706a2257f8`（`fix:` 前缀，父 `4a29569`）；本节自身随后的 `docs:` 提交使 HEAD 再前进一格。
+> 本节只收 §R12.6 记录、当时**明确留在 `server/**` 写入范围之外**的两条 + t55 工具自身的一条瑕疵。
+> **首行导航句与顶部 blockquote 仍写 round 12，以本节为准**（受「只追加、不改既有行」约束，未改动它们）。
+
+### §R13.1 缺陷 1：登录页错误容器缺 `id="flash"` → 原生 `window.alert`（已修）
+
+| 项 | 内容 |
+|---|---|
+| 改前现象 | 错误口令登录后弹**浏览器原生模态框**：`Page.javascriptDialogOpening type=alert message='管理员用户名或口令错误'`；原生弹窗**阻塞渲染进程**，不处理 dialog 的自动化会在后续 `Runtime.evaluate` 上永久挂住（t55 因此显式 `accept` 才跑完） |
+| 根因 | `server/admin_web/templates/login.html:30` 是独立页面（不继承 `base.html`），错误容器写的是 `<div class="flash is-error" role="alert">{{ error }}</div>`，**没有 `id="flash"`**；而 `server/admin_web/static/admin.js:16` 是 `if (!box) { window.alert(message); return; }`，`document.getElementById('flash')` 取不到 → 走原生弹窗 |
+| 改法 | `login.html:32` 改为**常驻容器**并补 id：`<div id="flash" class="flash is-error" role="alert"{% if not error %} hidden{% endif %}>{{ error }}</div>`（无错误时 `hidden`，语义与原来的 `{% if error %}` 等价）。`admin.js` **一字未改**（`window.alert` 回退保留），改后 `sha256=5ac4cfb2e870f6b76adc318f0c8b6270fa6b4542fee494a908c5dcee5589b602` |
+| 实测（改前） | `bash tests/tools/admin_e2e/run.sh` → `checks: PASS=97 FAIL=0`，其中 `⑥ 失败提示以浏览器原生 alert 弹出…: Page.javascriptDialogOpening type=alert message='管理员用户名或口令错误'` |
+| 实测（改后） | 同一命令 → `checks: PASS=98 FAIL=0  driver_exit=0`、`RUN_EXIT=0`：<br>`⑥ 失败提示不再走浏览器原生 alert（Page.javascriptDialogOpening 事件数应为 0）: dialogs=0`<br>`⑥ 失败提示落在页内 #flash（文本非空、可见、不再是模态弹窗）: #flash found=True hidden=False text='管理员用户名或口令错误' class='flash is-error'` |
+| 检查数 | **97 → 98**（原「必须弹 alert」1 条 → 拆成「无 dialog」+「`#flash` 有文本且可见」2 条）。`artifacts/report.json` 的 `checks` 122 条 = 98 判定 + 13 截图 + 11 INFO，`dialogs=[]`、`failed=0` |
+
+### §R13.2 瑕疵 2：`admin_e2e` 清理时机早于 env 检查（已修，工具自身）
+
+* **改前**：`tests/tools/admin_e2e/run.sh:57` 的 `rm -rf "$ARTIFACTS"` 位于 8 处 env 早退分支**之前** —— 一次 env 不可达的失败跑会清掉上一轮的有效截图（t55 当轮已用 `git restore` 复原）。
+* **改法**：删除脚本开头的清理，移到 `run.sh:236-239`（**环境检查全部通过之后、驱动启动之前**），并加注释写明原因。
+* **实测**：`CB_ADMIN_E2E_CONTAINER=cb-mysql-definitely-absent bash tests/tools/admin_e2e/run.sh` → `[ENV-FAIL] MySQL 容器 cb-mysql-definitely-absent 不可用（docker inspect 失败）`、`RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）`、**`ENV_EXIT=2`**；前后对照 `md5sum -c`：`01_login_page.png c76e6600ddae69bc9204d7e54e2b73fd: OK`、`report.json 387c045a422b6b0fd3c55fffc32782c4: OK`，`mtime=1792380379` 未变、目录仍 **14** 个文件 ⇒ **失败跑不再清 artifacts**。
+
+### §R13.3 留档 3：管理端登出「清 Cookie ≠ 吊销令牌」（只留档，未实现）
+
+* **语义**：`server/admin_web/api.py:214` 自述「清掉会话 Cookie；管理端 JWT 无状态，过期自然失效」；`ADMIN_JWT_EXPIRES_MINUTES` 默认 **120**。
+* **实测（t55 §R12.6-2）**：浏览器侧 Cookie 从 361 字符清到 0 条（正向对照成立），但**被清掉的令牌原样重放仍 `HTTP 200`（312 字节）**。
+* **本轮落地**：`server/README.md` 新增「### 管理端登出语义（`POST /admin/logout`）：清 Cookie **不等于**吊销令牌」小节 —— 一句事实 + 一句边界（不要把「已登出」当「令牌已失效」；真正失效只有等过期或换 `ADMIN_JWT_SECRET`）+ 指回本节与 §R12.6-2，并写明「登出即吊销」需要**令牌黑名单或短时令牌 + 刷新机制**，**本项目未实现、属产品决策**。**未引入任何依赖/黑名单/Redis，未改 `api.py`。**
+
+### §R13.4 门禁与文件（本轮，全部实跑）
+
+| 命令 | 结果 |
+|---|---|
+| `bash tests/tools/admin_e2e/run.sh` | `checks: PASS=98 FAIL=0  driver_exit=0`、`RESULT: PASS`、**`RUN_EXIT=0`** |
+| `CB_ADMIN_E2E_CONTAINER=cb-mysql-definitely-absent bash tests/tools/admin_e2e/run.sh; echo ENV_EXIT=$?` | **`ENV_EXIT=2`**，artifacts 未被清（见 §R13.2） |
+| `python3 tests/tools/check_l0.py --strict` | `检查项：28    错误：0`、`扫描文件：89    命中：0`、`L0-3 …：0 条`、**`L0_EXIT=0`** |
+| `cd server && CARBONBOO_TEST_DB=carbonboo_test_t59 .venv/bin/python -m pytest tests/ -q` | **`237 passed, 1 warning in 199.20s`**、`PYTEST_EXIT=0` |
+| `git diff --stat -- app/ tests/cases/` | **空**（被测字节零改动） |
+| `grep -n 'id="flash"' server/admin_web/templates/login.html` | `32:  <div id="flash" class="flash is-error" role="alert"{% if not error %} hidden{% endif %}>{{ error }}</div>` |
+
+* **本轮改动路径**：`server/admin_web/templates/login.html`、`tests/tools/admin_e2e/{cdp_driver.py,run.sh}`、`tests/tools/admin_e2e/artifacts/`（6 张 PNG 因登录页/后续页面略有重新渲染 + `report.json`）—— `fix:` 提交 `dac2eb8`；`server/README.md` + 本节 —— 随后的 `docs:` 提交。
+* **未改**：`app/**`、`tests/cases/carbon-calc.json`、`tests/tools/check_l0.py`、`server/admin_web/static/admin.js`（`sha256` 与改前一致）、`docs/REVIEW.md`、`AGENTS.md`、`tests/README.md`；**未删 / 未跳 / 未放宽任何断言**（`cdp_driver.py` 只把「期望 alert」翻转成「期望无 alert + `#flash` 有文本」两条，并新增可见性断言）。
+* **`docs/VERIFICATION.md` 的 diff 单列**：**只追加** —— 新增本节（插在 §R12 之前）；`git diff` 里除本节外无其它行（§R1–§R12 与 §0–§15 正文一字未改）。
+
+### §R13.5 未运行（**一条都不算通过**；与 §R12.7 同一环境，本轮未改变）
+
+| 项 | 为什么仍未运行 |
+|---|---|
+| **L1 全部 hypium（10 套件 / 36 `it()`）在设备上执行** | 无真机（`hdc` 不在 `PATH`）、无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 GLIBC 2.43 —— 离线 36/36 见 §R10/§R11，**两证不可互相顶替** |
+| **L2 端侧集成** | 需两台真实设备 |
+| **`server/deploy/` 实跑（systemd / nginx / TLS / 定时备份）** | 本机无部署目标（`/opt/carbonboo/…` 不存在、`nginx` 未安装）；容器化实跑另见 `tests/tools/deploy_e2e/REPORT.md`（**不属于本轮，也不能替代真机部署**） |
+| **App 18 页视觉走查（截图腿）** | `hdc` + 模拟器 + Previewer 三断点未变，App 侧零截图；本轮 13 张截图全是 `/admin` |
+| **非 Edge 浏览器 / 移动端视口 / HTTPS** | 只驱动 Edge headless、明文 `http://127.0.0.1:8041`、单一 1440×900 视口 |
+| **管理端「登出即吊销」** | **未实现**（产品决策，见 §R13.3）；本轮只留档 + 实测其现状语义 |
+
+### §R13.6 未决问题
+
+1. **登出即吊销仍未实现**：需要令牌黑名单或短时令牌 + 刷新机制（产品决策，§R13.3）。
+2. **只覆盖 Edge**：其它浏览器与 TLS 部署下的 `cookie_secure` 分支未验证（同 §R12.10-3）。
+3. `#flash` 常驻后，登录页无错误时该 `div` 带 `hidden`（不占位）—— 实测登录页截图 md5 与改前一致（`c76e6600…`），**无视觉回归**，无需再处理。
+
+### §R13.7 边界句
+
+> 本节结论只覆盖：**本地明文 HTTP + 任务专属库 + Edge headless** 下「登录页失败提示的呈现路径」与「`admin_e2e` 工具自身的清理时机」。
+> 它**不等于** L1 在设备上跑过、**不等于** L2、**不等于** `server/deploy/` 能部署、**不等于** App 18 页视觉走查通过；**未运行项一条都不算通过**。
+
 ## §R12 round 12（t55 · **`/admin` 浏览器级端到端验证**：真实 Edge headless + CDP 驱动七项功能与四条鉴权边界）
 
 > 本节是**新增证据轮**（`verifier-oc` 执行，非 `/admin` 作者）：把 §13 表里一直写着「**无浏览器驱动**」的
