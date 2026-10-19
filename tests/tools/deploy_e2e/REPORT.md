@@ -338,3 +338,252 @@ docker run --rm -v "$REPO/server/deploy/nginx/carbonboo.conf:/etc/nginx/conf.d/c
 | `logs/systemd_verify_raw.log` / `systemd_verify_stub.log` | `systemd-analyze verify` 原样 / S5 副本原文 |
 | `units/`、`stub/` | S5 副本与 stub 可执行文件 |
 | `app.env`、`schema.sql`、`seed.sql` | S3/S4 派生文件（密钥已打码，未入库） |
+
+---
+
+# §12 t75 追加节：补 t56 两条未运行项（`/admin` 经 nginx+TLS 端到端 · systemd 真启动）
+
+> 本节**只追加**（`§0`–`§11` 原文一字未改），取代关系见 §12.6。
+> 本轮基线（开工实测）：`git rev-parse HEAD` = `cf062927fd354655982810a864818feac1a56cb6`，
+> 与 `git ls-remote origin main` 同值；`git status --short` 空。
+
+## 12.0 结论速览
+
+| 项 | 上一轮（t56）状态 | 本轮状态 | 证据 |
+|---|---|---|---|
+| `/admin` 经真 nginx(TLS) 反代端到端 | 未运行（§11 未运行清单） | **实跑通过 12 条** | §12.3（`run.sh` §7.5b + §7.6d） |
+| systemd 单元与 timer 真启动 | 未运行（§11 未运行清单 N1） | **实跑通过 24 条** | §12.1 / §12.2（`run_systemd.sh`） |
+| 主用例总门禁 | `PASS=49 FAIL=0` | **`PASS=62 FAIL=0`，`DEPLOY_EXIT=0`** | §12.2 |
+
+## 12.1 systemd 真启动（t56 未运行项②）
+
+### 12.1.1 怎么跑
+
+```bash
+# 单独跑（自包含：自己起容器、自己建任务库 carbonboo_deploy_e2e_sd、跑完自己清）
+bash tests/tools/deploy_e2e/run_systemd.sh; echo "SD_EXIT=$?"
+
+# 或经总门禁（run.sh §9.8 会调它并把 PASS:/FAIL: 逐条并入总计数）
+bash tests/tools/deploy_e2e/run.sh; echo "DEPLOY_EXIT=$?"
+```
+
+真启动放在 **PID1 = systemd 的容器**里做，容器配方（实测唯一可行的一条）：
+
+```bash
+docker run -d --name carbonboo-deploy-sd-e2e --privileged --cgroupns=host \
+  -v /sys/fs/cgroup:/sys/fs/cgroup:rw --tmpfs /run --tmpfs /tmp --network host \
+  -v <repo>/server:/repo/server:ro -v <repo>/server/deploy/systemd:/repo/systemd:ro \
+  carbonboo-systemd-e2e:12
+```
+
+### 12.1.2 原始输出：24 条断言逐条（`run_systemd.sh` 的 `PASS:` 行，逐字）
+
+```
+PASS: 1.1 容器内 PID1 systemd 可用（is-system-running=running）
+PASS: 1.2 /proc/1/comm = systemd（PID 1 就是 systemd，不是 shim）
+PASS: 2.1 容器内 python3 = Python 3.11.2（与仓库 requirements.txt 的 3.11+ 口径一致）
+PASS: 2.2 建出 carbonboo 用户/组（uid=996(carbonboo) gid=996(carbonboo) groups=996(carbonboo)）
+PASS: 2.3 /opt/carbonboo/server 布局就位（README.md admin_web app deploy pyproject.toml requirements.txt sql tests --- app: __init__.py __pycache__ api core main.）
+PASS: 2.4 .venv 就绪（uvicorn 控制台脚本 + python 均在单元写死的路径上；依赖来源=pip）
+PASS: 2.4b /opt/carbonboo 属主 = carbonboo:carbonboo（单元降权后仍可 exec）
+PASS: 2.5 依赖可导入（uvicorn/fastapi=0.54.0 0.143.2）
+PASS: 2.6 任务库 carbonboo_deploy_e2e_sd 就绪（21 张表，不碰生产库 carbonboo）
+PASS: 3.1 三个单元装进容器后与仓库文件 sha256 逐字节一致（未改一个字）
+PASS: 3.2 systemctl daemon-reload 成功（rc=0）
+PASS: 4.1 systemctl start carbonboo-server 返回 0
+PASS: 4.2 systemctl is-active carbonboo-server = active（单元真的拉起并常驻）
+PASS: 4.2b 主进程真实存在且未反复重启（MainPID=276 NRestarts=0）
+PASS: 4.3 单元拉起的 uvicorn 真答业务：容器内 GET http://127.0.0.1:8000/api/v1/health → 200 {"ok":true,"version":"1.0.0","time":1792397598148}
+PASS: 4.4 /admin 随服务一起被拉起：容器内 GET /admin/login → 200 1980
+PASS: 4.5 进程身份 User=carbonboo（单元里的降权真的生效）
+PASS: 4.6 Restart=always 生效（systemd 读到的重启策略）
+PASS: 5.1 systemctl start carbonboo-purge.timer rc=0 且 is-active=active
+PASS: 5.2 timer 被 list-timers 列出（下一触发时刻见上表：OnCalendar=*-*-* 04:23:00）
+PASS: 5.3 timer 真触发了一次 carbonboo-purge.service（journal 里有 purge_expired_accounts 输出）
+PASS: 5.4 purge 运维入口真跑通（Oct 19 08:14:18 docker-desktop systemd[1]: Starting carbonboo-purge.service - CarbonBoo �）
+PASS: 5.5 carbonboo-purge.service 真的被触发过且成功（ExecMainStartTimestamp=Mon 2026-10-19 08:14:18 UTC Result=success ExecMainStatus=0）
+PASS: 5.6 容器内 carbonboo-purge.timer 副本与仓库文件仍逐字节一致（改的只是 e2e 临时副本）
+```
+
+### 12.1.3 关键原始行（journalctl / systemctl / 容器内 python）
+
+```text
+PASS: 1.1 容器内 PID1 systemd 可用（is-system-running=running）
+NOTE: 容器内 Python 3.11.2（/usr/bin/python3）
+PASS: 2.1 容器内 python3 = Python 3.11.2（与仓库 requirements.txt 的 3.11+ 口径一致）
+    Oct 19 08:13:17 docker-desktop carbonboo-server[276]: INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+    Oct 19 08:13:17 docker-desktop carbonboo-server[276]: INFO:     Started parent process [276]
+PASS: 4.2b 主进程真实存在且未反复重启（MainPID=276 NRestarts=0）
+    Oct 19 08:13:17 docker-desktop carbonboo-server[276]: INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+    Oct 19 08:13:17 docker-desktop carbonboo-server[276]: INFO:     Started parent process [276]
+    MainPID=276
+=== 5. carbonboo-purge.timer：start → list-timers → 真触发一次 purge ===
+=== 5a. systemctl list-timers --all ===
+    NEXT                        LEFT       LAST PASSED UNIT                         ACTIVATES
+PASS: 5.2 timer 被 list-timers 列出（下一触发时刻见上表：OnCalendar=*-*-* 04:23:00）
+    Oct 19 08:14:18 docker-desktop systemd[1]: Starting carbonboo-purge.service - CarbonBoo 超期账号物理清除（注销满 30 天）...
+    Oct 19 08:14:18 docker-desktop carbonboo-purge[601]: [2026-10-19T08:14:18.644560+00:00] purge_expired_accounts: 物理清除 0 个超期账号
+    Oct 19 08:14:18 docker-desktop systemd[1]: Finished carbonboo-purge.service - CarbonBoo 超期账号物理清除（注销满 30 天）.
+PASS: 5.3 timer 真触发了一次 carbonboo-purge.service（journal 里有 purge_expired_accounts 输出）
+PASS: 5.5 carbonboo-purge.service 真的被触发过且成功（ExecMainStartTimestamp=Mon 2026-10-19 08:14:18 UTC Result=success ExecMainStatus=0）
+```
+
+### 12.1.4 结论与边界
+
+- **结论**：`server/deploy/systemd/` 的三个单元（`carbonboo-server.service`、`carbonboo-purge.service`、
+  `carbonboo-purge.timer`）在**真的 PID1=systemd 环境**里能装、能 `daemon-reload`、能 `start`、能常驻
+  （`active` + `MainPID≠0` + `NRestarts=0`）、能真答业务（`/api/v1/health` → 200 `{"ok":true}`、
+  `/admin/login` → 200），且进程身份确实是 `User=carbonboo`（降权生效）；timer 能被 `list-timers` 列出、
+  并**真触发**了一次 `carbonboo-purge.service`（journal 里出现 `purge_expired_accounts` 与「物理清除」，
+  `Result=success ExecMainStatus=0`）。装进容器的三个单元文件与仓库文件 **sha256 逐字节一致**（`server/deploy/`
+  一个字都没改）。
+- **边界（不冒充）**：容器≠云主机 —— 仍未验证「真云 VM 上的开机自启持久化（跨重启的 `enable` 状态）」与
+  `systemd-analyze security` 评分；这两条保留在未运行清单（`run.sh` §11 N1 已按此改写）。
+- 环境纠正：**本机 WSL 的 PID 1 就是 systemd**（`ps -p 1 -o comm=` → `systemd`、`systemctl is-system-running`
+  → `running`、`systemd --version` → 259），t56 当时「WSL 内无 PID1 systemd」的前提**已不成立**；
+  但本机 `sudo` 需交互认证（无 root），所以真启动没有直接装到宿主 `/etc/systemd/system`，而是放进
+  PID1=systemd 的容器（等效且可清理）。
+
+## 12.2 在总门禁里的位置（`run.sh` §9.8 + 主用例总体）
+
+```
+=== 9.8 systemd 真启动（PID1=systemd 容器：单元 + timer 真拉起，t75 补 t56 未运行项②） ===
+grep: /tmp/cbe2e.vViV4X/logs/run_systemd.log: binary file matches
+  PASS: 1.1 容器内 PID1 systemd 可用（is-system-running=running）
+  PASS: 1.2 /proc/1/comm = systemd（PID 1 就是 systemd，不是 shim）
+  PASS: 2.1 容器内 python3 = Python 3.11.2（与仓库 requirements.txt 的 3.11+ 口径一致）
+  PASS: 2.2 建出 carbonboo 用户/组（uid=996(carbonboo) gid=996(carbonboo) groups=996(carbonboo)）
+  PASS: 2.3 /opt/carbonboo/server 布局就位（README.md admin_web app deploy pyproject.toml requirements.txt sql tests --- app: __init__.py __pycache__ api core main.）
+  PASS: 2.4 .venv 就绪（uvicorn 控制台脚本 + python 均在单元写死的路径上；依赖来源=pip）
+  PASS: 2.4b /opt/carbonboo 属主 = carbonboo:carbonboo（单元降权后仍可 exec）
+  PASS: 2.5 依赖可导入（uvicorn/fastapi=0.54.0 0.143.2）
+  PASS: 2.6 任务库 carbonboo_deploy_e2e_sd 就绪（21 张表，不碰生产库 carbonboo）
+  PASS: 3.1 三个单元装进容器后与仓库文件 sha256 逐字节一致（未改一个字）
+  PASS: 3.2 systemctl daemon-reload 成功（rc=0）
+  PASS: 4.1 systemctl start carbonboo-server 返回 0
+  PASS: 4.2 systemctl is-active carbonboo-server = active（单元真的拉起并常驻）
+  PASS: 4.2b 主进程真实存在且未反复重启（MainPID=276 NRestarts=0）
+  PASS: 4.3 单元拉起的 uvicorn 真答业务：容器内 GET http://127.0.0.1:8000/api/v1/health → 200 {"ok":true,"version":"1.0.0","time":1792397598148}
+  PASS: 4.4 /admin 随服务一起被拉起：容器内 GET /admin/login → 200 1980
+  PASS: 4.5 进程身份 User=carbonboo（单元里的降权真的生效）
+  PASS: 4.6 Restart=always 生效（systemd 读到的重启策略）
+  PASS: 5.1 systemctl start carbonboo-purge.timer rc=0 且 is-active=active
+  PASS: 5.2 timer 被 list-timers 列出（下一触发时刻见上表：OnCalendar=*-*-* 04:23:00）
+  PASS: 5.3 timer 真触发了一次 carbonboo-purge.service（journal 里有 purge_expired_accounts 输出）
+  PASS: 5.5 carbonboo-purge.service 真的被触发过且成功（ExecMainStartTimestamp=Mon 2026-10-19 08:14:18 UTC Result=success ExecMainStatus=0）
+  PASS: 5.6 容器内 carbonboo-purge.timer 副本与仓库文件仍逐字节一致（改的只是 e2e 临时副本）
+      子脚本退出码 = 0（0=全过 1=有失败 2=环境不可达）；原始输出 /tmp/cbe2e.vViV4X/logs/run_systemd.log
+  PASS 9.8 systemd 真启动：三个单元与 purge timer 在 PID1=systemd 的容器里真跑通（逐条 PASS 见上）
+
+```
+
+主用例总体（本轮最终一趟）：
+
+```text
+探针：PASS=62 FAIL=0
+证据目录：/tmp/cbe2e.vViV4X（nginx -T 原文、证书、dump、逐表行数、各探针原始输出）
+RESULT: PASS —— server/deploy/ 四件实物容器化实跑全部通过
+```
+
+## 12.3 `/admin` 经真 nginx(TLS) 反代端到端
+
+### 12.3.1 原始输出（12 条断言 + 7.6 限流对照，逐字）
+
+```text
+=== 7.5b 管理端 /admin 经 nginx 端到端（真 TLS + 真 Cookie 会话） ===
+  PASS 7.5b.1 GET /admin/login（Accept: text/html）→ 200 且是 HTML 表单页（1690 字节）
+  PASS 7.5b.2 错误口令 POST /admin/login（JSON）→ 401（{"ok":false,"code":"CREDENTIAL_INVALID","message":"管理员用户名或口令错误"}）
+  PASS 7.5b.3 正确口令 → 200 + adminToken（长度 359）+ Set-Cookie: carbonboo_admin_token（HttpOnly 会话）
+  PASS 7.5b.4 GET /admin/users → 200 且含 7.5 注册的客户端账号 deploy_e2e_1（会话 Cookie 生效）
+  PASS 7.5b.5 GET /admin/overview → 200（{"ok":true,"data":{"accountCount":1,"activeAccountCount":1,"deviceCount":0,"recordCount":0,"todayRec…）
+  PASS 7.5b.6 GET /admin/config dailyCap=200 → PUT {"dailyCap":250} → 200 changed=['dailyCap'] → 回显 dailyCap=250
+  PASS 7.5b.7 POST /admin/items/frame_01/icon（Content-Type: image/png + 70 字节）→ 200，落盘 frame_01-9fb285daed.png
+  PASS 7.5b.8 GET /admin/icons/frame_01-9fb285daed.png → 200 + image/png（70 字节）
+  PASS 7.5b.9 POST /admin/password → 200；旧口令再登录 401、新口令登录 200（改密真的生效）
+  PASS 7.5b.10 POST /admin/logout → 200 loggedOut；登出后再取 /admin/users → 303（会话已失效）
+      客户端令牌 → /admin/users：403
+      客户端令牌 → /admin/overview：403
+      客户端令牌 → /admin/config：403
+      客户端令牌 → /admin/icons/none.png：403
+  PASS 7.5b.11 客户端令牌经 nginx 打 /admin/users、/admin/overview、/admin/config、/admin/icons/* → 全部 403
+
+=== 7.6 限流实测（zone=carbonboo_login，rate=20r/m） ===
+      POST /api/v1/auth/login × 40 → 429=37 其它=3
+  PASS 7.6a 登录接口超阈值被拒：40 次里 37 次拿到 429（limit_req_status 429 生效）
+      GET /api/v1/shop/items × 30 → 503=20 200=10
+  PASS 7.6b 取价接口超阈值被拒：30 次里 20 次拿到 503（该 location 未设 limit_req_status → nginx 默认 503）
+  PASS 7.6c 同接口未超阈值时仍正常 200（10 次）
+      POST /admin/login × 12（每次不同 username）→ 429=12 其它=0
+  PASS 7.6d 管理端登录路径共享 carbonboo_login zone：12 次里 12 次 429（nginx 层限流对 /admin/(login|password) 生效）
+
+```
+
+### 12.3.2 结论 / 覆盖与不覆盖
+
+- **结论**：经真 nginx（真 TLS、真反代、仓库原生 `carbonboo.conf`）走通：HTML 登录页 200、
+  错误口令 401、正确口令 200 + `adminToken` + `Set-Cookie: carbonboo_admin_token`、
+  带 Cookie 的 `/admin/users`（含 7.5 真注册的客户端账号 `deploy_e2e_1`）、`/admin/overview` 200、
+  配置 `GET→PUT(dailyCap=250)→changed=['dailyCap']→回显 250`、图标**真上传**（`image/png` 原始字节，
+  落盘 `frame_01-9fb285daed.png`）与**真取回**（200 `image/png`）、改密后旧口令 401 / 新口令 200、
+  登出后会话失效（再取 `/admin/users` → 303）、**客户端令牌经 nginx 打 `/admin/*` 一律 403**
+  （两套 JWT 密钥的隔离在反代下仍成立）；管理端登录路径与客户端登录路径共享 `carbonboo_login` zone，
+  nginx 层限流对它同样生效（`POST /admin/login` × 12，每次换 username ⇒ **12/12 429**，排除应用层
+  `admin|<IP>|<username>` 计数器干扰）。
+- **不覆盖**：真浏览器图层（页面渲染/点击/截图）由同仓 `tests/tools/admin_e2e/` 覆盖（本轮 out of scope，
+  未运行）；certbot 真签发/续期、公网 DNS/防火墙/WAF、真实浏览器下的 HSTS/混合内容策略未验。
+
+## 12.4 为「可重复」而做的三处夹具收敛（都不碰 `server/deploy/`）
+
+1. **预备镜像**：`jrei/systemd-debian:12` 里连 `python3`/`tar` 都没有，原实现靠容器内 `apt-get install` 现装；
+   实测出现过 `E: Failed to fetch http://deb.debian.org/…python3.11-venv…deb  502  Bad Gateway`
+   ⇒ 子脚本只能退 `2`（环境不可达），把 9.8 记成红。现改为**派生一个把 `python3/venv/tar` 烘进去的镜像**
+   `carbonboo-systemd-e2e:12`（Debian 源换 `mirrors.aliyun.com`，只建一次；缺镜像时脚本自己 `docker build`，
+   失败则回退上游镜像 + 容器内 apt 三次重试）。收敛后单独复跑：
+
+```
+NOTE: 预备镜像 carbonboo-systemd-e2e:12 就绪（python3/venv/tar 已烘入，本轮不需要容器内 apt）
+NOTE: 镜像 carbonboo-systemd-e2e:12 就绪（prepared=1）；宿主 8000 空闲；carbonboo-mysql 运行中
+NOTE: 容器内已具备 python3/tar（预备镜像，未联网安装）
+PASS: 2.1 容器内 python3 = Python 3.11.2（与仓库 requirements.txt 的 3.11+ 口径一致）
+PASS=24 FAIL=0
+RESULT: PASS
+SD_EXIT=0
+```
+
+2. **§9.5 安全阀②的容器**从 `alpine:3.20` + `apk add bash`（要联网，拉不到源时变 `rc=127` ⇒ 门禁假红）
+   换成 `${PY_IMAGE}` = `python:3.11-slim`（本地已有、自带 bash、**没有** mysql/mariadb 客户端）。断言不变（仍要求 `exit 3`）：
+   ```text
+   STOP: 本机没有 mysql 客户端，无法执行迁移。
+   建议: 在目标机安装 mysql-client；或改用 .venv/bin/python 走 tests/conftest.py 的同一套执行器。
+   RC=3
+   ```
+3. **§11 未运行清单 N1 改写**：systemd 真启动已由 §9.8 关闭；仍未运行的只剩真云 VM 的开机自启持久化与
+   `systemd-analyze security` 评分。
+
+## 12.5 复现命令（一条命令跑全部，含两条新阶段）
+
+```bash
+bash tests/tools/deploy_e2e/run.sh; echo "DEPLOY_EXIT=$?"   # 期望 0（本轮 PASS=62 FAIL=0）
+L1_KEEP=1 bash tests/tools/deploy_e2e/run.sh                # 保留现场 $WORK（证据目录会打印在末尾）
+```
+
+## 12.6 本节与既有章节的关系（只追加，不改原文）
+
+| 既有条目 | 本节结论 |
+|---|---|
+| §11 未运行清单 **N1**「systemd 单元与 timer 从未启动；WSL 内无 PID1 systemd」 | **已关闭**：宿主 PID1 确实是 systemd，真启动改在 PID1=systemd 容器内做，24/24 通过 |
+| §11 未运行清单 **N2** certbot 真签发/续期 | 仍未运行（不联网 ACME），本节不改变 |
+| §11 未运行清单 **N3** 公网 DNS/防火墙 | 仍未运行，本节不改变 |
+| §11 未运行清单 **N4** 备份规模/锁表 | 仍未运行，本节不改变 |
+| §11 未运行清单 **N5** 生产 MySQL 普通用户凭据 | 仍未运行，本节不改变 |
+| §4 覆盖范围三态 | `/admin` 经 nginx+TLS 端到端、systemd 真启动：**静态验证 → 实跑** |
+
+## 12.7 未决问题 / 未覆盖（如实单列）
+
+1. 真云 VM 上的 `systemctl enable` 跨重启持久化、`systemd-analyze security` 评分：**未运行**（容器不是云主机）。
+2. certbot 真实签发/续期、公网 DNS/防火墙/WAF：**未运行**（本机不接 ACME、无公网域名）。
+3. 真浏览器图层（渲染/点击/截图）：**未运行**（本轮用等价真 HTTP 客户端 curl+Cookie；浏览器层见 `tests/tools/admin_e2e/`）。
+4. 备份的规模/锁表行为：**未运行**（任务库只有种子级数据）。
+5. 本节的 `/admin` 端到端用的是 `run.sh` 的 **S1/S3/S6 派生**（两容器拓扑 + 派生 `.env` + 可写上传目录），
+   与「单机 systemd + nginx 同宿主」的生产拓扑在**容器边界**上不同；单元本身的真启动由 §12.1 单独覆盖。
+
