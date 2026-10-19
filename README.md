@@ -26,6 +26,8 @@
 
 全部规格文档在 [`docs/`](./docs/)。**先读 [docs/README.md](./docs/README.md)（文档总导航）**——**文档清单、每份附录的内容摘要与「什么时候读」，唯一维护处是 `docs/README.md`；本表只保留入口顺序，不重复描述。**
 
+> **要在本机跑构建 / 门禁**：先读 [`docs/toolchain/harmony-cli-build.md`](./docs/toolchain/harmony-cli-build.md)。**换机器的第一件事**是把 `app/hvigor/hvigor-config.json5:14-15` 里写死的 `/home/qinyixiang/...` 换成本机路径——一条 `sed` 就能改完，见该文件 §坑 4（不改会在构建门禁 fail：`BUILD FAILED` / 退出码 `255`）。
+
 | 顺序 | 文件 | 什么时候读 |
 |:--:|---|---|
 | 0 | [GLOSSARY.md](./GLOSSARY.md) | 任何时候，先对齐术语 |

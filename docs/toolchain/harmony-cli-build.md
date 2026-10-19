@@ -87,6 +87,26 @@ done
 }
 ```
 
+**⚠️ 换机器必改：上面两行的 `file:` 路径里含本机用户名**（t70 补）
+
+`app/hvigor/hvigor-config.json5:14-15` 是**整个仓库里唯一「会被构建直接读取、且写死了本机家目录」的绝对路径**
+——`git grep -n '/home/qinyixiang' -- .` 的其余命中全在 `docs/VERIFICATION.md`、`tests/tools/l2_sync/REPORT.md`
+与**本文档上面这段示例**里，那些是留档文字（改了不影响运行，也别改）。
+换机器 / 换用户名 / 把 `harmony-toolchain` 装到别处时，**一条命令改完**：
+
+```bash
+sed -i "s#/home/qinyixiang#$HOME#g" app/hvigor/hvigor-config.json5
+```
+
+- 前提：工具链装在 `$HOME/harmony-toolchain`（`env.sh` 的默认位置）。装在别处就手改这两行，
+  改完用 `grep -n 'file:' app/hvigor/hvigor-config.json5` 对一眼——两行都必须指向**存在的**目录。
+- **不改的后果（三段对照实测，2026-10-19）**：① 基线 `BUILD SUCCESSFUL in 28 s 5 ms` / `EXIT=0`；
+  ② 把前缀换成不存在的 `/tmp/cb_no_such_user` ⇒ **`BUILD FAILED` / `EXIT=255`**，原文
+  `Error: ENOENT: no such file .../node_modules/@ohos/hvigor/bin/hvigor.js,delete ... and retry.`
+  （证明这两行真的被读）；③ 用上面那条 `sed` 换回 `$HOME` ⇒ 恢复 `BUILD SUCCESSFUL in 4 s 637 ms` / `EXIT=0`，
+  且 `git diff --stat app/hvigor/hvigor-config.json5` 为空（与仓库里的 `$HOME` 版**逐字节相同**）。
+- 这是**唯一**一处「照文档复现仍会在构建门禁失败」的机器锁定项（`docs/VERIFICATION.md §R15.8-F2`）。
+
 ### 坑 5：`build-profile.json5` 三个坑
 ```json5
 {
@@ -155,7 +175,7 @@ hvigorw --no-daemon --mode module -p module=entry@ohosTest -p buildMode=test ass
 
 SDK 路径两种方式都实测可用：
 - 项目根写 `local.properties` → `sdk.dir=<...>/sdk`
-- 或环境变量 `OHOS_BASE_SDK_HOME=<...>/sdk`（已由 `env.sh` 导出，**推荐**，团队不用往仓库塞机器相关路径）
+- 或环境变量 `OHOS_BASE_SDK_HOME=<...>/sdk`（已由 `env.sh` 导出，**推荐**，团队不用往仓库塞机器相关路径）——**唯一例外**是 `app/hvigor/hvigor-config.json5:14-15` 的两行 `file:` 依赖路径，它必须写本机 `$HOME`（换机器必改，见 §坑 4）
 
 ## 5. 编译门禁是真的有效（不是摆设）
 
