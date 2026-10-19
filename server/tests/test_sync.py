@@ -1323,3 +1323,93 @@ def test_main_py_uses_admin_web_mount_and_creates_no_app_admin_package():
     assert not (SERVER_DIR / "app" / "admin").exists(), "Web 后台管理端不在 t5 范围（由 t6 建 server/admin_web/）"
     assert not (SERVER_DIR / "templates").exists()
     assert not (SERVER_DIR / "static").exists()
+
+
+# --------------------------------------------------------------------------- #
+# 7) t68：落库基准 —— 服务端与云端行的 `updated_at` = 服务端基准（附录 B §5.3:1095）
+# --------------------------------------------------------------------------- #
+def test_push_stores_server_basis_updated_at(client, db_session):
+    """§5.3:1095「服务端与云端行的 `updated_at` = 服务端基准」。
+
+    客户端钟慢时被推上来的行，库内必须是 `客户端 raw + offset_ms`；原样存客户端时间戳会让
+    库内值与增量 `since`（服务端基准）跨基准（t68 定事实实测：改前库内 = 客户端 raw）。
+    """
+    import time
+
+    account = register_user(client)
+    user_id = str(account["userId"])
+    now = int(time.time() * 1000)
+    row = carbon_record(user_id, "rec-basis-1", amount=3.0, updated_at=T0, device_id="d-skew")
+    outcome = data_of(
+        push(client, account, {"carbon_record": [row]}, device_id="d-skew", client_now=now - 10 * MS_PER_MINUTE)
+    )
+    offset_ms = int(outcome["offsetMs"])
+    assert offset_ms > 0, "客户端钟慢 ⇒ offsetMs = 服务端 − 客户端 为正"
+    assert outcome["accepted"] == 1
+
+    db_session.rollback()
+    stored = db_session.execute(
+        text("SELECT updated_at FROM carbon_record WHERE id = 'rec-basis-1' AND user_id = :uid"),
+        {"uid": user_id},
+    ).scalar_one()
+    assert int(stored) == int(T0) + offset_ms, "库内必须是服务端基准（raw + offset_ms）"
+    assert int(stored) != int(T0), "不得原样落客户端时间戳"
+
+
+def test_incremental_pull_no_miss_and_no_phantom_under_skew(client, db_session):
+    """§5.3:1095 的后果（t68）：`since` 与库内值同基准后，偏移客户端既不漏行、也不重复拉。
+
+    构造：客户端钟慢 `skew` 分钟；三行都用**客户端基准**的 raw 写。
+    - `rec-miss`：raw = S0 − 30_000（< 服务端锚点 S0），但真实写入时刻 = raw + skew > S0
+      ⇒ 服务端基准下它**必须**被 `since=S0` 拉到（改前库内是 raw ≤ S0 ⇒ 漏行）。
+    - `rec-old`：raw = S0 − skew − 60_000 ⇒ 真实时刻 ≤ S0 − 60_000 ⇒ 不得被拉到。
+    - `rec-first`：首次 push（无 `clientNow`）那一行，raw 远小于 S0 ⇒ 不得被拉到。
+    """
+    import time
+
+    account = register_user(client)
+    user_id = str(account["userId"])
+    now = int(time.time() * 1000)
+    skew = 10 * MS_PER_MINUTE
+
+    first = data_of(
+        push(
+            client,
+            account,
+            {"carbon_record": [carbon_record(user_id, "rec-first", amount=1.0, updated_at=now - 120_000)]},
+            device_id="d-skew",
+        )
+    )
+    server_time = int(first["serverTime"])  # 服务端基准的锚点
+
+    outcome = data_of(
+        push(
+            client,
+            account,
+            {
+                "carbon_record": [
+                    carbon_record(user_id, "rec-miss", amount=2.0, updated_at=server_time - 30_000, device_id="d-skew"),
+                    carbon_record(
+                        user_id, "rec-old", amount=3.0, updated_at=server_time - skew - 60_000, device_id="d-skew"
+                    ),
+                ]
+            },
+            device_id="d-skew",
+            client_now=now - skew,  # 客户端钟慢 skew ⇒ offset_ms ≈ +skew
+        )
+    )
+    assert int(outcome["offsetMs"]) > 0
+    assert outcome["accepted"] == 2
+
+    db_session.rollback()
+    got = [
+        str(r[0])
+        for r in db_session.execute(
+            text("SELECT id FROM carbon_record WHERE user_id = :uid AND updated_at > :since ORDER BY id"),
+            {"uid": user_id, "since": server_time},
+        ).all()
+    ]
+    assert got == ["rec-miss"], f"since 与服务端基准对齐后应恰好只拉到 rec-miss，实际 {got}"
+
+    pulled = data_of(pull(client, account, since=server_time))["tables"]["carbon_record"]
+    assert [str(r["id"]) for r in pulled] == ["rec-miss"], "HTTP 增量拉取与库内查询必须一致（不漏行、不重复拉）"

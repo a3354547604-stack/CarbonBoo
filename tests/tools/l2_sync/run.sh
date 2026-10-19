@@ -226,6 +226,37 @@ RESTORED_EXIT="$(cat "$TMP/exit-restored.txt")"
 grep -E '^\[(PASS|FAIL)\]|^RESULT' "$TMP/out-restored.txt" || true
 info "还原后退出码 = $RESTORED_EXIT（必须 0）"
 
+# ── 6b. 反证 C（t68）：给客户端**落库换算**注入 1000ms 偏差 ⇒ 严格基准断言必红；还原必绿 ────────
+# 为什么单开一条腿：t68 把"两端 updated_at 逐字节相同"这类断言换成了严格基准等价式
+#（`端上值 + offsetMs === 服务端值`）。3s 容差会把 1000ms 级的符号/倍率错误吃成绿，
+# 所以必须证明这条严格断言对 1000ms 的偏差会立刻变红、并对还原后的实现变绿。
+say "6b. 反证 C（t68 严格基准断言）：客户端落库换算多 1000ms ⇒ 必红；git show 还原 ⇒ 必绿"
+STRICT_GROUPS="baseline,lww,delete,clock"
+BUILD_MUT2="$TMP/build-mut2"
+build "$BUILD_MUT2" "--mutate=offset-1000"
+MUT2_SHA="$(sha256sum "$BUILD_MUT2/src/main/ets/viewmodel/net/SyncService.ets" | cut -d' ' -f1)"
+info "第二个变异副本 sha256 = $MUT2_SHA（仓库原件 $REPO_SHA）"
+reset_db
+run_suite "$BUILD_MUT2" "$STRICT_GROUPS" "mut2"
+MUT2_EXIT="$(cat "$TMP/exit-mut2.txt")"
+grep -E '^\[(FAIL)\]|^RESULT|^失败项' "$TMP/out-mut2.txt" || true
+info "严格基准变异后退出码 = $MUT2_EXIT（必须非 0）"
+
+git -C "$REPO_ROOT" show "HEAD:$SYNC_REL" > "$BUILD_MUT2/src/main/ets/viewmodel/net/SyncService.ets"
+if cmp -s "$REPO_ROOT/$SYNC_REL" "$BUILD_MUT2/src/main/ets/viewmodel/net/SyncService.ets"; then
+  info "第二个变异副本 git show 还原后与仓库原件逐字节一致（cmp 通过）"
+  RESTORED2_OK=1
+else
+  info "第二个变异副本还原后与仓库原件不一致 —— cmp 失败"
+  RESTORED2_OK=0
+fi
+build "$BUILD_MUT2" "--skip-copy"
+reset_db
+run_suite "$BUILD_MUT2" "$STRICT_GROUPS" "mut2-restored"
+RESTORED2_EXIT="$(cat "$TMP/exit-mut2-restored.txt")"
+grep -E '^\[(PASS|FAIL)\]|^RESULT' "$TMP/out-mut2-restored.txt" || true
+info "严格基准变异还原后退出码 = $RESTORED2_EXIT（必须 0）"
+
 # ── 7. 零改动核对 + 汇总 ───────────────────────────────────────────────────
 say "7. 零改动核对（app/ tests/cases/ tests/tools/l1_offline/；server/ docs/ 并行 agent 的改动单列）"
 STRICT="$(git -C "$REPO_ROOT" status --short -- app/ tests/cases/ tests/tools/l1_offline/ 2>/dev/null)"
@@ -251,6 +282,8 @@ say "8. 汇总"
 printf '   %-34s %s\n' "主用例（八项全跑）" "退出码 $MAIN_EXIT（0=全过）"
 printf '   %-34s %s\n' "变异（平局判据反转）" "退出码 $MUT_EXIT（须非 0）"
 printf '   %-34s %s\n' "git show 还原后复跑" "退出码 $RESTORED_EXIT（须 0）"
+printf '   %-34s %s\n' "变异（落库换算多 1000ms）" "退出码 $MUT2_EXIT（须非 0）"
+printf '   %-34s %s\n' "严格基准还原后复跑" "退出码 $RESTORED2_EXIT（须 0）"
 printf '   %-34s %s\n' "app/ tests/cases/ l1_offline 零改动" "$([ "$ZERO_DIFF" = 1 ] && echo 是 || echo 否)"
 printf '   %-34s %s\n' "app/**/*.ets 指纹" "$([ "$CODE_SUM_BEFORE" = "$CODE_SUM_AFTER" ] && echo 未变 || echo 变了)"
 
@@ -259,8 +292,11 @@ FAILED=""
 [ "$MUT_EXIT" != "0" ] || FAILED="$FAILED 变异未变红"
 [ "$RESTORED_EXIT" = "0" ] || FAILED="$FAILED 还原后未变绿"
 [ "$RESTORED_OK" = "1" ] || FAILED="$FAILED 还原不一致"
+[ "$MUT2_EXIT" != "0" ] || FAILED="$FAILED 严格基准变异未变红"
+[ "$RESTORED2_EXIT" = "0" ] || FAILED="$FAILED 严格基准还原后未变绿"
+[ "$RESTORED2_OK" = "1" ] || FAILED="$FAILED 严格基准还原不一致"
 if [ -z "$FAILED" ]; then
-  printf '\nRESULT: 全部通过（八项断言 + 两条反证）\n'
+  printf '\nRESULT: 全部通过（八项断言 + 三条反证）\n'
   exit 0
 fi
 printf '\nRESULT: 失败项 ——%s\n' "$FAILED"

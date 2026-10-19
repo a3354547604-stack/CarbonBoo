@@ -153,6 +153,15 @@ function applyMutation(srcRoot) {
       throw new Error(`变异锚点未命中：${from}`);
     }
     after = before.replace(from, to);
+  } else if (mutateKind === 'offset-1000') {
+    // t68 严格基准断言的负向对照：客户端**落库换算**多 1000ms（`clientOffsetMs` 用错 1 秒的形态）。
+    // 严格式 `端上值 + offsetMs === 服务端值` 必须立刻不等；若用 ±3s 容差则会被吃成绿。
+    const from = "out['updated_at'] = updatedAt;";
+    const to = "out['updated_at'] = updatedAt + 1000;";
+    if (before.indexOf(from) < 0) {
+      throw new Error(`变异锚点未命中：${from}`);
+    }
+    after = before.replace(from, to);
   } else {
     throw new Error(`未知变异类型：${mutateKind}`);
   }

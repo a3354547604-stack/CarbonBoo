@@ -222,7 +222,28 @@ function skewMs(a, b) {
   return Math.abs(x - y);
 }
 
-/** 单个时间戳是否落在目标值 ± `CLOCK_SKEW_MAX_MS` 内。 */
+/**
+ * `updated_at` 换算到**服务端基准**（严格、无容差）：`端上值 + offsetMs`
+ *（`offsetMs` = 服务端 − 客户端；客户端落库用 `clientOffsetMs = -offsetMs`，§5.3:1095/1097）。
+ *
+ * 于是「端上值 − clientOffsetMs」必须**逐字节等于**服务端基准值：漏换算、重复换算、符号写反
+ * 都会让这里立刻不等 —— 所以跨端一致性用这个等价式断言，而不是"差值 ≤ 若干秒"的容差
+ *（容差会把 500ms 级的符号/倍率错误吃成绿）。
+ */
+function basisOf(row, offsetMs) {
+  if (row === null || row === undefined) {
+    return NaN;
+  }
+  return Number(norm(row.updated_at)) + Number(offsetMs);
+}
+
+/** 取一次 `sync` 调用里 push 握手腿的 `offsetMs`（= 该端当次换算用的那个值取反）。 */
+function offsetOf(runResult) {
+  const p = pushOut(runResult) || {};
+  return (p.data || {}).offsetMs;
+}
+
+/** 单个时间戳是否落在目标值 ± `CLOCK_SKEW_MAX_MS` 内（仅用于**换算不参与**的场景）。 */
 function nearMs(v, target) {
   const x = Number(norm(v));
   return Number.isFinite(x) && Math.abs(x - target) <= CLOCK_SKEW_MAX_MS;
@@ -546,14 +567,16 @@ function scenario1() {
     '1.2',
     'push → pull 后，B 库中同一行与 A **除 `updated_at` 外逐列相同**（含四字段快照；排除端侧游标列 sync_state）'
       + '——`updated_at` 按 §5.3:1095/1097 是各自**客户端基准**，差值 = 两端时钟偏移（本机上界 3s）',
-    b1 !== null && diffs.length === 0 && skewMs(a1, b1) <= CLOCK_SKEW_MAX_MS,
+    b1 !== null && diffs.length === 0
+      && basisOf(a1, offsetOf(sa)) === basisOf(b1, offsetOf(sb)),
     [
       `A push（原始响应）: ${wireLine(pushWire(sa))}`,
       `B pull（原始响应，仅列该行所在表）: ${j((pullRes(sb) || { data: {} }).data.tables === undefined ? null : (pullRes(sb).data.tables.carbon_record || []).filter((r) => r.id === id1))}`,
       `A 库: ${rowBrief(a1)}`,
       `B 库: ${rowBrief(b1)}`,
       `差异列（跳过 sync_state / updated_at）: ${diffs.length === 0 ? '无' : diffs.join(' ; ')}`,
-      `updated_at 两端差 = ${skewMs(a1, b1)} ms（A=${norm(a1 && a1.updated_at)} B=${norm(b1 && b1.updated_at)}；允许上界 ${CLOCK_SKEW_MAX_MS} ms）`,
+      `严格基准等价（无容差）：A 值+offA=${basisOf(a1, offsetOf(sa))}（offA=${offsetOf(sa)}）、`
+        + `B 值+offB=${basisOf(b1, offsetOf(sb))}（offB=${offsetOf(sb)}）—— 两者必须逐字节相等`,
       `B 侧 sync_state=${norm(b1 && b1.sync_state)}（A 侧 ${norm(a1 && a1.sync_state)}）——端侧游标列，服务端不建该列，不参与同步`,
     ],
   );
@@ -561,7 +584,8 @@ function scenario1() {
   check(
     '1.3',
     '服务端（直查 MySQL）持有的该行与两端一致',
-    srv !== null && norm(srv.updated_at) === norm(a1.updated_at) && norm(srv.note) === norm(a1.note)
+    srv !== null && basisOf(a1, offsetOf(sa)) === Number(norm(srv.updated_at))
+      && basisOf(b1, offsetOf(sb)) === Number(norm(srv.updated_at)) && norm(srv.note) === norm(a1.note)
       && norm(srv.factor_value) === norm(a1.factor_value) && norm(srv.factor_version) === norm(a1.factor_version)
       && norm(srv.factor_source) === norm(a1.factor_source) && norm(srv.confidence) === norm(a1.confidence),
     [
@@ -579,13 +603,14 @@ function scenario1() {
   check(
     '1.4',
     '另外的真实业务表（point_record 积分流水）也随同一次同步往返：行数相同、除 `updated_at`（各自客户端基准）外逐列一致',
-    pa2.length > 0 && pa2.length === pb2.length && crossRowsEq(strip(pa2), strip(pb2)),
+    pa2.length > 0 && pa2.length === pb2.length && crossRowsEq(strip(pa2), strip(pb2))
+      && pa2.every((r, i) => basisOf(r, offsetOf(sa)) === basisOf(pb2[i], offsetOf(sb))),
     [
       `A 侧 point_record 行数=${pa2.length}，B 侧=${pb2.length}`,
       `A 侧首行: ${rowBrief(pa2[0])}`,
       `B 侧首行: ${rowBrief(pb2[0])}`,
       `两端去游标列+updated_at 后全等: ${crossRowsEq(strip(pa2), strip(pb2))}`,
-      `两端 updated_at 逐行差（ms，上界 ${CLOCK_SKEW_MAX_MS}）: ${pa2.map((r, i) => skewMs(r, pb2[i])).join(', ')}`,
+      `逐行严格基准等价（无容差）: ${pa2.map((r, i) => `${basisOf(r, offsetOf(sa))}==${basisOf(pb2[i], offsetOf(sb))}`).join(' ; ')}`,
     ],
   );
 }
@@ -643,20 +668,23 @@ function scenario2() {
   check(
     '2.2',
     '两端最终行**除 `updated_at` 外逐列完全相同**（不是只断言服务端返回 accepted；`updated_at` 是各自客户端基准，差值 = 两端时钟偏移）',
-    diffs.length === 0 && skewMs(a, b) <= CLOCK_SKEW_MAX_MS,
+    diffs.length === 0 && basisOf(a, offsetOf(syncA2)) === basisOf(b, offsetOf(syncB)),
     [
       `A push#2（旧版本，被服务端拒绝）: ${wireLine(pushWire(syncA2))}`,
       `A 库: ${rowBrief(a)}`,
       `B 库: ${rowBrief(b)}`,
       `差异列（跳过 sync_state / updated_at）: ${diffs.length === 0 ? '无' : diffs.join(' ; ')}`,
-      `updated_at 两端差 = ${skewMs(a, b)} ms（A=${norm(a && a.updated_at)} B=${norm(b && b.updated_at)}；上界 ${CLOCK_SKEW_MAX_MS} ms）`,
+      `严格基准等价（无容差）：A 值+offA2=${basisOf(a, offsetOf(syncA2))}（offA2=${offsetOf(syncA2)}）、`
+        + `B 值+offB=${basisOf(b, offsetOf(syncB))}（offB=${offsetOf(syncB)}）`,
     ],
   );
   check(
     '2.3',
     '胜者确为 updatedAt 更大的一版（B 版内容），且服务端与两端同一份',
-    a !== null && b !== null && nearMs(a.updated_at, T2) && a.note === 'LWW-B版' && norm(a.amount) === '9'
-      && nearMs(b.updated_at, T2) && nearMs(srv.updated_at, T2) && srv.note === 'LWW-B版',
+    a !== null && b !== null && a.note === 'LWW-B版' && norm(a.amount) === '9'
+      && norm(b.amount) === '9' && srv.note === 'LWW-B版'
+      && basisOf(a, offsetOf(syncA2)) === basisOf(b, offsetOf(syncB))
+      && basisOf(b, offsetOf(syncB)) === Number(norm(srv.updated_at)),
     [
       `T2=${T2}（B 版） > T1=${T1}（A 版）`,
       `A 库: updated_at=${norm(a && a.updated_at)} note=${norm(a && a.note)} amount=${norm(a && a.amount)}`,
@@ -667,7 +695,8 @@ function scenario2() {
   check(
     '2.4',
     '旧版本上行被服务端**拒绝**（不做降级覆盖），A 靠随后的 pull 收敛到胜者版本',
-    pA2 !== null && pA2.data.rejected >= 1 && nearMs(a.updated_at, T2),
+    pA2 !== null && pA2.data.rejected >= 1
+      && basisOf(a, offsetOf(syncA2)) === Number(norm(srv.updated_at)),
     [
       `A push#2 响应: ${j(pA2.data)}`,
       `A 库最终: ${rowBrief(a)}`,
@@ -845,11 +874,15 @@ async function scenario3() {
   const R3 = recordIdByNote('A', '平局3-源');
   run('A', 'sync', { userId: ctx.userId });
   const rowA = dbRow('A', 'carbon_record', R3);
+  // 服务端存量已是**服务端基准**（§5.3:1095；t68 修复后 `raw + offset_ms`），而本机行是客户端基准。
+  // 探针省略 `clientNow` ⇒ `offsetMs=0` ⇒ 服务端拿 raw 与存量原值比较；要构成**精确平局**，
+  // 探针的 raw 必须恰好等于服务端存量值 —— 所以这里用服务端那一行的 `updated_at`。
+  const srvRow3 = serverRow('carbon_record', R3);
   const bodyFor = (device) => JSON.stringify({
     userId: ctx.userId,
     deviceId: DEV.A,
     lastSyncAt: 0,
-    tables: { carbon_record: [{ ...rowA, device_id: device, note: `平局3-${device}` }] },
+    tables: { carbon_record: [{ ...srvRow3, device_id: device, note: `平局3-${device}` }] },
   });
   const probeZ = await httpJson('POST', '/api/v1/sync/push', bodyFor('l2-dev-Z'), ctx.token);
   const srvAfterZ = serverRow('carbon_record', R3);
@@ -864,6 +897,7 @@ async function scenario3() {
       && probe0.status === 200 && (probe0.json.data.acceptedByTable.carbon_record || 0) === 0
       && probe0.json.data.ignored >= 1 && srvAfter0 !== null && srvAfter0.device_id === 'l2-dev-Z',
     [
+      `本机行 updated_at=${norm(rowA && rowA.updated_at)}（客户端基准） vs 服务端存量 ${norm(srvRow3 && srvRow3.updated_at)}（服务端基准）：两者本就不同基准，探针因此取服务端存量值作 raw`,
       `直连探针①（device_id=l2-dev-Z，省略 clientNow）: ${truncate(probeZ.body, 500)}`,
       `服务端该行: ${rowBrief(srvAfterZ)}`,
       `直连探针②（device_id=l2-dev-0）: ${truncate(probe0.body, 500)}`,
@@ -965,9 +999,9 @@ async function scenario5() {
   };
   check(
     '5.3',
-    '服务端口径：**省略 `clientNow`**（⇒ `offsetMs=0`）重放同一批 ⇒ `accepted=0`、`ignored>0`、`skipped=ignored+rejected` —— 附录 B §5.3 的"复推 accepted=0"成立',
-    r2.status === 200 && d2.offsetMs === 0 && d2.accepted === 0 && d2.ignored > 0
-      && d2.skipped === d2.ignored + d2.rejected,
+    '服务端口径：**省略 `clientNow`**（⇒ `offsetMs=0`）重放同一批 ⇒ `accepted=0`、`skipped=ignored+rejected`（三数自洽）—— 附录 B §5.3 的"复推不写入"成立；此时批次被判 `ignored`(同版本) 还是 `rejected`(换算后更旧，因存量已是服务端基准) 取决于时钟基准，两者都不写入、都不计 conflicts',
+    r2.status === 200 && d2.offsetMs === 0 && d2.accepted === 0
+      && (d2.ignored + d2.rejected) > 0 && d2.skipped === d2.ignored + d2.rejected,
     [
       `重放 body 长度=${body.length}（第 ${body.length} 字节…取本次 sync 的真实上行原文）`,
       `直连探针（省略 clientNow）响应: ${truncate(r2.body, 700)}`,
@@ -1046,12 +1080,13 @@ function scenario6() {
   check(
     '6.3',
     '软删行两端除 `updated_at`（各自客户端基准）外逐列一致，且服务端也持软删行（不物理删）',
-    diffs.length === 0 && skewMs(a, b) <= CLOCK_SKEW_MAX_MS && srv !== null && norm(srv.is_deleted) === '1',
+    diffs.length === 0 && basisOf(a, offsetOf(syncA)) === basisOf(b, offsetOf(syncB))
+      && srv !== null && norm(srv.is_deleted) === '1',
     [
       `A 库: ${rowBrief(a)}`,
       `B 库: ${rowBrief(b)}`,
       `差异列（跳过 sync_state / updated_at）: ${diffs.length === 0 ? '无' : diffs.join(' ; ')}`,
-      `updated_at 两端差 = ${skewMs(a, b)} ms（上界 ${CLOCK_SKEW_MAX_MS} ms）`,
+      `严格基准等价（无容差）：A 值+offA=${basisOf(a, offsetOf(syncA))}、B 值+offB=${basisOf(b, offsetOf(syncB))}`,
       `服务端: ${rowBrief(srv)}`,
     ],
   );
@@ -1082,13 +1117,14 @@ async function scenario4() {
     '4.1',
     'A 时钟落后 5 分钟：offsetMs ≈ +300000（= 服务端 − 客户端），服务端把"原始时间戳更旧、换算后更新"的行采纳',
     pSkew1 !== null && Math.abs(pSkew1.data.offsetMs - 300000) < 20000
-      && norm(srvAfter1 && srvAfter1.updated_at) === String(T1 - 60000) && srvAfter1.note === '时钟-A落后5分',
+      && Number(norm(srvAfter1 && srvAfter1.updated_at)) === (T1 - 60000) + pSkew1.data.offsetMs
+      && srvAfter1.note === '时钟-A落后5分',
     [
-      `A 那行的原始 updated_at=${T1 - 60000}，服务端原值 ${T1}（原始更旧）`,
+      `A 那行的原始 updated_at=${T1 - 60000}（客户端基准），服务端原值 ${norm(srvBefore1 && srvBefore1.updated_at)}（= B 推送时的换算值，服务端基准）`,
       `换算：remote_updated = ${T1 - 60000} + offsetMs(${pSkew1.data.offsetMs}) = ${(T1 - 60000) + pSkew1.data.offsetMs} > local ${T1} → 采纳`,
       `push 响应 offsetMs=${pSkew1.data.offsetMs}（≈ +300000 ⇒ 服务端时钟 − 客户端时钟，客户端落后）`,
       `服务端前: ${rowBrief(srvBefore1)}`,
-      `服务端后: ${rowBrief(srvAfter1)}`,
+      `服务端后: ${rowBrief(srvAfter1)}（期望 = raw + offsetMs = ${(T1 - 60000) + pSkew1.data.offsetMs}）`,
       `原始响应: ${truncate(pSkew1.raw, 700)}`,
     ],
   );
@@ -1113,9 +1149,9 @@ async function scenario4() {
     '4.2',
     '反向：A 时钟超前 5 分钟，原始时间戳更新但换算后更旧 → 服务端拒绝（判据是"服务端 − 客户端"，不是原始值）',
     pSkew2 !== null && Math.abs(pSkew2.data.offsetMs + 300000) < 20000 && pSkew2.data.rejected >= 1
-      && norm(srvAfter2 && srvAfter2.updated_at) === String(T2) && srvAfter2.note === '时钟-B基准2',
+      && norm(srvAfter2 && srvAfter2.amount) === '3' && srvAfter2.note === '时钟-B基准2',
     [
-      `A 那行的原始 updated_at=${T2 + 60000}（原始比服务端 ${T2} 新）`,
+      `A 那行的原始 updated_at=${T2 + 60000}（原始比服务端旧值 ${T2} 新，但换算后更旧）`,
       `换算：remote_updated = ${T2 + 60000} + offsetMs(${pSkew2.data.offsetMs}) = ${(T2 + 60000) + pSkew2.data.offsetMs} < local ${T2} → 拒绝`,
       `push 响应: ${j(pSkew2.data)}`,
       `服务端该行未变: ${rowBrief(srvAfter2)}`,
@@ -1143,7 +1179,7 @@ async function scenario4() {
     '4.3',
     '偏移超过 ±300000ms：响应带 clockWarning，且**照常继续合并**（该行仍被采纳）',
     pSkew3 !== null && Math.abs(pSkew3.data.offsetMs) > 300000 && warnEmpty === false
-      && norm(srvAfter3 && srvAfter3.updated_at) === String(T3 + 120000),
+      && Number(norm(srvAfter3 && srvAfter3.updated_at)) === (T3 + 120000) + pSkew3.data.offsetMs,
     [
       `offsetMs=${pSkew3.data.offsetMs}（|offsetMs| > 300000）`,
       `clockWarning=${j(pSkew3.data.clockWarning)}`,
@@ -1328,14 +1364,27 @@ async function scenario4() {
     i9 = i9 + 1;
   }
   const near3 = (a, b) => Math.abs(a - b) <= 3000;
-  const localStable = round9.every((r) => r.ok && r.note === '不漂移' && near3(r.local, T9));
-  const serverStable = round9.every((r) => near3(r.server, T9 + 60000));
+  // 严格不变量（**无容差**）：`本机值 + 该轮 offsetMs === 服务端值`。
+  //   · 该轮 push 被接受 ⇒ 服务端存的就是「本机上行值 + offset」；
+  //   · 该轮 push 被拒（对端换算后不更新）⇒ 本机采纳的是「服务端存量 − offset」。
+  // 两条分支都必须**逐字节相等**；偏移被换算两次（±120000）或符号写反会立刻不等。
+  const inv9 = round9.every((r) => r.ok && r.note === '不漂移'
+    && typeof r.offsetMs === 'number' && r.local + r.offsetMs === r.server);
+  // 服务端值只能等于「单次换算」的候选值，不能是累加形态。
+  const seen9 = [];
+  const noAccum9 = round9.every((r) => {
+    seen9.push(T9 + r.offsetMs);
+    return seen9.indexOf(r.server) >= 0;
+  });
+  // 本机值允许有往返抖动（被拒那一轮取的是对端换算值）⇒ 这一条才用 3s 容差，真正严格的是上面的不变量。
+  const jitter9 = round9.every((r) => near3(r.local, T9));
   check(
     '4.9',
-    '时钟往返不漂移：偏移恒定（钟慢 60 秒）时同一行连推 3 轮，本机库 `updated_at` 每轮都回到本机基准 T9、服务端库每轮都是服务端基准 `T9+offset`；不得每轮再累加一次偏移（差 ≤3s，噪声为往返抖动几十 ms）',
-    localStable && serverStable && near3(round9[2].local, round9[0].local) && near3(round9[2].server, round9[0].server),
-    round9.map((r) => `第 ${r.round} 轮：push offsetMs=${r.offsetMs}；本机库 updated_at=${r.local}（目标 ${T9}，差 ${r.local - T9}）`
-      + `；服务端库 updated_at=${r.server}（目标 ${T9 + 60000}，差 ${r.server - (T9 + 60000)}）；本机 note=${r.note}`),
+    '时钟往返不漂移：偏移恒定（钟慢 60 秒）时同一行连推 3 轮 —— 严格不变量 `本机值 + offsetMs === 服务端值`（无容差，接受/拒绝两条分支都成立），且服务端值只能是「单次换算」的值（排除偏移被累加两次）；本机 note 每轮不变',
+    inv9 && noAccum9 && jitter9,
+    round9.map((r) => `第 ${r.round} 轮：push offsetMs=${r.offsetMs}；本机库 updated_at=${r.local}（对 T9 差 ${r.local - T9}）`
+      + `；服务端库 updated_at=${r.server}；不变量 本机+offset=${r.local + r.offsetMs} vs 服务端=${r.server} ⇒ ${r.local + r.offsetMs === r.server}`
+      + `；本机 note=${r.note}`),
   );
   note(`4.9 补充：同一行三轮直查值 —— 本机 [${round9.map((r) => r.local).join(', ')}]，服务端 [${round9.map((r) => r.server).join(', ')}]`
     + `（若换算不幂等，每轮会各累加一次 |offsetMs|=60000 的偏差）。`);
@@ -1356,9 +1405,9 @@ async function scenario4() {
   const stored10 = srv10 === null ? NaN : Number(norm(srv10.updated_at));
   check(
     '4.10',
-    '服务端落库基准（§5.3:1095）：客户端钟慢 60 秒推上一行（raw = 客户端基准）时，服务端库内 `updated_at` 必须是**服务端基准**值 `raw + offset_ms`，不能原样存客户端时间戳',
+    '服务端落库基准（§5.3:1095）：客户端钟慢 60 秒推上一行（raw = 客户端基准）时，服务端库内 `updated_at` 必须**逐字节等于**服务端基准值 `raw + offset_ms`（无容差），不能原样存客户端时间戳',
     pushed10.ok === true && srv10 !== null && Math.abs(stored10 - T10) > 1000
-      && Math.abs(stored10 - (T10 + off10)) <= 3000,
+      && stored10 === T10 + off10,
     [
       `A 本机行: at=${T10} note=基准-服务端`,
       `A push 握手腿 offsetMs=${off10}（≈ +60000）`,
@@ -1385,8 +1434,8 @@ function itemSeven() {
   const tc = OBS.conflictTrue || {};
   check(
     '7.1',
-    '纯去重批次（`accepted=0`、`ignored>0`）`conflicts=0` 且 `skipped=ignored+rejected` ⇒ **ignored 没有被计入 conflicts**',
-    d2.accepted === 0 && d2.ignored > 0 && d2.conflicts === 0
+    '纯去重批次（`accepted=0`、`ignored+rejected>0`）`conflicts=0` 且 `skipped=ignored+rejected` ⇒ **ignored 没有被计入 conflicts**',
+    d2.accepted === 0 && (d2.ignored + d2.rejected) > 0 && d2.conflicts === 0
       && d2.skipped === d2.ignored + d2.rejected,
     [
       `原始响应: ${d2.raw}`,

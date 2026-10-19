@@ -383,6 +383,12 @@ def _push_once(
                 outcome.rejected += 1
                 outcome.note(error)
                 continue
+            # 落库基准（附录 B §5.3:1095「服务端与云端行的 `updated_at` = 服务端基准」）：
+            # 对端（客户端）行的时间戳**先换算到服务端基准**，之后比较与落库用的是同一个值。
+            # 改前是「比较时 `+ offset_ms`、落库原样（客户端基准）」⇒ 服务端库内混存客户端基准的
+            # 时间戳，而增量拉取的 `since`（= `lastSyncAt` / `serverTime`）是服务端基准 —— 两个基准
+            # 跨着用必然出错：偏移的客户端会漏行或反复拉已写过的行（t68 实测，见 VERIFICATION 追加节）。
+            values["updated_at"] = int(values["updated_at"]) + outcome.offset_ms
             if mode == MODE_APPEND_ONLY:
                 _merge_append_only(db, name, user_id=user_id, values=values, outcome=outcome)
             else:
@@ -392,7 +398,6 @@ def _push_once(
                     user_id=user_id,
                     values=values,
                     last_sync_at=int(last_sync_at or 0),
-                    offset_ms=outcome.offset_ms,
                     outcome=outcome,
                 )
 
@@ -477,12 +482,13 @@ def _merge_lww(
     user_id: str,
     values: dict[str, Any],
     last_sync_at: int,
-    offset_ms: int,
     outcome: PushOutcome,
 ) -> None:
     """完整 LWW（附录 B §6.3）：`rUpdated > l.updatedAt` 取远端；相等比 deviceId 字典序；否则保留服务端版本。
 
     t63：并发下「比较 + 写入」必须原子化（见下方「方案①」），否则旧版本会覆盖新版本（丢更新）。
+    t68：`values["updated_at"]` **已在 `push()` 里换算到服务端基准**（§5.3:1095），本函数不再二次换算，
+    落库与比较用的是同一个值。
     """
     table = Base.metadata.tables[table_name]
     row_id = values["id"]
@@ -542,7 +548,7 @@ def _merge_lww(
     # 后到的事务在锁上等待、拿到锁后对「最新已提交版本」重新求值 WHERE，不满足即 0 行 ⇒ 不会降级覆盖。
     # 选它而不是 `SELECT ... FOR UPDATE` 整段锁行或 `INSERT ... ON DUPLICATE KEY UPDATE IF()`：
     # 少一次往返、不改事务隔离级别、也不必把平局规则抄成第二种写法。
-    remote_updated = int(values["updated_at"]) + offset_ms  # 对端时间 → 服务端基准
+    remote_updated = int(values["updated_at"])  # 上游已换算到服务端基准（t68；勿再 + offset_ms）
     remote_device = str(values.get("device_id") or "")
     local_updated = int(existing["updated_at"])  # 快照值：只喂「真冲突」计数（与改前同一条件）
 
