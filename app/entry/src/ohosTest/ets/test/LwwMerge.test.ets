@@ -379,6 +379,17 @@ async function setLocal(hub: ServiceHub, id: string, updatedAt: number, isDelete
   await hub.store.exec(`UPDATE ${TABLE} SET updated_at = ?, is_deleted = ? WHERE id = ?`, args);
 }
 
+/**
+ * SQL 轨迹里是否为「往被测表写一行」的语句。
+ *
+ * t62 起 `applyRow` 的写回是 `INSERT OR IGNORE INTO <表> (…) VALUES (…)`（业务键/单例唯一索引
+ * 的第二道兜底，见 `SyncService.insertRow`），不再是无 `OR IGNORE` 的 `INSERT INTO`。
+ * 两个文本都算「写一行」—— 断言仍是**恰好一次写**（①）/ **零次写**（⑤），没有放宽。
+ */
+function isRowWrite(sql: string, table: string): boolean {
+  return sql.indexOf(`INSERT INTO ${table}`) >= 0 || sql.indexOf(`INSERT OR IGNORE INTO ${table}`) >= 0;
+}
+
 /** 让下一次增量同步的 pull 收到指定远端行（`since` 须与 `driveLww` 用的一致）。 */
 function stubPull(fx: Fixture, rows: RowShape[], serverTime: number, since: number): void {
   fx.fake.stub('GET', `${fx.hub.http.baseUrl()}/api/v1/sync/pull?since=${since}`, 200, pullBody(rows, serverTime));
@@ -411,6 +422,77 @@ async function driveLww(fx: Fixture, userId: string, now: number): Promise<AppRe
 /** 当前 `since`（供 stubPull 拼 URL）。 */
 async function since(fx: Fixture): Promise<number> {
   return fx.hub.cfg.stamp(ConfigKeys.LAST_SYNC_AT);
+}
+
+/**
+ * 构造指定**表名**的 pull 响应体。
+ *
+ * `pullBodyWithOffset` 写死了 `carbon_record`（`TABLE`）；⑤ 之后新增的用例要覆盖
+ * 单例表 `user_appearance` 与业务键表 `user_goal` / `point_record`（F1 的三种形状），
+ * 因此需要一个带表名参数的版本。**不带 `offsetMs` 字段**是刻意为之：那是真实服务端的
+ * 形状（附录 B §5.3:855 写死 pull 不回该字段；t57 `tests/tools/l2_sync` 场景 4.7 实测的
+ * pull 体只有 `{serverTime, since, tables}`）。
+ */
+function pullBodyBare(table: string, rows: RowShape[], serverTime: number): string {
+  return `{"ok":true,"data":{"serverTime":${serverTime},"tables":{"${table}":${JSON.stringify(rows)}}}}`;
+}
+
+/** 让下一次 pull 收到**指定表**的远端行（`since` 须与驱动函数用的一致）。 */
+function stubPullFor(fx: Fixture, table: string, rows: RowShape[], serverTime: number, since: number): void {
+  fx.fake.stub('GET', `${fx.hub.http.baseUrl()}/api/v1/sync/pull?since=${since}`, 200,
+    pullBodyBare(table, rows, serverTime));
+}
+
+/**
+ * 驱动一次增量同步，并让 **push 响应**带指定 `offsetMs`（服务端视角：服务端时钟 − 客户端时钟）。
+ *
+ * 与 `driveLww` 的唯一差别就是 push 响应里的 `offsetMs`。t62 起客户端会读它（取反后作为
+ * 客户端视角偏移），因此「真实服务端 pull 不回 offsetMs」的链路上校正来自**这条握手腿**。
+ */
+async function driveLwwPushOffset(fx: Fixture, userId: string, now: number,
+  pushOffsetMs: number): Promise<AppResult<SyncOutcome>> {
+  fx.fake.stub('POST', `${fx.hub.http.baseUrl()}/api/v1/sync/push`, 200,
+    `{"ok":true,"data":{"accepted":0,"skipped":0,"ignored":0,"rejected":0,"conflicts":0,` +
+    `"serverTime":1,"offsetMs":${pushOffsetMs}}}`);
+  return fx.hub.sync.sync(userId, now);
+}
+
+/** 按 `id` 回读**任意表**的一行（`localRow` 写死了 `carbon_record`）。 */
+async function rowById(hub: ServiceHub, table: string, id: string): Promise<RowShape | undefined> {
+  const rows: RowShape[] = await hub.store.query(`SELECT * FROM ${table} WHERE id = ?`, [id]);
+  return firstOf(rows);
+}
+
+/** 单例表按 `user_id` 回读一行（`user_appearance` / `user_profile`）。 */
+async function rowByUser(hub: ServiceHub, table: string, userId: string): Promise<RowShape | undefined> {
+  const rows: RowShape[] = await hub.store.query(`SELECT * FROM ${table} WHERE user_id = ?`, [userId]);
+  return firstOf(rows);
+}
+
+/** 某表某 user 的行数。 */
+async function countByUser(hub: ServiceHub, table: string, userId: string): Promise<number> {
+  const rows: RowShape[] = await hub.store.query(`SELECT COUNT(*) AS n FROM ${table} WHERE user_id = ?`, [userId]);
+  const row: RowShape | undefined = firstOf(rows);
+  return row === undefined ? -1 : numOf(row, 'n');
+}
+
+/**
+ * SQL 轨迹里是否出现过含指定片段的语句。
+ *
+ * 用于把「**认领本机行用的是业务键**，不是只按 `id`」变成可断言的事实（`RowClaim.of` 的
+ * 三种 SQL 文本见 `SyncService.ets:205-231`）——否则"去重丢弃"与"唯一索引兜底丢弃"
+ * 在 `pulled`/`skipped` 计数上无法区分。
+ */
+function traceHas(rec: RecordingStore, fragment: string): boolean {
+  const calls: SqlCall[] = rec.recorded();
+  let i: number = 0;
+  while (i < calls.length) {
+    if (calls[i].sql.indexOf(fragment) >= 0) {
+      return true;
+    }
+    i = i + 1;
+  }
+  return false;
 }
 
 export default function lwwMergeTest(): void {
@@ -450,7 +532,7 @@ export default function lwwMergeTest(): void {
         if (trace[i].sql.indexOf(`DELETE FROM ${TABLE}`) >= 0) {
           del = del + 1;
         }
-        if (trace[i].sql.indexOf(`INSERT INTO ${TABLE}`) >= 0) {
+        if (isRowWrite(trace[i].sql, TABLE)) {
           ins = ins + 1;
         }
         i = i + 1;
@@ -596,7 +678,7 @@ export default function lwwMergeTest(): void {
       let i: number = before;
       while (i < trace.length) {
         const sql: string = trace[i].sql;
-        if (sql.indexOf(`DELETE FROM ${TABLE}`) >= 0 || sql.indexOf(`INSERT INTO ${TABLE}`) >= 0) {
+        if (sql.indexOf(`DELETE FROM ${TABLE}`) >= 0 || isRowWrite(sql, TABLE)) {
           writes = writes + 1;
         }
         i = i + 1;
@@ -856,6 +938,176 @@ export default function lwwMergeTest(): void {
       expect(conflicts).assertEqual(1);
       // 同时确认同步结果里的 conflicts 与日志一致
       expect(res.data === undefined ? -1 : res.data.conflicts).assertEqual(1);
+    });
+
+    it('⑪ 单例表按 user_id 认领：远端 user_appearance 同 user_id、不同 id → 删本机旧行后写入（不再撞 uq_ua）', 0, async () => {
+      // t62 修复 F1 的防线。旧实现 `applyRow` **只按 `id`** 找本机行，找不到就 `INSERT`
+      // （无 `OR IGNORE`）——而两台设备各自的 `AppState.ensureUser` 生成的 user_profile /
+      // user_appearance 恰恰是「**同 `user_id`、不同 `id`**」，于是第二台设备首次 pull 必撞
+      // `uq_ua` / `uq_uprofile`：t57 `tests/tools/l2_sync` 场景 8.3 实测原始报错
+      //   `UNIQUE constraint failed: user_appearance.user_id`。
+      // 本用例把那个形状原样摆出来：远端 `id` 与本机 `id` **不同**，`user_id` 相同。
+      const fx: Fixture = await setup();
+      const hub: ServiceHub = fx.hub;
+      const userId: string = hub.state.userId();
+      const now: number = Date.now();
+      const local: RowShape | undefined = await rowByUser(hub, 'user_appearance', userId);
+      expect(local !== undefined).assertTrue();
+      const localId: string = textOf(local === undefined ? {} : local, 'id');
+      const localUpd: number = numOf(local === undefined ? {} : local, 'updated_at');
+      const remote: RowShape = remoteFrom(local === undefined ? {} : local,
+        new Overrides().set('id', 'remote-appearance-1').set('updated_at', localUpd + 5000)
+          .set('theme_id', 'theme_dusk').set('device_id', 'dev-remote'));
+      // 前置断言：形状必须是"不同 id + 同一 user_id"，否则本用例测不到 F1 那个形状
+      expect(textOf(remote, 'id') !== localId).assertTrue();
+      expect(textOf(remote, 'user_id')).assertEqual(userId);
+
+      stubPullFor(fx, 'user_appearance', [remote], 9000, await since(fx));
+      const res: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
+      expect(res.ok).assertTrue();
+      expect(res.data === undefined ? -1 : res.data.pulled).assertEqual(1);
+      // 收敛：该 user 只剩 **1 行**，且是远端那一行；本机旧行被真正 DELETE（不是并存两行）
+      expect(await countByUser(hub, 'user_appearance', userId)).assertEqual(1);
+      const after: RowShape | undefined = await rowByUser(hub, 'user_appearance', userId);
+      expect(textOf(after === undefined ? {} : after, 'id')).assertEqual('remote-appearance-1');
+      expect(textOf(after === undefined ? {} : after, 'theme_id')).assertEqual('theme_dusk');
+      expect(await rowById(hub, 'user_appearance', localId) === undefined).assertTrue();
+      // 认领用的是**单例表的 `user_id`**（不是 `id`）—— 这是 F1 修复的机制证据
+      expect(traceHas(fx.rec, 'SELECT id, updated_at, device_id FROM user_appearance WHERE user_id = ?')).assertTrue();
+    });
+
+    it('⑫ 业务键按 (goal_id, period_key) 认领：远端 user_goal 同业务键、不同 id → 收敛为 1 行', 0, async () => {
+      // F1 的同族形状之二：`user_goal` 的唯一索引是 `uq_ug(user_id, goal_id, period_key)`，
+      // 而旧实现只按 `id` 认领 ⇒ 同业务键不同 id 的远端行会撞唯一索引。
+      const fx: Fixture = await setup();
+      const hub: ServiceHub = fx.hub;
+      const userId: string = hub.state.userId();
+      const now: number = Date.now();
+      const ins: SqlValue[] = ['local-goal-1', userId, 'weekly_ride', 'W:2026-W45', 3, 5, 0, null,
+        now, now, 0, 'dev-local', 'local'];
+      await hub.store.exec(
+        'INSERT INTO user_goal (id, user_id, goal_id, period_key, progress, threshold, settled, ' +
+        'settled_at, created_at, updated_at, is_deleted, device_id, sync_state) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', ins);
+      const local: RowShape | undefined = await rowById(hub, 'user_goal', 'local-goal-1');
+      expect(local !== undefined).assertTrue();
+      const remote: RowShape = remoteFrom(local === undefined ? {} : local,
+        new Overrides().set('id', 'remote-goal-1').set('updated_at', now + 5000)
+          .set('progress', 5).set('device_id', 'dev-remote'));
+
+      stubPullFor(fx, 'user_goal', [remote], 9000, await since(fx));
+      const res: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
+      expect(res.ok).assertTrue();
+      expect(res.data === undefined ? -1 : res.data.pulled).assertEqual(1);
+      expect(await countByUser(hub, 'user_goal', userId)).assertEqual(1);
+      const after: RowShape | undefined = await rowById(hub, 'user_goal', 'remote-goal-1');
+      expect(after !== undefined).assertTrue();
+      expect(numOf(after === undefined ? {} : after, 'progress')).assertEqual(5);
+      expect(await rowById(hub, 'user_goal', 'local-goal-1') === undefined).assertTrue();
+      // 认领用的是**业务唯一键 `(goal_id, period_key)`**，不是 `id`
+      expect(traceHas(fx.rec,
+        'SELECT id, updated_at, device_id FROM user_goal WHERE user_id = ? AND goal_id = ? AND period_key = ?')).assertTrue();
+    });
+
+    it('⑮ 只增表去重：远端 point_record 同业务键、不同 id → 去重丢弃（不 UPDATE、不再撞 uq_pr_source）', 0, async () => {
+      // F1 的同族形状之三，也是 t57 场景 8.4 的原始报错：
+      //   两端各自用真实 `records.edit` 冲正同一条碳记录 ⇒ 各自生成「同业务键
+      //   `(user_id, source_type, source_id, flow_kind)`、不同 id」的 point_record 流水，
+      //   第二次 pull 撞 `uq_pr_source`。
+      // 修复后：按业务键认领本机行 → 只增表**永不 UPDATE** ⇒ 计 `skipped`
+      //（§6.4-3：去重丢弃不计 `conflicts`）。
+      const fx: Fixture = await setup();
+      const hub: ServiceHub = fx.hub;
+      const userId: string = hub.state.userId();
+      const now: number = Date.now();
+      const ins: SqlValue[] = ['local-point-1', userId, 'record', 'primary', 100, 'carbon_record',
+        'rec-x#1', '步行 5 km', null, now, now, now, 0, 'dev-local', 'local'];
+      await hub.store.exec(
+        'INSERT INTO point_record (id, user_id, type, flow_kind, points, source_type, source_id, ' +
+        'title, remark, occurred_at, created_at, updated_at, is_deleted, device_id, sync_state) ' +
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', ins);
+      const local: RowShape | undefined = await rowById(hub, 'point_record', 'local-point-1');
+      expect(local !== undefined).assertTrue();
+      const remote: RowShape = remoteFrom(local === undefined ? {} : local,
+        new Overrides().set('id', 'remote-point-1').set('updated_at', now + 5000)
+          .set('points', 999).set('device_id', 'dev-remote'));
+
+      stubPullFor(fx, 'point_record', [remote], 9000, await since(fx));
+      const res: AppResult<SyncOutcome> = await driveLww(fx, userId, now);
+      expect(res.ok).assertTrue();
+      expect(res.data === undefined ? -1 : res.data.pulled).assertEqual(0);
+      expect(res.data === undefined ? -1 : res.data.skipped).assertEqual(1);
+      // 本机行一字未动（只增表：去重丢弃绝不 UPDATE），也没有插入第二行
+      const kept: RowShape | undefined = await rowById(hub, 'point_record', 'local-point-1');
+      expect(numOf(kept === undefined ? {} : kept, 'points')).assertEqual(100);
+      expect(numOf(kept === undefined ? {} : kept, 'updated_at')).assertEqual(now);
+      expect(await countByUser(hub, 'point_record', userId)).assertEqual(1);
+      // 认领用的是**业务唯一键 `(source_type, source_id, flow_kind)`**（不是 `id`）：
+      // 缺了这条，本用例的 pulled/skipped 计数在"只按 id 认领 + 唯一索引兜底丢弃"下**同样成立**，
+      // 断言就不具备判别力。
+      expect(traceHas(fx.rec, 'FROM point_record WHERE user_id = ? AND source_type = ? AND source_id = ? ' +
+        'AND flow_kind = ?')).assertTrue();
+    });
+
+    it('⑬ 握手校正：push 响应带 offsetMs、pull 响应无该字段（真实服务端形状，§5.3:855）→ 校正生效', 0, async () => {
+      // t62 修复 F3/F2 的防线。t13 的取反换算只读 **pull 响应**的 `offsetMs`，而真实服务端
+      // pull 不返回该字段（附录 B §5.3:855；t57 `tests/tools/l2_sync` 场景 4.7 实测 pull 体
+      // 只有 `{serverTime, since, tables}`）⇒ `offsetMsClient ≡ 0`，校正**永不生效**。
+      // 修复后改用 **push 握手腿**回带的 `offsetMs`（服务端视角）。
+      // 判据（§5.3:838-841 自证写法）：respOffsetMs = +600000（服务端快 10 分钟）
+      //   ⇒ 客户端视角 −600000 ⇒ 同一条服务端时间戳相对本机**显得更旧**，绝不能显得更新。
+      const fx: Fixture = await setup();
+      const hub: ServiceHub = fx.hub;
+      const userId: string = hub.state.userId();
+      const now: number = Date.now();
+      const local: RowShape = await seedLocal(hub, userId, now);
+      const id: string = textOf(local, 'id');
+      await setLocal(hub, id, 1000, 0);
+      const remote: RowShape = remoteFrom(local,
+        new Overrides().set('updated_at', 2000).set('amount', 42).set('device_id', 'dev-remote'));
+
+      stubPullFor(fx, TABLE, [remote], 3000, await since(fx));
+      const res: AppResult<SyncOutcome> = await driveLwwPushOffset(fx, userId, now, 600000);
+      expect(res.ok).assertTrue();
+      // 换算后对端 = 2000 − 600000 = −598000 < 本机 1000 ⇒ 保留本机
+      //（旧实现按裸 2000 比较 ⇒ 会写成 pulled=1；t13 的 pull 字段路径在真机上恒为 0）
+      expect(res.data === undefined ? -1 : res.data.pulled).assertEqual(0);
+      expect(res.data === undefined ? -1 : res.data.skipped).assertEqual(1);
+      const kept: RowShape | undefined = await localRow(hub, id);
+      expect(numOf(kept === undefined ? {} : kept, 'updated_at')).assertEqual(1000);
+      expect(numOf(kept === undefined ? {} : kept, 'amount')).assertEqual(5);
+      // 对照腿：同一份远端行、握手 offsetMs=0 ⇒ 裸比较 ⇒ 对端更新胜出（证明上一条不是"恒不写"）
+      stubPullFor(fx, TABLE, [remote], 6000, await since(fx));
+      const res2: AppResult<SyncOutcome> = await driveLwwPushOffset(fx, userId, now, 0);
+      expect(res2.ok).assertTrue();
+      expect(res2.data === undefined ? -1 : res2.data.pulled).assertEqual(1);
+      const covered: RowShape | undefined = await localRow(hub, id);
+      expect(numOf(covered === undefined ? {} : covered, 'amount')).assertEqual(42);
+      expect(numOf(covered === undefined ? {} : covered, 'updated_at')).assertEqual(2000);
+    });
+
+    it('⑭ 取值优先级：pull 响应自带 offsetMs 时以响应为准（仍取反），不被握手值顶掉', 0, async () => {
+      // 修复后的取值顺序：① pull 响应体的 `offsetMs`（有则用，取反）；② 否则用 push 握手腿的值。
+      // 本用例让两侧给出**方向相反**的偏移：握手 +600000（→ 客户端视角 −600000），
+      // 响应 0（→ 不校正）。若实现错误地优先握手，远端 2000 会被换算成 −598000 ⇒ 保留本机；
+      // 正确优先级下响应字段胜出 ⇒ 远端更新胜出。
+      const fx: Fixture = await setup();
+      const hub: ServiceHub = fx.hub;
+      const userId: string = hub.state.userId();
+      const now: number = Date.now();
+      const local: RowShape = await seedLocal(hub, userId, now);
+      const id: string = textOf(local, 'id');
+      await setLocal(hub, id, 1000, 0);
+      const remote: RowShape = remoteFrom(local,
+        new Overrides().set('updated_at', 2000).set('amount', 42).set('device_id', 'dev-remote'));
+
+      stubPullOffset(fx, [remote], 3000, await since(fx), 0, '');
+      const res: AppResult<SyncOutcome> = await driveLwwPushOffset(fx, userId, now, 600000);
+      expect(res.ok).assertTrue();
+      expect(res.data === undefined ? -1 : res.data.pulled).assertEqual(1);
+      const after: RowShape | undefined = await localRow(hub, id);
+      expect(numOf(after === undefined ? {} : after, 'amount')).assertEqual(42);
+      expect(numOf(after === undefined ? {} : after, 'updated_at')).assertEqual(2000);
     });
   });
 }
