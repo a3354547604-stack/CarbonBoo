@@ -112,3 +112,139 @@ echo "RUN_EXIT=$?"
 `if (!box) { window.alert(message); return; }`。于是**登录页上的失败提示会退化成浏览器原生 `alert`**
 （实测文案 `管理员用户名或口令错误`）：用户看到的是原生弹窗而不是页内红条，脚本化的端到端驱动会被它卡住。
 修法很小（给该 `div` 加 `id="flash"`），但属 `server/**`，留给相应任务。
+
+---
+
+# §t76 追加：真 nginx(TLS) 反代下的浏览器图层（本轮新增，上文 t55/t59 正文一字未改）
+
+## 为什么加这一段
+
+t75 用「等价真 HTTP 客户端（curl + Cookie）」验过 `/admin` **经真 nginx(TLS) 反代**的 62 条探针，
+但它如实把**「真浏览器图层未运行」**列进了未运行项：**curl 不是浏览器**——表单会不会真提交、
+`fetch` 会不会真打出去、页内 `#flash` 会不会真渲染、`<input type=file>` 走 `DOM.setFileInputFiles`
+后端能不能取回、Cookie 会不会真被清，curl 一律答不了。
+
+本轮把 t55/t59 的 Windows 侧 CDP 驱动**接到真 nginx 前面**：同一份 `cdp_driver.py` 跑两遍，
+第一遍直连 uvicorn（t55 原有行为，一字未动），第二遍浏览器 origin 换成
+`https://api.example.com:<nginx 端口>`，两遍都驱动真实 Edge headless。
+
+## 怎么加（`run.sh` 新增 4b 阶段 + 新增 `compare_paths.py`）
+
+1. **派生 nginx 配置，不改 `server/deploy/**`**：`sed` 从 `server/deploy/nginx/carbonboo.conf`
+   生成副本，只改两处 —— 证书路径 → 容器内 `/etc/nginx/tls/`、上游 `http://127.0.0.1:8000`
+   → `http://host.docker.internal:<uvicorn 端口>`（实测替换 5 处）。**生产配置一个字没动**。
+2. **自签证书**：`openssl req -x509 … -subj "/CN=api.example.com" -addext "subjectAltName=DNS:api.example.com"`，
+   因此 `compare_paths.py` 可以对 `api.example.com` 做**真正的 TLS 链 + 主机名校验**（不是关掉校验）。
+3. **真容器**：`docker run -d --name cb-admin-e2e-nginx --add-host host.docker.internal:host-gateway
+   -p …:443 -p …:80 -v <派生 conf> -v <证书> nginx:alpine`；用完 `docker rm -f`。
+4. **浏览器侧**：第二份 `--user-data-dir`（Windows 可写路径，避免 t55 那个「静默退回默认 profile」坑）+
+   `--host-resolver-rules="MAP api.example.com 127.0.0.1"` + `--ignore-certificate-errors`（自签）+
+   **`--no-proxy-server`**（见下面「新增已知坑」第 8 条）。
+5. **口令衔接**：两遍跑的是**同一个任务库**，第一遍 ⑥ 已经把管理员口令从引导口令改成 `$NEW_PW`，
+   所以第二遍 `run.json` 的 `admin_password` 必须是 `$NEW_PW`（新口令另取 `$NEW_PW_2`）。
+   这不是缺陷，是同一套用例连跑两遍的必然。
+6. **逐字节比对**（`compare_paths.py`，WSL python3 纯标准库，退出码同 0/1/2）：
+   断言项集合一致（`⑧` 资源探针与其收尾截图 `14_resource_paths` 仅 nginx 侧；第二遍截图名带
+   `nginx_` 前缀，比对前归一）、两侧 `failed==0`、TLS 对端证书 DER sha256 == 挂载证书文件、
+   登录页 HTML sha256 一致、浏览器实际加载过的 `/admin/static/*` 状态码 + 响应体 sha256 一致、
+   nginx 侧截图 ≥3 张且品牌主色 `#2E7D5B` 像素 >0。
+
+## 新增可覆盖变量
+
+| 变量 | 默认 | 用途 |
+|---|---|---|
+| `CB_ADMIN_E2E_NGINX` | `1` | 置 `0` 关闭 4b 阶段（退回 t55 行为） |
+| `CB_ADMIN_E2E_NGINX_IMAGE` | `nginx:alpine` | 反代镜像；**指向不存在的镜像即进入 ENV-UNREACHABLE** |
+| `CB_ADMIN_E2E_NGINX_HTTPS_PORT` / `_HTTP_PORT` / `_CDP_PORT` | `10443` / `10080` / `9334` | 端口 |
+
+## 本轮实测（原始输出见提交信息；基线 `git rev-parse HEAD` = `22a3fbf5f7ebb4a1b71d5b75bd040c9bf8a281d9`）
+
+```text
+$ bash tests/tools/admin_e2e/run.sh; echo "ADMIN_E2E_EXIT=$?"
+直连 checks: PASS=98 FAIL=0 driver_exit=0
+nginx checks: PASS=103 FAIL=0 driver_exit=0 compare_exit=0
+RESULT: PASS —— 直连与真 nginx(TLS) 反代两条路径均由真实 Edge headless + CDP 驱动通过
+ADMIN_E2E_EXIT=0
+```
+
+真浏览器经 nginx 跑到的关键断言（`/tmp/cb-admin-e2e/driver_nginx.log` 原文摘录）：
+
+```text
+[PASS] ① 诊断：本次导航抓到的响应 = GET https://api.example.com:10443/admin/login → 200；
+       GET https://api.example.com:10443/admin/static/admin.css → 200；…/admin.js → 200
+[PASS] ⑤ 重载商品页后能看到新图标（<img> 指向 /admin/icons/）: 命中（CDP DOM.setFileInputFiles）
+[PASS] ⑥ 失败提示落在页内 #flash（文本非空、可见、不再是模态弹窗）:
+       #flash found=True hidden=False text='管理员用户名或口令错误' class='flash is-error'
+[PASS] ⑥ 负向对照：改密后旧口令登录被拒（POST /admin/login → 401）: 实测 HTTP 401 POST
+[PASS] ⑦ 登出后浏览器已不持有会话 Cookie（正向对照）: Network.getCookies 中 carbonboo_admin_token 条数=0
+[PASS] ⑧ 页面资源全部同源于浏览器 origin（无反代改写/外链）: origin=https://api.example.com:10443 资源数=2 非同源=[]
+[PASS] ⑧ 静态资源路径命中 /admin/static/（或图标 /admin/icons/）: ["/admin/static/admin.css", "/admin/static/admin.js"]
+[PASS] 资源 /admin/static/admin.css 直连==nginx: 直连 200/8633B sha=ec9aad5341ee… nginx 200/8633B sha=ec9aad5341ee…
+[PASS] 资源 /admin/static/admin.js  直连==nginx: 直连 200/8538B sha=5ac4cfb2e870… nginx 200/8538B sha=5ac4cfb2e870…
+[PASS] 登录页 HTML 逐字节一致（sha256）: 直连=15b6976687bf8dc4… nginx=15b6976687bf8dc4…
+[PASS] nginx 对端证书 sha256 == 挂载证书文件: peer=d2b833a5df28febf… expected=d2b833a5df28febf…
+[PASS] 至少 3 张截图命中品牌主色 #2E7D5B（Windows Pillow 逐像素）: 实测 14 张：
+       nginx_01_login_page 14321px; nginx_02_after_login 8214px; nginx_03_users 7941px;
+       nginx_04_logs 9120px; nginx_05_config_read 44060px; nginx_06_config_write 44060px
+```
+
+截图证据（`artifacts/`，1440×900，Windows 侧 Pillow 逐像素统计）：
+
+| 文件 | 对应用例 | brand_pixels(#2E7D5B) |
+|---|---|---|
+| `artifacts/nginx_01_login_page.png` | ① 登录页（经 nginx） | 14321 |
+| `artifacts/nginx_03_users.png` | ② 用户列表有真实数据 | 7941 |
+| `artifacts/nginx_04_logs.png` | ③ 日志页有真实数据 | 9120 |
+| `artifacts/nginx_05_config_read.png` / `nginx_06_config_write.png` | ④ 配置写入并重载回显 | 44060 / 44060 |
+| `artifacts/nginx_07_items_icon.png` | ⑤ 图标上传后取回 | 26207 |
+
+**「反代与直连一致」的结论**：断言项集合逐项相同（归一后各 111 项）、登录页与两个静态资源
+**响应体 sha256 完全相同**、Cookie 行为无分叉（HttpOnly 会话 Cookie 在 https 下正常收发、登出后清零）。
+**没有观察到任何静态资源或 Cookie 分叉**。
+
+## 退出码 0 / 1 / 2 本轮都实测过（不是只写在表里）
+
+| 退出码 | 怎么造出来的 | 原始输出 |
+|---|---|---|
+| `0` | 正常跑 | `ADMIN_E2E_EXIT=0`，见上 |
+| `1` | 比对脚本修好前的中间态（compare 报 `[FAIL]`，驱动本身全绿） | `RESULT: FAIL —— 见上面的 [FAIL] 行…` + `ADMIN_E2E_EXIT=1` |
+| `2` | `CB_ADMIN_E2E_NGINX_IMAGE=carbonboo-definitely-not-an-image:1 bash tests/tools/admin_e2e/run.sh` | `[ENV-FAIL] nginx 镜像不可用…` + `RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）` + `ADMIN_E2E_EXIT=2` |
+
+## 新增已知坑（t55 那 7 条之外）
+
+8. **Windows 系统代理会让 Chromium 的 `--host-resolver-rules` 失效**：实测无 `--no-proxy-server` 时
+   主机名请求走系统代理 → `net::ERR_CONNECTION_RESET` / `net::ERR_CONNECTION_ABORTED`，而
+   `--dump-dom` 直连 `https://127.0.0.1:<port>` 正常。加 `--no-proxy-server` 后页面正常渲染。
+   **这是浏览器侧环境问题，不是反代缺陷**。
+9. **`Report.shots_by_name` 的键名带截图前缀**：第二遍 `SHOT_PREFIX=nginx_` 后，
+   仍按裸名 `shots_by_name.get("01_login_page")` 查回会拿到 `None` → `TypeError`。
+   现已改为直接用 `screenshot()` 的返回值。
+10. **`http.client.HTTPSConnection("127.0.0.1", …)` 会拿 IP 做主机名校验**，
+    报 `certificate verify failed: IP address mismatch`；要么用 `server_hostname="api.example.com"`
+    的 `wrap_socket`（本工具做法，仍**开着**校验），要么就只能关校验（不推荐）。
+
+## 覆盖边界（本轮**没有**证明的事，如实列出）
+
+* `server/deploy/nginx/carbonboo.conf` 只被**派生**：Let's Encrypt 真实证书目录、真实域名解析、
+  HSTS/H2/限流在生产域名下的行为**未验证**（本轮是自签证书 + `--host-resolver-rules`）。
+* 只有 Edge（Chromium）一个浏览器内核；不覆盖 Firefox/Safari、真机移动端。
+* nginx 限流 `limit_req zone=carbonboo_login` 在**本轮的请求密度**下没有触发 429（单一管理员、串行点击）；
+  `429` 语义由 t75 的 62 条 curl 探针覆盖，本轮不复现。
+* 并发/压测不在范围（单浏览器、串行）。
+* 真机端侧与多机分布式同步无关本轮（本工具只覆盖 `/admin` Web 图层）。
+
+## 清理与不变量（本轮实测）
+
+* `docker ps -a | grep -c carbonboo` = **1**（只有共享 `carbonboo-mysql`，未停未删）；无遗留
+  `cb-admin-e2e-nginx` 容器 / 网络 / 卷；Edge 进程里查 `cb-admin-e2e` 的 profile = **0** 条。
+* 任务库 `carbonboo_admin_e2e` 跑后已 drop（`SHOW DATABASES` 无此库）。
+* 生产库 `carbonboo` **21 张表逐表行数跑前 == 跑后**（脚本内 `diff` 校验，与 t55 同法）。
+* `server/**`、`app/**`、`docs/**`、`tests/cases/**` 一行未改。
+
+## 与上文两处的差异说明（只追加，不改上文）
+
+* 上文「退出码」表格写「当前 **97 项**」是 t55 的计数；t59 修好后直连路径为 **98 项**，
+  本轮 nginx 路径为 **103 项**（含 `⑧` 资源探针）+ 比对脚本 16 项。以上文为准会偏旧，特此标注。
+* 上文 §「本工具实测发现的一条小缺陷」记的 `login.html` 缺 `id="flash"`：**t59 已修复**
+  （`server/admin_web/templates/login.html` 补了 `id="flash"`），本轮在真浏览器经 nginx 复验通过
+  （见上面 `#flash found=True …` 那行）。上文保留原样作为历史记录。
