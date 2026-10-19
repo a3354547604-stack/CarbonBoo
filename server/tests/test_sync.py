@@ -570,6 +570,129 @@ def test_tie_branch_counts_conflict_with_the_same_condition(client):
 
 
 # --------------------------------------------------------------------------- #
+# 3b) LWW 并发守恒（t63 回归：修复前这一组必须红）
+# --------------------------------------------------------------------------- #
+CONC_N = 16  # 任务书要求 N ≥ 16
+CONC_ROUNDS = 8
+
+
+def _concurrent_versions(client, account, user_id: str, rid: str, base: int, *, pre_create: bool):
+    """同一行的 `CONC_N` 个版本（`updated_at` 严格递增）**同时** push，返回逐版本响应。
+
+    `threading.Barrier` 让 16 个请求尽量同时进入服务端，把「读旧行 → 比大小 → 写回」的竞态窗口放到最大；
+    每个版本带独立 `device_id` 且 `updated_at` 严格递增（不触发平局分支），于是
+    「最终落库 = 最大 updated_at」就是 §6.3 LWW「大者胜」在并发下守恒的判据。
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    stamps = [base + i for i in range(1, CONC_N + 1)]
+    devices = [f"conc-{i:02d}" for i in range(1, CONC_N + 1)]
+    if pre_create:
+        # 先落一版更旧的底行 ⇒ 16 个并发请求都走「已存在 → 比较 → UPDATE」这条路径
+        data_of(
+            push(
+                client,
+                account,
+                {"carbon_record": [carbon_record(user_id, rid, amount=0.0, updated_at=base, device_id="conc-base")]},
+                device_id="conc-base",
+            )
+        )
+
+    barrier = threading.Barrier(CONC_N)
+    outcomes: list[dict] = [{} for _ in range(CONC_N)]
+
+    def one(index: int) -> None:
+        barrier.wait()
+        outcomes[index] = data_of(
+            push(
+                client,
+                account,
+                {
+                    "carbon_record": [
+                        carbon_record(
+                            user_id,
+                            rid,
+                            amount=float(index + 1),
+                            updated_at=stamps[index],
+                            device_id=devices[index],
+                        )
+                    ]
+                },
+                device_id=devices[index],
+            )
+        )
+
+    with ThreadPoolExecutor(max_workers=CONC_N) as pool:
+        list(pool.map(one, range(CONC_N)))
+    return stamps, devices, outcomes
+
+
+@pytest.mark.parametrize("pre_create", [False, True], ids=["insert-race", "update-race"])
+def test_lww_concurrent_push_converges_to_max_updated_at(client, db_session, pre_create):
+    """t63 回归：同一行 `CONC_N=16` 并发 push（`updated_at` 递增），**每一轮**落库 = 最大 updated_at 那一版。
+
+    修复前（`_merge_lww` 先 SELECT 比大小、`_apply_update` 无条件 UPDATE）该用例红：并发事务各自读到
+    同一旧行、各自通过比较，后提交的**更旧**版本会覆盖更新的版本（t61 实测 32 轮里 11 轮违反）。
+    两个子场景分别压「行不存在时 `INSERT IGNORE` 被抢先」与「行已存在时 UPDATE 降级覆盖」。
+    """
+    account = register_user(client)
+    user_id = str(account["userId"])
+    base = T0 + 10 * MS_PER_DAY
+    failures: list[str] = []
+
+    for round_index in range(CONC_ROUNDS):
+        rid = f"rec-conc-{'u' if pre_create else 'i'}-{round_index}"
+        round_base = base + round_index * 10_000
+        stamps, devices, outcomes = _concurrent_versions(
+            client, account, user_id, rid, round_base, pre_create=pre_create
+        )
+        want_index = len(stamps) - 1  # updated_at 最大者的下标
+        want_ts, want_device = stamps[want_index], devices[want_index]
+
+        # 每一轮都先结束上一个事务，否则 REPEATABLE READ 会让本轮读到上一轮的旧快照
+        db_session.rollback()
+        row = (
+            db_session.execute(
+                text("SELECT updated_at, device_id, amount FROM carbon_record WHERE id = :rid AND user_id = :uid"),
+                {"rid": rid, "uid": user_id},
+            )
+            .mappings()
+            .first()
+        )
+        assert row is not None, f"第 {round_index} 轮：行 {rid} 未落库"
+        stored_ts = int(row["updated_at"])
+
+        # ① LWW 守恒：最终落库 = 最大 updated_at
+        if stored_ts != want_ts:
+            failures.append(
+                f"第 {round_index} 轮落库 updated_at={stored_ts}，最大应为 {want_ts}"
+                f"（存活版本 device={row['device_id']}，期望 {want_device}）"
+            )
+        # ② 响应自陈与落库一致：没有任何「自称 accepted」的版本被更旧的版本顶掉
+        accepted_versions = [
+            stamps[index] for index, outcome in enumerate(outcomes) if int(outcome.get("accepted") or 0) >= 1
+        ]
+        if accepted_versions and max(accepted_versions) > stored_ts:
+            failures.append(
+                f"第 {round_index} 轮 accepted 版本 {max(accepted_versions)} 未存活（落库 {stored_ts}）"
+            )
+        # ③ 内容与版本同源：存活行的 amount 必须是赢家自己的值（不是旧行的残留字段）
+        if float(row["amount"]) != float(want_index + 1):
+            failures.append(f"第 {round_index} 轮 amount={row['amount']}，期望 {want_index + 1}")
+        # ④ 每条响应 skipped = ignored + rejected（§5.3 形状）
+        bad_skipped = [
+            index
+            for index, outcome in enumerate(outcomes)
+            if int(outcome.get("skipped") or 0) != int(outcome.get("ignored") or 0) + int(outcome.get("rejected") or 0)
+        ]
+        if bad_skipped:
+            failures.append(f"第 {round_index} 轮 {len(bad_skipped)} 条响应 skipped ≠ ignored + rejected")
+
+    assert not failures, "LWW 并发守恒被违反：\n" + "\n".join(failures)
+
+
+# --------------------------------------------------------------------------- #
 # 4) 软删除传播
 # --------------------------------------------------------------------------- #
 def test_soft_delete_propagates_through_pull(client, db_session):

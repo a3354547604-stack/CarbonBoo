@@ -35,8 +35,9 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-from sqlalchemy import case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
@@ -276,6 +277,20 @@ def _diagnose_ignored(db: Session, table_name: str, user_id: str, values: Mappin
 # --------------------------------------------------------------------------- #
 # push
 # --------------------------------------------------------------------------- #
+#: 同一批 push 遇到 InnoDB 死锁 / 锁等待超时时的整事务重放上限（MySQL 官方建议：死锁用重试解决）
+PUSH_MAX_ATTEMPTS = 5
+
+#: 可重放的 MySQL 锁错误码：1213 = 死锁（Deadlock found），1205 = 锁等待超时（Lock wait timeout）
+RETRYABLE_LOCK_ERRNOS = (1213, 1205)
+
+
+def _is_retryable_lock_error(exc: OperationalError) -> bool:
+    """InnoDB 死锁 / 锁等待超时是**并发争用**而不是逻辑错误，整事务重放即可收敛。"""
+    original = getattr(exc, "orig", None)
+    code = original.args[0] if original is not None and original.args else None
+    return code in RETRYABLE_LOCK_ERRNOS
+
+
 def push(
     db: Session,
     *,
@@ -285,7 +300,48 @@ def push(
     tables: Mapping[str, list[dict[str, Any]]],
     client_now: int | None = None,
 ) -> PushOutcome:
-    """合并一批上行增量（服务端是接收方 = 附录 B §6.3 伪码里的 `local`）。"""
+    """合并一批上行增量（服务端是接收方 = 附录 B §6.3 伪码里的 `local`）。
+
+    并发：多个 push 同时写同一行时，InnoDB 可能以死锁（1213）中止其中一个事务 —— 典型成因是
+    「多个事务同时 `INSERT IGNORE` 同一主键、再各自把共享行锁升级为排他行锁」。整个 push 是
+    **可重放的幂等 LWW 合并**（同样的入参重放一次结果相同），所以按 MySQL 官方建议整事务重放：
+    最多 `PUSH_MAX_ATTEMPTS` 次，仍失败才上抛 500。这不改变并发度，只是把被中止的事务再做一遍。
+    """
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            return _push_once(
+                db,
+                user_id=user_id,
+                device_id=device_id,
+                last_sync_at=last_sync_at,
+                tables=tables,
+                client_now=client_now,
+            )
+        except OperationalError as exc:
+            db.rollback()
+            if attempt >= PUSH_MAX_ATTEMPTS or not _is_retryable_lock_error(exc):
+                raise
+            logger.warning(
+                "sync push 并发锁冲突（%s），整事务重放第 %d/%d 次：user_id=%s",
+                exc.orig,
+                attempt,
+                PUSH_MAX_ATTEMPTS,
+                user_id,
+            )
+
+
+def _push_once(
+    db: Session,
+    *,
+    user_id: str,
+    device_id: str | None,
+    last_sync_at: int,
+    tables: Mapping[str, list[dict[str, Any]]],
+    client_now: int | None = None,
+) -> PushOutcome:
+    """`push` 的单次执行（一次事务）：合并 → 计状态 → 写 `sync_log` → 提交。"""
     started_at = now_ms()
     outcome = PushOutcome()
 
@@ -402,6 +458,18 @@ def _merge_append_only(db: Session, table_name: str, *, user_id: str, values: di
     outcome.note(f"{table_name}.id={values['id']} 被唯一索引拒绝，已计入跨设备重复")
 
 
+def _read_row_for_update(db: Session, table_name: str, *, row_id: str) -> dict[str, Any] | None:
+    """当前读（`SELECT ... FOR UPDATE`）取一行的**最新已提交**版本。
+
+    MySQL 默认 REPEATABLE READ：普通 `SELECT` 读的是事务开始时的快照，看不到并发事务刚提交的行。
+    因此并发归因、以及「0 行 UPDATE」之后的回写，都必须用当前读 —— 否则回写出去的是过期版本，
+    两端永远收敛不到一起（t61 的 S2 观测：16 并发重推同一行时快照归因落到 unknown）。
+    """
+    table = Base.metadata.tables[table_name]
+    row = db.execute(select(table).where(table.c.id == row_id).with_for_update()).mappings().first()
+    return dict(row) if row is not None else None
+
+
 def _merge_lww(
     db: Session,
     table_name: str,
@@ -412,7 +480,10 @@ def _merge_lww(
     offset_ms: int,
     outcome: PushOutcome,
 ) -> None:
-    """完整 LWW（附录 B §6.3）：`rUpdated > l.updatedAt` 取远端；相等比 deviceId 字典序；否则保留服务端版本。"""
+    """完整 LWW（附录 B §6.3）：`rUpdated > l.updatedAt` 取远端；相等比 deviceId 字典序；否则保留服务端版本。
+
+    t63：并发下「比较 + 写入」必须原子化（见下方「方案①」），否则旧版本会覆盖新版本（丢更新）。
+    """
     table = Base.metadata.tables[table_name]
     row_id = values["id"]
     existing = db.execute(select(table).where(table.c.id == row_id).limit(1)).mappings().first()
@@ -430,25 +501,31 @@ def _merge_lww(
             outcome.accepted += 1
             outcome.count(table_name)
             return
-        kind, row = _diagnose_ignored(db, table_name, user_id, values)
-        if kind == "duplicate":
-            outcome.ignored += 1
-            outcome.note(f"{table_name}.id={row_id} 命中已有行（业务唯一键），跨设备重复已去重")
-            if row is not None:
-                outcome.merge_back(table_name, row)
-            return
-        if kind == "foreign":
+        # 并发下 `INSERT IGNORE` 会被抢先（同 id 的另一个事务先提交、本事务只能忽略）→ 用**当前读**
+        # 拿「最新已提交行」，再走下面的归属检查 + LWW 比较。只靠本事务快照归因，会把「其实已有别的
+        # 版本」误判成「未识别冲突来源」计 rejected（t61 S2 实测：16 并发重推同一行时出现该归因）。
+        existing = _read_row_for_update(db, table_name, row_id=row_id)
+        if existing is None:
+            kind, row = _diagnose_ignored(db, table_name, user_id, values)
+            if kind == "duplicate":
+                outcome.ignored += 1
+                outcome.note(f"{table_name}.id={row_id} 命中已有行（业务唯一键），跨设备重复已去重")
+                if row is not None:
+                    outcome.merge_back(table_name, row)
+                return
+            if kind == "foreign":
+                outcome.rejected += 1
+                outcome.status = "partial"
+                outcome.note(
+                    f"{table_name}.id={row_id} 被数据库唯一索引拒绝，但冲突行属于另一账号"
+                    f"（user_id={row['user_id'] if row else '?'}）—— 唯一索引缺少 user_id，见附录 B §2:142 与 sql/migrations/001"
+                )
+                return
             outcome.rejected += 1
             outcome.status = "partial"
-            outcome.note(
-                f"{table_name}.id={row_id} 被数据库唯一索引拒绝，但冲突行属于另一账号"
-                f"（user_id={row['user_id'] if row else '?'}）—— 唯一索引缺少 user_id，见附录 B §2:142 与 sql/migrations/001"
-            )
+            outcome.note(f"{table_name}.id={row_id} 写入被数据库拒绝（未识别冲突来源）")
             return
-        outcome.rejected += 1
-        outcome.status = "partial"
-        outcome.note(f"{table_name}.id={row_id} 写入被数据库拒绝（未识别冲突来源）")
-        return
+        # 当前读拿到了并发事务刚提交的行：继续走下面的归属检查与 LWW 比较（后续并发由 WHERE 把关）
 
     if existing["user_id"] != user_id:
         outcome.rejected += 1
@@ -456,48 +533,86 @@ def _merge_lww(
         outcome.note(f"{table_name}.id={row_id} 已属于账号 {existing['user_id']}，拒绝覆盖")
         return
 
+    # ── LWW：比较与写入原子化（t63「方案①」）──────────────────────────────────
+    # 判据与改前逐字一致（含平局比 deviceId 字典序），但改由**同一条 UPDATE 的 WHERE** 求值：
+    # `updated_at < :remote` 或（`updated_at = :remote` 且 `device_id < :remote_device`）。
+    # 为什么不用「先 SELECT 比大小、再无条件 UPDATE」：两个并发事务会读到同一旧行、各自通过比较，
+    # 后提交的**更旧**版本覆盖更新的版本（t61 实测 32 轮里 11 轮丢更新）。InnoDB 的 UPDATE 是当前读
+    # （current read）并对命中行加行锁；把比较放进 WHERE 后，比较与写入由同一条语句、同一把锁完成，
+    # 后到的事务在锁上等待、拿到锁后对「最新已提交版本」重新求值 WHERE，不满足即 0 行 ⇒ 不会降级覆盖。
+    # 选它而不是 `SELECT ... FOR UPDATE` 整段锁行或 `INSERT ... ON DUPLICATE KEY UPDATE IF()`：
+    # 少一次往返、不改事务隔离级别、也不必把平局规则抄成第二种写法。
     remote_updated = int(values["updated_at"]) + offset_ms  # 对端时间 → 服务端基准
-    local_updated = int(existing["updated_at"])
+    remote_device = str(values.get("device_id") or "")
+    local_updated = int(existing["updated_at"])  # 快照值：只喂「真冲突」计数（与改前同一条件）
 
-    if remote_updated > local_updated:
-        _apply_update(db, table_name, row_id=row_id, user_id=user_id, values=values)
+    written = _apply_update(
+        db,
+        table_name,
+        row_id=row_id,
+        user_id=user_id,
+        values=values,
+        if_newer_than=(remote_updated, remote_device),
+    )
+    if written:
         outcome.accepted += 1
         outcome.count(table_name)
         if local_updated > last_sync_at and int(values["updated_at"]) > last_sync_at:
             outcome.conflicts += 1
         return
 
-    if remote_updated == local_updated:
-        remote_device = str(values.get("device_id") or "")
-        local_device = str(existing.get("device_id") or "")
-        if remote_device > local_device:
-            _apply_update(db, table_name, row_id=row_id, user_id=user_id, values=values)
-            outcome.accepted += 1
-            outcome.count(table_name)
-            # 与上面的「真冲突」定义同一条件（附录 B §6.3:919）
-            if local_updated > last_sync_at and int(values["updated_at"]) > last_sync_at:
-                outcome.conflicts += 1
-            return
+    # 0 行 = 有人把该行推进到了「不低于远端」的版本（或远端本来就旧 / 平局不占优）。
+    # 用当前读取最新已提交行来归类与回写：过期的快照回写会让两端永远收敛不到一起。
+    current = _read_row_for_update(db, table_name, row_id=row_id) or existing
+    current_updated = int(current["updated_at"])
+    current_device = str(current.get("device_id") or "")
+    if remote_updated == current_updated and remote_device <= current_device:
         # deviceId 相同 = 同一版本；deviceId 更小 = 对端该让位 → 都保留服务端版本
         outcome.ignored += 1
         outcome.note(
             f"{table_name}.id={row_id} 与已有行同一版本（deviceId={remote_device or '(空)'}），"
             f"按键去重，保留服务端版本并回写"
         )
-        outcome.merge_back(table_name, existing)
+        outcome.merge_back(table_name, current)
         return
 
     # 远端更旧：保留服务端版本，并让客户端回写（否则两端不收敛）
     outcome.rejected += 1
     outcome.note(f"{table_name}.id={row_id} 比服务端版本旧，保留服务端版本并回写（不做降级覆盖）")
-    outcome.merge_back(table_name, existing)
+    outcome.merge_back(table_name, current)
 
 
-def _apply_update(db: Session, table_name: str, *, row_id: str, user_id: str, values: Mapping[str, Any]) -> None:
+def _apply_update(
+    db: Session,
+    table_name: str,
+    *,
+    row_id: str,
+    user_id: str,
+    values: Mapping[str, Any],
+    if_newer_than: tuple[int, str] | None = None,
+) -> int:
+    """写入 LWW 胜出版本，返回真正写入的行数（0 = 比较没通过，行已被「不低于远端」的版本占住）。
+
+    `if_newer_than=(服务端基准 updated_at, device_id)` 把 §6.3 的比较条件推进 `UPDATE ... WHERE`，
+    让「比较 + 写入」在同一条语句、同一把行锁里完成（见 `_merge_lww` 的「方案①」）。
+    """
     table = Base.metadata.tables[table_name]
     payload = {name: value for name, value in values.items() if name != "id"}
     payload["user_id"] = user_id
-    db.execute(table.update().where(table.c.id == row_id, table.c.user_id == user_id).values(**payload))
+    statement = table.update().where(table.c.id == row_id, table.c.user_id == user_id)
+    if if_newer_than is not None:
+        remote_updated, remote_device = if_newer_than
+        # 平局规则（附录 B §6.3）：updated_at 相等时 device_id 字典序大者胜；NULL 视为空串
+        statement = statement.where(
+            or_(
+                table.c.updated_at < remote_updated,
+                and_(
+                    table.c.updated_at == remote_updated,
+                    func.coalesce(table.c.device_id, "") < remote_device,
+                ),
+            )
+        )
+    return int(db.execute(statement.values(**payload)).rowcount or 0)
 
 
 # --------------------------------------------------------------------------- #
