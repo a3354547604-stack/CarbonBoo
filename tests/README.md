@@ -10,7 +10,7 @@
 | 层 | 范围 | 现在能否跑 | 位置 |
 |:--:|---|:--:|---|
 | **L0** | 数值与文档一致性：碳计算 18 组样例、封顶 5 组、边界样例、文档已知冲突扫描 | ✅ **现在就能跑**（只依赖 Python 3） | `tests/tools/check_l0.py` + `tests/cases/` |
-| **L1** | 纯逻辑单测（ArkTS / hypium）：计算、封顶、目标与徽章幂等、备份往返、CSV 编码、LWW 合并、系统配置下发 | ✅ **套件已建**（**10 个** `.test.ets` 用例文件 + `List.test.ets` 汇总入口）；执行需 SDK Previewer / 真机 / 模拟器，本机无 → **设备上尚未真正跑过**（见 §5）。离线执行器 `tests/tools/l1_offline/` 已把 **36 个 `it()` 全部离线真跑一遍**（t45 后 `PASS=36 / FAIL=0`，见 §5.1；跑的是仓库真实实现 + 真 SQL 垫片，**但不是 hypium 的替代品**，也**不**改变「设备上未跑过」这一事实） | `app/entry/src/ohosTest/ets/test/` + `tests/tools/l1_offline/` |
+| **L1** | 纯逻辑单测（ArkTS / hypium）：计算、封顶、目标与徽章幂等、备份往返、CSV 编码、LWW 合并、系统配置下发 | ✅ **套件已建**（**10 个** `.test.ets` 用例文件 + `List.test.ets` 汇总入口）；执行需 SDK Previewer / 真机 / 模拟器，本机无 → **设备上尚未真正跑过**（见 §5）。离线执行器 `tests/tools/l1_offline/` 已把 **41 个 `it()` 全部离线真跑一遍**（t45 时为 36 条；t66 后 `PASS=41 / FAIL=0`，见 §5.1；跑的是仓库真实实现 + 真 SQL 垫片，**但不是 hypium 的替代品**，也**不**改变「设备上未跑过」这一事实） | `app/entry/src/ohosTest/ets/test/` + `tests/tools/l1_offline/` |
 | **L2** | 端侧集成：两条真机协同脚本、飞行模式全功能、性能打点 | ⏳ **需两条真机（或真机 + 模拟器）**；当前无执行记录（不阻塞 L1/L3） | 手工脚本 + 录屏，结果记入 `docs/APPENDIX-D` |
 | **L3** | 服务端（pytest）：账号、鉴权隔离、取价、同步幂等与冲突、后台管理端、配置下发 | ✅ **已建并可跑**（**6 个**用例文件 + `conftest.py` 夹具，跑在真实 MySQL 8 上：`pytest server/tests`） | `server/tests/` |
 
@@ -80,8 +80,8 @@ python3 tests/tools/check_l0.py --strict
 > 不是用例文件）；同目录的 `CalcBaselineValidator.ets` / `CalcTestTypes.ets` 是辅助文件，不匹配 `*.test.ets`。
 > 新增用例文件必须同时在 `List.test.ets` 里 `import` 并调用，否则不会被收集。
 > ⚠️ **执行状态（设备侧）**：本机无真机/模拟器（hypium 需 SDK Previewer 驱动，且该二进制与本机 glibc 不兼容），
-> 故 L1 的**设备侧**证据仍为 **0**：36 个 `it()` 一条都没在设备上跑过，不得据此声称任何 L1 用例在设备上"通过"。
-> **离线侧**另有可复现证据 —— `tests/tools/l1_offline/run_tests.sh` 已把这 36 条逐条真跑（见 §5.1）；
+> 故 L1 的**设备侧**证据仍为 **0**：41 个 `it()` 一条都没在设备上跑过，不得据此声称任何 L1 用例在设备上"通过"。
+> **离线侧**另有可复现证据 —— `tests/tools/l1_offline/run_tests.sh` 已把这 41 条逐条真跑（见 §5.1）；
 > 两条证据**不可混同**，报告里必须分开陈述「离线 = 已执行」与「设备上 hypium = 未运行」。
 
 ### 5.1 L1 · 离线执行器 — `tests/tools/l1_offline/`（**不是 hypium 的替代品**）
@@ -92,7 +92,7 @@ python3 tests/tools/check_l0.py --strict
 | 命令 | 它验什么 | 实测（绑定 `HEAD e83d3c1`） |
 |---|---|---|
 | `bash tests/tools/l1_offline/run.sh` | 把 `app/` 下 **9 份真实 `.ets`**（`CarbonCalc` / `DecimalUtil` / `AppConstants` / `CarbonTypes` / `CarbonService` / `JsonUtil` / `StringUtil` / `CalcTestTypes` / `CalcBaselineValidator`）**原样复制 + 仅改写 import 前缀** → esbuild 转 CJS → 在 Node 里跑**真实实现**，复算 `tests/cases/carbon-calc.json` 的基准（函数级 + 基准级两层） | `RESULT: PASS=55 FAIL=0`；`checked = 323` / `passed = true` / `mismatches=0`；`RUN_EXIT=0` |
-| `bash tests/tools/l1_offline/run_tests.sh`（t43 新增） | 把 `app/entry/src/ohosTest/ets/test/` 下的 **10 个套件、36 个 `it()`** 在离线环境**逐条真执行**：`platform/` 垫片用 Node 内置 `node:sqlite` 提供**真 SQL** 的 `relationalStore` 语义（唯一索引 / `ON CONFLICT ... DO UPDATE` / `MAX()` / 事务），`runners/offline_run.mjs` 转译 **78 个 `.ets`** 并重放 App 启动地基（`RdbHelper.open` → `SeedRepository.seedStatic` → `FactorRepository.load`，调的都是仓库真实函数）；内联 sourcemap 让失败堆栈指回 `.ets:行` | `RESULT: it_executed=36 passed=36 failed=0 requires_device=0`；`CalcBaselineValidator：checked=323 passed=true`；`RESULT: PASS`；`TESTS_EXIT=0`（t43 首次执行时是 `passed=18 failed=18`，逐条差距与归因见 `docs/VERIFICATION.md` §R9/§R10） |
+| `bash tests/tools/l1_offline/run_tests.sh`（t43 新增） | 把 `app/entry/src/ohosTest/ets/test/` 下的 **10 个套件、41 个 `it()`** 在离线环境**逐条真执行**：`platform/` 垫片用 Node 内置 `node:sqlite` 提供**真 SQL** 的 `relationalStore` 语义（唯一索引 / `ON CONFLICT ... DO UPDATE` / `MAX()` / 事务），`runners/offline_run.mjs` 转译 **78 个 `.ets`** 并重放 App 启动地基（`RdbHelper.open` → `SeedRepository.seedStatic` → `FactorRepository.load`，调的都是仓库真实函数）；内联 sourcemap 让失败堆栈指回 `.ets:行` | `RESULT: it_executed=41 passed=41 failed=0 requires_device=0`；`CalcBaselineValidator：checked=323 passed=true`；`RESULT: PASS`；`TESTS_EXIT=0`（t43 首次执行时是 `passed=18 failed=18`，逐条差距与归因见 `docs/VERIFICATION.md` §R9/§R10） |
 
 退出码：`run.sh` 0 = 全 PASS / 非 0 = 任一 FAIL；`run_tests.sh` 0 = 全过 / 1 = 有失败或基准不一致 / 2 = 环境问题。
 用途、可复现性论证与完整实测输出见 `tests/tools/l1_offline/README.md`。
@@ -102,13 +102,13 @@ python3 tests/tools/check_l0.py --strict
 - 它**不覆盖** UI（ArkUI 组件树 / 交互）、网络（HTTP 与超时降级）、生命周期（`UIAbility` / 页面栈 / 冷启动）、
   权限与端侧能力（相册保存、识图 stub、近场协同）—— 这些只能靠 hypium 在真机/模拟器上跑；
   （数据库一项自 `run_tests.sh` 起由 `node:sqlite` **部分**覆盖：真 SQL 语义成立，但**不是设备 RDB**）
-- 它**只证明**「纯逻辑模块的**真实实现**与 `tests/cases/carbon-calc.json` 基准一致」以及「36 条用例在**真 SQL**
+- 它**只证明**「纯逻辑模块的**真实实现**与 `tests/cases/carbon-calc.json` 基准一致」以及「41 条用例在**真 SQL**
   垫片上跑出的行为」，**不证明 App 在设备上的行为正确**；
 - **`run_tests.sh` 是离线执行（esbuild 转译 + `node:sqlite` 垫片），不等于真机 hypium**：真机侧 **10 个套件、
-  36 个 `it()` 仍未在设备上执行过**（`hdc` 未安装、`/dev/kvm` 不可写、SDK Previewer 与 glibc 2.43 冲突）。
+  41 个 `it()` 仍未在设备上执行过**（`hdc` 未安装、`/dev/kvm` 不可写、SDK Previewer 与 glibc 2.43 冲突）。
   输出里的 `requires_device=0` 是「因必须真机而被**跳过**的用例数」，**不是**「设备侧跑过的用例数」；
 - 上表 L1 的执行状态**不因本工具而改变**；两条证据**不可互相顶替**，报告里必须分开陈述：
-  「离线 = 36 条 `it()` + 55 项 + 323 个断言点」与「设备上 hypium = 未运行」。
+  「离线 = 41 条 `it()` + 55 项 + 323 个断言点」与「设备上 hypium = 未运行」。
 
 ### 5.2 判图腿 · 视觉模型一致性检查 — `tests/tools/vision_check/`（**不是截图腿，也不是 hypium 的替代品**）
 
@@ -136,18 +136,18 @@ L0–L3 之外还有一批**可复现的验收证据工具**：它们补的是�
 
 | 工具 | 一条命令 | 退出码 | 覆盖了什么（实测） | 明确边界 |
 |---|---|---|---|---|
-| `tests/tools/l1_offline/`（§5.1） | `bash tests/tools/l1_offline/run.sh`<br>`bash tests/tools/l1_offline/run_tests.sh` | 前者 `0`=全 PASS / 非 0=任一 FAIL；后者 `0`=全过 / `1`=有失败或基准不一致 / `2`=环境不可达 | 9 份真实 `.ets` 复算基准：`PASS=55 FAIL=0`、`checked=323 passed=true`；**36 个 `it()` 离线逐条执行**：`RESULT: it_executed=36 passed=36 failed=0 requires_device=0` | **离线执行 ≠ 真机 hypium**：esbuild 转译 + `node:sqlite` 垫片，不是 ArkTS 运行时、不是设备 RDB；UI / 网络 / 生命周期 / 权限 / 端侧能力全不覆盖；`requires_device=0` 是「因必须真机被**跳过**」的数，**不是**「设备上跑过」的数 |
+| `tests/tools/l1_offline/`（§5.1） | `bash tests/tools/l1_offline/run.sh`<br>`bash tests/tools/l1_offline/run_tests.sh` | 前者 `0`=全 PASS / 非 0=任一 FAIL；后者 `0`=全过 / `1`=有失败或基准不一致 / `2`=环境不可达 | 9 份真实 `.ets` 复算基准：`PASS=55 FAIL=0`、`checked=323 passed=true`；**41 个 `it()` 离线逐条执行**：`RESULT: it_executed=41 passed=41 failed=0 requires_device=0` | **离线执行 ≠ 真机 hypium**：esbuild 转译 + `node:sqlite` 垫片，不是 ArkTS 运行时、不是设备 RDB；UI / 网络 / 生命周期 / 权限 / 端侧能力全不覆盖；`requires_device=0` 是「因必须真机被**跳过**」的数，**不是**「设备上跑过」的数 |
 | `tests/tools/vision_check/`（§5.2） | `bash tests/tools/vision_check/run.sh` | `0`=判读通过 / `1`=判读失败 / `2`=像素自检失败 / `3`=无网络 / `4`=取不到 key | 从 `util/AppTheme.ets` 解析 17 个真实设计令牌 → 渲染色板 → 视觉模型判读（实测 17/17 命中，`RUN_EXIT=0`） | **设计令牌色板判读 ≠ 18 页视觉走查**：不渲染任何页面、不产生页面截图；**截图腿仍不可用**（`hdc` 未安装 / 无模拟器 / Previewer 崩于 glibc 2.43） |
 | `tests/tools/admin_e2e/`（t55） | `bash tests/tools/admin_e2e/run.sh` | `0`=全过 / `1`=有断言失败 / `2`=环境不可达（MySQL 容器 / Edge / CDP / 服务端 任一不可用） | 真实 Edge headless + CDP 驱动 `/admin` 七项功能 + 四条鉴权边界；**97 项断言**（t59 后 **98 项**：`PASS=98 FAIL=0`）、13 张 1440×900 截图 + `artifacts/report.json` | 只覆盖 **Edge**（`Edg/155.0`）、明文 `http://127.0.0.1:8041`、单一 1440×900 视口；**≠ 跨浏览器 / 移动端 / HTTPS**；它与 App 侧证据**互不替代** |
 | `tests/tools/deploy_e2e/`（t56） | `bash tests/tools/deploy_e2e/run.sh`（`L1_KEEP=1` 保留现场） | `0`=探针全过 / `1`=有探针失败 / `2`=环境不可达（无 docker / 缺镜像 / 端口被占 / deploy 文件缺失） | 容器化实跑 `server/deploy/` 四件实物：仓库 nginx 配置**字节不改**过 `nginx -t` 并真终止 TLS、限流真限住（40 连击→32×429、30 连击→20×503）、`backup-mysql.sh` 的 dump 导入**独立容器** 21/21 表一致、`migrate.sh` 两个安全阀真以 `EXIT=2/3` 拒跑；**49 探针**、三次连跑 `EXIT=0` | **容器化实跑 ≠ 云 VM 真实部署**：`systemd` 单元**从未真启动**（无 PID1 systemd）、`certbot` **未接 ACME**（用自签证书）、公网域名 / DNS / 防火墙**未验**、大库 dump 耗时未测；`/opt/carbonboo` 在本机不存在，被验的是**脚本与配置内容** |
 | `tests/tools/offline_first/`（t58） | `bash tests/tools/offline_first/run.sh`（`OFFLINE_FIRST_ONLY=1/2` 只跑一段） | `0`=全过 / `1`=有断言失败 / `2`=环境不可达（node < 22.5 / 找不到 esbuild / 不在仓库根） | 「未登录 = 纯单机」**两段方向相反**的证据：断网陷阱下跑完本地主流程（录入含四字段快照 / 积分封顶与余额恒等式 / 本地购买幂等 / 科普离线读 / 本地备份往返）**零出网**；五类例外**确实出网**并打印 URL；**32 断言**；变异反证 `PASS=20 FAIL=3` | **逻辑层零出网 ≠ 真机飞行模式**：只转译 `service/ util/ data/ model/ viewmodel/` 五个目录，`pages/` 与 `components/` **一个文件都不进** ⇒ 不覆盖系统权限 / Ability 生命周期 / 端侧能力 / 界面层；断网是**陷阱**（端口层 + 平台层双记录），不是设备飞行模式开关 |
-| `tests/tools/l2_sync/`（t57） | `bash tests/tools/l2_sync/run.sh` | `0`=全过 / `1`=有失败 / `2`=环境不可达 | 两个独立 `node:sqlite` 真库（各自 `deviceId`）+ 真 FastAPI + 真 HTTP：LWW 两端收敛、平局按 `deviceId`、时钟偏移取反、幂等、软删除、冲突计数 —— 八项 **35 条断言**全过 + 两条反证 | **两个进程实例 ≠ 真双设备**：不是两条真机，不含 Ability 生命周期 / 后台恢复 / 端侧权限 / 近场协同；且**协议级全绿不等于产品可用** —— 它报出 **F1（blocker：全新设备首同步撞 `uq_ua`）** 与 **F2（high：pull 响应无 `offsetMs`）**，两条**均未修**（见 `tests/tools/l2_sync/REPORT.md §4`） |
+| `tests/tools/l2_sync/`（t57） | `bash tests/tools/l2_sync/run.sh` | `0`=全过 / `1`=有失败 / `2`=环境不可达 | 两个独立 `node:sqlite` 真库（各自 `deviceId`）+ 真 FastAPI + 真 HTTP：LWW 两端收敛、平局按 `deviceId`、时钟偏移取反、幂等、软删除、冲突计数，外加 **F1/F3 的修复现场**（`#0.2` / `#8.3` / `#8.4`）—— 主用例 **38 条断言**；**t71 实测 `RESULT: checks=38 passed=37 failed=1`、退出码 `1`**（红项 `#4.9`，见右栏） | **两个进程实例 ≠ 真双设备**：不是两条真机，不含 Ability 生命周期 / 后台恢复 / 端侧权限 / 近场协同；且**协议级不等于产品可用** —— 该工具 **t57 当年**报出 **F1（blocker：全新设备首同步撞 `uq_ua`）** 与 **F2（high：pull 响应无 `offsetMs`）**，**此后 F1 已由 t62 修复、F2 已由 t68 修复**（`#0.2`/`#8.3`/`#4.7`/`#4.10` 现均 PASS，即修复现场）；**当前唯一红项 `#4.9`（时钟往返不漂移）**：t71 连跑 2 次均红，三轮原始读数里严格不变量 `本机值 + offsetMs === 服务端值`（无容差）**三轮全部成立**（打印 `⇒ true`），失败的是 `noAccum9`（服务端值须 ∈ `{初始 T9 + 该轮 offsetMs}`）——第 3 轮本机值往返漂了 **+1 ms**，而同一 check 的 `jitter9` 明确用 3 s 容差允许这种漂移，故**从读数看是工具期望模型过严、不是产品换算错误**（无法排除 `r.ok`，工具未打印该字段）；**未修**，如实登记 |
 | `tests/tools/repro/`（t69） | `bash tests/tools/repro/run.sh`（`REPRO_ONLY=l0,l1,l1test,pytest,hap` 只跑其中几条） | `0`=五条门禁全 PASS / `1`=有 FAIL / `2`=**全部** ENV-SKIP（环境不可达：找不到 esbuild/node、缺 MySQL 凭据、缺 `~/harmony-toolchain/env.sh`、MySQL 连不上） | 从 `git archive HEAD` 导出的**干净副本**（352 文件 = `git ls-files`）里重跑五条门禁：L0 `EXIT=0`、离线 L1 `PASS=55 FAIL=0` + `checked=323`、离线 hypium `it_executed=41 passed=41 failed=0`、服务端 `241 passed`（副本@`1b85147`；**首次需联网**建 venv + MySQL 8）、`assembleHap BUILD SUCCESSFUL in 11 s 500 ms`；脚本**不含任何内联期望值**，故用变异反证自身：改一个 `expectedReductionKg` ⇒ `PASS=3 FAIL=2` / `EXIT=1` ⇒ 副本内 `git checkout --` 还原 ⇒ `PASS=5 FAIL=0` / `EXIT=0` | (a) 干净副本**必须先 `git init`** —— `server/tests/` 有用例依赖 `.git` 元数据，否则 `test_no_secret_files_in_repo` 会**假失败**（见 `docs/VERIFICATION.md §R15.9`）；(b) 它证明的是「**仓库自包含且可复现**」，**不能**替代真机 hypium / 真机 L2 / 云 VM / 设备截图；(c) **本机副本 ≠ 第二台机器**：机器锁定路径见 [`docs/toolchain/harmony-cli-build.md`](../docs/toolchain/harmony-cli-build.md) §坑 4（`app/hvigor/hvigor-config.json5:14-15`，换机器必改） |
 
 > **它们与 L0/L1/L2/L3 的层级关系（写死，别混读）**
 >
 > - 它们是**各层的补充证据**，**不替代任何一层**：L0（`check_l0.py`）、L1（真机 hypium）、L2（端侧集成）、L3（`server/tests/` pytest）的判定口径**一条都没有变**；
-> - **真机 hypium（10 套件 / 36 个 `it()`）与真机 L2 仍是空缺**：`l1_offline/run_tests.sh` 的 36/36 是**离线执行**、`l2_sync` 的 35 条是**协议级**，两者都**不能**写成「L1 / L2 通过」；
+> - **真机 hypium（10 套件 / 41 个 `it()`）与真机 L2 仍是空缺**：`l1_offline/run_tests.sh` 的 41/41 是**离线执行**、`l2_sync` 的 35 条是**协议级**，两者都**不能**写成「L1 / L2 通过」；
 > - 报告里必须分三态写：**「离线 / 协议级 = 已执行」**、**「设备上 = 未运行」**、**「未运行不算通过」**（口径与 `docs/VERIFICATION.md` §R14、§13 一致）；
 > - 任一工具退出码 `2` = **环境不可达**，只能记「未运行」，**不许**折算成通过。
 
@@ -211,9 +211,9 @@ tests/
    ├─ offline_first/      # 「未登录=纯单机」两段证据（断网陷阱 + 五类例外；见 §5.3）
    ├─ l1_offline/         # L1 离线执行器（见 §5.1；跑仓库真实实现，不是 hypium 的替代品）
       ├─ run.sh           # 一条命令：复制 → 校验 → 只改 import 前缀 → esbuild → Node 执行（55 项 + 323 个断言点）
-      ├─ run_tests.sh     # 一条命令：转译 78 个 .ets → node:sqlite 垫片重放启动地基 → 逐条跑 36 个 it()（+ sourcemap 指回 .ets:行）
+      ├─ run_tests.sh     # 一条命令：转译 78 个 .ets → node:sqlite 垫片重放启动地基 → 逐条跑 41 个 it()（+ sourcemap 指回 .ets:行）
       ├─ platform/        # @ohos/* 垫片：arkdata.cjs（relationalStore → node:sqlite）、hypium.cjs、unavailable.cjs（未覆盖模块显式抛错）等
-      ├─ runners/         # calc_samples.mjs（55 项）、baseline_validator.mjs（323 个断言点）、offline_run.mjs（36 个 it() 的收集与执行）
+      ├─ runners/         # calc_samples.mjs（55 项）、baseline_validator.mjs（323 个断言点）、offline_run.mjs（41 个 it() 的收集与执行）
       └─ README.md        # 用途、边界、capSamples 口径、逐条失败归因与单跑复现命令
    └─ vision_check/       # 判图腿：设计令牌色板 → 视觉模型判读（见 §5.2；不产生页面截图）
       ├─ run.sh           # 一条命令：挑带 Pillow 的解释器 → 解析 AppTheme → 画色板 → 判读 → PASS/FAIL
