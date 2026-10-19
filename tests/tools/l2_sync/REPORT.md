@@ -1449,3 +1449,167 @@ RESULT: checks=24 passed=24 failed=0     退出码 = 0
 `#4.9` 除了严格不变量，还带一条对本机值的 ±3s 抖动容差；当某一轮的本机行恰好被「采纳对端」时，
 该轮 `本机 + offsetMs === 服务端` 会因 1000ms 偏差不等而变红，未被采纳时则仍绿。
 **两趟都必然为红（退出码 1）**，可变的是红项条数；这条分支性已列入 §8.8 的未决问题。
+
+## §9 t73 追加节：`#4.9` 假红定性 + 判据重建（"工具期望过严"而非产品缺陷）
+
+> **绑定提交**：`1889d65e56adcf5bdc8176669b0931013e0c8b89`（`fix(l2): #4.9 判据重建…`；本节按 t62/t68 的形态**只追加**：§0–§8 原文逐字未改；两者不一致时以本节为准。）
+> **写入范围**：只有 `tests/tools/l2_sync/`（`app/**`、`server/**` 一行未碰，见 §9.6 指纹与 `git status` 证据）。
+
+### §9.0 结论速览
+
+| 问题 | 结论 | 证据 |
+|---|---|---|
+| t71 报的 `#4.9` 红（`noAccum9`）是工具期望错还是产品缺陷？ | **工具期望错**：判据把"初始常量 `T9`"当选值候选集，与本行每轮按**该轮 offsetMs** 合法重定基的事实冲突；产品侧换算**恰好一次、无叠加、无漂位** | §9.2 原文与行号 + 三轮实测三数 + §9.3 服务端唯一换算点 |
+| 同一 check 内两套判据是否矛盾？ | **矛盾**：`noAccum9` 要求逐字节落在初始候选集里，`jitter9` 却用 ±3 s 容差承认本机值抖动 | §9.1 原文 `:1375-1380` |
+| 重建后的判据是什么？ | `noAccum9` 与既有严格不变量 `inv9` **合并为同一谓词**（逐轮、无容差、只用该轮实测值）；另立 `wire9`（锚在该轮上行原文，只在"本轮真改写了服务端"时可核）与 `bound9`（跨轮不累加上界） | §9.3 |
+| 修完还抓得抓不住真缺陷？ | 抓得住：三条变异各自**必红**（`#4.9` 在两条偏移变异下**确定性**变红），`git show` 还原后**必绿** | §9.4 红项清单 |
+| 唯一保留的 3 s 容差（`jitter9`）还该留吗？ | 留，但**降级为"收敛上界"**并写清职责：严格性由 ①②⑤ 承担，它只发现"三轮都恰好一次但整体漂出去"的退化 | §9.3 |
+
+### §9.1 修前判据原文（`git show 22a3fbf:tests/tools/l2_sync/lib/l2_run.mjs`）
+
+```
+1366:  const near3 = (a, b) => Math.abs(a - b) <= 3000;
+1371:  const inv9 = round9.every((r) => r.ok && r.note === '不漂移'
+1372:    && typeof r.offsetMs === 'number' && r.local + r.offsetMs === r.server);
+1373:  // 服务端值只能等于「单次换算」的候选值，不能是累加形态。
+1374:  const seen9 = [];
+1375:  const noAccum9 = round9.every((r) => {
+1376:    seen9.push(T9 + r.offsetMs);
+1377:    return seen9.indexOf(r.server) >= 0;
+1378:  });
+1379:  // 本机值允许有往返抖动（被拒那一轮取的是对端换算值）⇒ 这一条才用 3s 容差，真正严格的是上面的不变量。
+1380:  const jitter9 = round9.every((r) => near3(r.local, T9));
+```
+
+**矛盾点**：`T9` 是 `:1357 const T9 = Date.now() + 180000;` 算出的**开跑时初始常量**，而 `round9[i].local` 会被
+"该轮 push 被拒 → 采纳对端值 → 按**该轮** `offsetMs` 重定基"改写（`local = server − offset`）。`offsetMs` 每轮随
+push 握手抖动几毫秒，于是第 2/3 轮的 `r.server` 等于 `本轮 local + 本轮 offset`，**不再等于** `初始 T9 + 本轮 offset`
+⇒ 落在候选集之外 ⇒ 假红。同一个 check 里的 `jitter9`（`:1380`）用 ±3 s 容差明确承认这种抖动，两条判据互相打架。
+
+### §9.2 实测（复现 t71 的 `checks=38 passed=37 failed=1 #4.9`）
+
+**修前字节三次连跑**（`bash tests/tools/l2_sync/run.sh`，同一 HEAD）：见 §9.5 表；失败项在三次间是
+`#4.9`（两次）/ `#5.1 #4.9`（一次）/ 全绿（一次）⇒ **概率性假红**，随 push 是否被接受而摆动。
+
+逐轮原始读数（修前判据下，`r.local` 对 `T9` 的差、`offsetMs`、服务端值）：
+
+```
+t71 留档（T9 = 1792391780178）：
+  第 1 轮 offsetMs=60049 本机 1792391780178（ΔT9=0）服务端 1792391840227 ⇒ 本机+offset=1792391840227 ✓
+  第 2 轮 offsetMs=60048 本机 1792391780179（ΔT9=1）服务端 1792391840227 ⇒ 本机+offset=1792391840227 ✓
+  第 3 轮 offsetMs=60049 本机 1792391780179（ΔT9=1）服务端 1792391840228 ⇒ 本机+offset=1792391840228 ✓
+  ⇒ 逐轮严格等式 3/3 成立；红的是 noAccum9 的候选集（初始 T9 + offset）
+```
+
+⇒ 定性：**产品换算正确**（逐轮严格等式无容差成立、服务端只换算一次），红来自判据把初始常量当基准。
+
+### §9.3 重建后的判据（`tests/tools/l2_sync/lib/l2_run.mjs`，函数 `scenario4()` 的 `4.9` 段）
+
+| 判据 | 形式 | 职责 | 容差 |
+|---|---|---|---|
+| ① `inv9` / `noAccum9`（同一谓词 `strict9`） | `本机值 + 本轮 offsetMs === 服务端值`，逐轮 | 每轮"恰好一次换算" | **无** |
+| ② `wire9` | `本轮上行原文 updated_at + 本轮 offsetMs === 服务端值`（仅当本轮真改写了服务端） | "服务端只换算一次"的绝对判据，不依赖跨轮基准 | **无** |
+| ③ `bound9` | `|Δ服务端| ≤ DRIFT9` 且 `|Δ本机| ≤ DRIFT9`（`DRIFT9 = 3 s = |offsetMs|/20`） | 跨轮**不累加** | 上界 |
+| ④ `jitter9` | `|本机值 − T9| ≤ 3 s` | 收敛上界（**不承担严格性**） | 3 s |
+| ⑤ `exact9e`（t73 新增） | 对 A **从未见过的、由 B 推上服务端的行**：`A 库内值 + 该轮 respOffsetMs === 服务端值`，逐字节 | pull 落库换算唯一性；因该行**只能**由 pull 路径写入，这条对"换算叠两次 / 多 1000ms"是**确定性**变红 | **无** |
+
+为什么必须有 ⑤：①② 的时序取决于"本轮 push 是否被服务端接受"（`offsetMs` 抖动 ⇒ 接受/拒绝是概率事件，
+被拒那轮才发生重定基），因此对偏移类变异只有概率性判别力；⑤ 换用只能由 pull 写入的行，把判别力变成确定性的。
+
+### §9.4 反证（鉴别力）——`run.sh` 第 6 / 6b / 6c 段
+
+`tests/tools/l2_sync/run.sh` 第 6 / 6b / 6c 段各自「必红 → `git show HEAD:<path>` 还原（禁 `cp`）→ 必绿」：
+
+| 段 | 变异 | 变异后红项（原始输出） | 其中含 `#4.9`？ | 还原后 |
+|---|---|---|---|---|
+| 6（沿用 t62） | `--mutate=tie-flip` | `RESULT: checks=7 passed=4 failed=3` / `失败项：#3.1 #3.2 #3.3` | 不适用（该段只跑平局组） | `RESULT: checks=7 passed=7 failed=0`，退出码 0 |
+| 6b（沿用 t68） | `--mutate=offset-1000` | `RESULT: checks=24 passed=15 failed=9` / `失败项：#1.2 #1.3 #1.4 #2.2 #2.3 #2.4 #6.3 #4.8 #4.9` | **是**（改前是概率性的：同一变形两次跑分别在 16/24 与 15/24，红项 8 条 vs 9 条，`#4.9` 时红时绿） | `RESULT: checks=24 passed=24 failed=0`，退出码 0 |
+| 6c（t73 新增） | `--mutate=offset-twice`（`+ offsetMs + offsetMs`） | `RESULT: checks=24 passed=15 failed=9` / `失败项：#1.2 #1.3 #1.4 #2.2 #2.3 #2.4 #6.3 #4.8 #4.9` | **是**（脚本会额外打印一行确认，见下） | `RESULT: checks=24 passed=24 failed=0`，退出码 0 |
+
+6c 的确认行（脚本在 PASS 前显式核对红项清单里确实有 `#4.9`，避免"变异其实没打中"的假证据）：
+
+```
+#4.9 已被这条真缺陷打红：失败项：#1.2 #1.3 #1.4 #2.2 #2.3 #2.4 #6.3 #4.8 #4.9
+```
+
+**修 A 之后、加 ⑤ 之前的观测**（说明为什么必须补 ⑤）：同一趟两腿里 6b 的红项**不含** `#4.9`（8 条 → 7 条），
+即 ①②③④ 对"客户端 pull 落库叠两次"仍只有**概率性**判别力（取决于该轮 push 是否被接受、是否触发重定基）。
+补上 ⑤（只用"只能由 pull 写入的行"）之后，`#4.9` 在 6b / 6c **两条腿上都确定性变红**（上表）。
+
+### §9.5 修后的基线三连跑（`bash tests/tools/l2_sync/run.sh`，同一 HEAD，逐趟记退出码与红项）
+
+三趟**逐项相同**（同一 HEAD、同一命令；这正是修前"时红时绿"消失的证据）：
+
+| 趟 | 主用例 | 5 段 tie-flip | 6b offset-1000 | 6c offset-twice | 总 |
+|---|---|---|---|---|---|
+| runB1 | `checks=38 passed=38 failed=0`（0） | `7 passed=4 failed=3` `#3.1 #3.2 #3.3` → 还原 `7/7`（0） | `24 passed=16 failed=8` 红含 `#4.9` → 还原 `24/24`（0） | `24 passed=15 failed=9` 红含 `#4.8 #4.9` → 还原 `24/24`（0） | `RESULT: 全部通过…`，`EXIT=0` |
+| runB2 | 同上 | 同上 | 同上 | 同上 | `EXIT=0` |
+| runB3 | 同上 | 同上 | 同上 | 同上 | `EXIT=0` |
+
+修前同一命令的红项在两次运行间是 `#4.9`（一次）/ `#5.1 #4.9`（一次）/ 全绿（一次）——**现在三趟一模一样**。
+
+`#4.9` 现在的逐轮证据行（原始输出，节选一趟）：
+
+```
+| 第 1 轮：ok=true；push offsetMs=60088；上行原文 updated_at=1792399796066；本机库 updated_at=1792399796066（对 T9 差 0）；
+  服务端库 updated_at=1792399856154；①本机+offset=1792399856154 vs 服务端=1792399856154 ⇒ true；②上行+offset=… ⇒ true
+| 第 2 轮：ok=true；push offsetMs=60062；上行原文 updated_at=1792399796066；本机库 updated_at=1792399796092（对 T9 差 26）；
+  服务端库 updated_at=1792399856154；①本机+offset=1792399856154 vs 服务端=1792399856154 ⇒ true；②上行+offset=1792399856128 vs … ⇒ false
+| ①'逐轮严格（inv9/noAccum9 同一判据）全轮成立=true；③跨轮上界 DRIFT9=3000 …：第1轮 |Δ服务端|=0 |Δ本机|=0；第2轮 |Δ服务端|=0 |Δ本机|=26；第3轮 |Δ服务端|=51 |Δ本机|=26
+| ⑤对端行的 pull 落库换算（确定性）：行 id=5fc79aab-…；服务端值=1792399918406；A 库内值=1792399858343；该轮 respOffsetMs=60063；A库内+offset=1792399918406 vs 服务端=1792399918406 ⇒ true（该行确在 A 的 pull 线段中出现过=true）
+```
+
+第 2 轮的 ② 为 `false` 正说明 ② 的**前提性**：那一轮服务端那行没被改写（服务端值仍等于第 1 轮的），
+所以"由上行原文解释"的等式本就不该成立——脚本据此只在本轮确实改写了服务端时才要求 ②（不是跳过检查）。
+
+### §9.6 零改动与指纹
+
+```
+$ git status --short -- app/ server/
+（0 行）
+$ sha256sum app/entry/src/main/ets/viewmodel/net/SyncService.ets
+3a6f8de87b9b51279ba33c35c66e9c3cdfdbba1c3e45c22729b181e2eb588739   （= HEAD 的字节，全程未碰）
+$ git diff --numstat -- tests/tools/l2_sync/
+13  3   tests/tools/l2_sync/lib/build.mjs
+127 22  tests/tools/l2_sync/lib/l2_run.mjs
+45  2   tests/tools/l2_sync/run.sh
+```
+
+三处变异（`tie-flip` / `offset-1000` / `offset-twice`）**都只写在 `mktemp -d` 出来的构建副本里**
+（`lib/build.mjs <repo> <dir> --mutate=…` 的目标目录），仓库 `app/**` 一格都没动；
+每次反证后都用 `git show HEAD:<path> > <构建副本文件>` 还原并 `cmp` 逐字节比对（**没用 `cp` 备份还原**）。
+
+### §9.7 边界与未决
+
+- **覆盖**：`#4.9` 的时钟往返不漂移、`#5.1` 的复推不重复，都是"真 HTTP + 真 FastAPI + 两个独立 `node:sqlite` 客户端库"上的**协议级**证据。
+- **不覆盖**（与 §7.4 / §8.8 一致，本节未改变）：真机 L2（UI、Ability 生命周期、端侧权限、系统时间/时区、近场通路）；真机 hypium（执行数 0，只有离线转译执行）；`/admin` 浏览器交互；`server/deploy/` 部署实测。
+- **未决**：① `noAccum9` 名字保留（语义已与 `inv9` 合并为同一判据），避免下游引用断裂，是否需要更名请队长裁决。② §8.8 未决③ 曾把"多轮重推只保证服务端值 ∈ 单次换算候选集"记为已知边界；本节的 ⑤（只用 pull 写入的行）已把这条**确定性**化，但 ⑥ 若将来服务端在 **pull 响应**里也回 `offsetMs`，客户端会优先用响应字段（`1b85147` 已实现），届时 ⑤ 的取值来源需同步。③ 本节只动夹具判据，**不动产品**；产品侧换算唯一性由 `server/app/services/sync_service.py`（`push()` 内一次换算）与 `app/…/SyncService.ets`（`pull` 侧取反一次）保证。
+
+### §9.8 五条 Verify 复跑（本节最后一步，原始输出）
+
+```
+$ cd server && CARBONBOO_TEST_DB=carbonboo_test_t73 .venv/bin/python -m pytest tests/ -q
+243 passed, 1 warning in 249.55s (0:04:09)                      ⇒ exit 0
+
+$ bash tests/tools/l2_sync/run.sh; echo "L2_EXIT=$?"
+RESULT: checks=38 passed=38 failed=0                            （主用例）
+… 6 / 6b / 6c 三腿变异红 + 还原绿（见 §9.4）
+RESULT: 全部通过（八项断言 + 四条反证：平局反转 / 落库换算多 1000ms / 偏移叠两次 各自「变异必红 + git show 还原必绿」）
+L2_EXIT=0
+
+$ bash tests/tools/l1_offline/run_tests.sh | tail -3
+hypium 用例：41 条，PASS=41 FAIL=0
+RESULT: it_executed=41 passed=41 failed=0 requires_device=0      ⇒ exit 0
+
+$ python3 tests/tools/check_l0.py --strict; echo "L0_EXIT=$?"
+检查项：28    错误：0 / 扫描文件：89    命中：0 / L0-3 … 0 条 / 结论：PASS
+L0_EXIT=0
+
+$ git status --short -- app/ server/          ⇒ 0 行
+$ docker ps --format '{{.Names}}' | grep -c carbonboo   ⇒ 1（只有 carbonboo-mysql）
+$ docker exec carbonboo-mysql mysql … -e "SHOW DATABASES LIKE 'carbonboo_l2%'" ⇒ 0 行（任务库已删）
+```
+
+**结论**：`#4.9` 的红是**夹具期望过严**（候选集锚在初始常量 `T9`，与同 check 内的 ±3s 抖动容差自相矛盾），
+产品侧换算正确。重建判据后：主用例三趟 `38/38` 稳定全绿；两条偏移变异（`offset-1000` / `offset-twice`）
+在 `#4.9` 上**确定性变红**、用 `git show` 还原后**确定性变绿**——比修前（概率性红）判别力更强，且没有放大任何容差。
