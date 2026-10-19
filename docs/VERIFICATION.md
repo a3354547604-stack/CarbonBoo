@@ -319,7 +319,7 @@ PYTEST_HEAD2_EXIT=0
 | 13 | **`/admin` 七项功能** | 实跑：`bash tests/tools/admin_e2e/run.sh` → `checks: PASS=98 FAIL=0`、`RUN_EXIT=0`（t59 后 98 项；t55 时 97 项），13 张 1440×900 截图 + `artifacts/report.json`（§R12、§R13.1） | ✅ 通过（**仅 Edge / 明文 HTTP / 单一视口**） |
 | 14 | **部署四件实物**（nginx / TLS / 限流 / 备份还原 / migrate） | 实跑：`bash tests/tools/deploy_e2e/run.sh` → `探针：PASS=49 FAIL=0`、三次连跑 `EXIT=0`；仓库 nginx 配置**字节不改**过 `nginx -t`（容器内 sha256 = 仓库 sha256）、限流 32×429 / 20×503、dump 导入独立容器 21/21 表一致、`migrate.sh` 安全阀 `EXIT=2/3`（`tests/tools/deploy_e2e/REPORT.md`） | ✅ 通过（**容器化**）；systemd 真启动 / certbot / 公网 ⛔ 见第 18–20 行 |
 | 15 | **云端备份三端点**（`POST/GET /sync/backup`、`POST /sync/backup/restore`） | 实跑：L3 `test_sync.py` 48 passed；客户端往返：`BackupRoundTrip.test.ets` 离线 PASS（§R10/§R11） | ✅ 通过 |
-| 16 | **L2 双设备协同**（协议级两端收敛） | 实跑：`bash tests/tools/l2_sync/run.sh` → `RESULT: checks=35 passed=35 failed=0`、退出码 0（八项）；变异反转平局判据 → `EXIT=1`，`git show` 还原 → `EXIT=0`（`tests/tools/l2_sync/REPORT.md`） | ✅ 通过（**协议级**）；**真机 L2（两条真机跑协同）仍未运行**（§13 N3）；且工具报出 **F1（blocker）/ F2（high）未修**（§R14.4） |
+| 16 | **L2 双设备协同**（协议级两端收敛） | 实跑：`bash tests/tools/l2_sync/run.sh` → `RESULT: checks=35 passed=35 failed=0`、退出码 0（八项）；变异反转平局判据 → `EXIT=1`，`git show` 还原 → `EXIT=0`（`tests/tools/l2_sync/REPORT.md`） | ✅ 通过（**协议级**）；**真机 L2（两条真机跑协同）仍未运行**（§13 N3）；且工具报出 **F1（blocker）/ F2（high）未修**（§R14.4）**【t74 现状更正（round 16）】F1 已由 t62（`RowClaim.of` 三级认领 + `INSERT OR IGNORE`）、F2 已由 t62（push 握手腿取 `offsetMs`）+ t68（服务端落库基准）修复 —— 详见 §R16.3** |
 | 17 | **离线优先：未登录全功能可用** | 同第 5 行（`offline_first` 32 断言）；静态 §8、`NotLoggedIn.test.ets` | ✅ 通过（**逻辑层**） |
 
 ### §R14.2 仍未运行（**一条都不算通过**）
