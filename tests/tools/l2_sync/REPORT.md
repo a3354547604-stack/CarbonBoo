@@ -1422,3 +1422,30 @@ RESULT: checks=24 passed=24 failed=0     退出码 = 0
 - **覆盖**：跨端时间戳**基准**（服务端落库、客户端落库、`since` 增量边界）在**真 HTTP + 真 FastAPI + 两个独立 node:sqlite 客户端库**上的端到端行为；严格基准等价式与它的负向对照。
 - **不覆盖（与 §7.4 一致，本节未改变）**：真机 L2（UI、Ability 生命周期、端侧权限、系统时间/时区、近场通路）；真机 hypium 执行（执行数 0，只有离线转译执行）；`/admin` 浏览器交互；`server/deploy/` 部署实测。
 - **未决问题**：① 客户端 pull 侧的校正完全依赖**同一次 sync 的 push 握手腿**；若将来服务端在 pull 响应里回 `offsetMs`，客户端会**优先用响应字段**（`1b85147` 已实现优先级），无需再改。② push 腿非 200 时整轮失败、不落库（`1b85147` 未改该行为）。③ 本节的严格等价式对**多轮重推**场景只保证「服务端值 ∈ 单次换算候选集」（4.9 的 `noAccum9`），因为服务端会拒绝换算后更旧的重复上行、保留上一轮的值。
+
+### §8.9 最终状态的四条 Verify 复跑（本追加节的最后一步，原始输出）
+
+命令与结果（`/tmp/l2run3/run-final.log`、`/tmp/t68/pytest-final.log`；提交 `d484de6`，代码提交 `cee94ff`）：
+
+| verify 命令 | 结果 |
+|---|---|
+| `cd server && CARBONBOO_TEST_DB=carbonboo_test_t68 .venv/bin/python -m pytest tests/ -q` | `243 passed, 1 warning in 235.35s`、`PYTEST_EXIT=0` |
+| `bash tests/tools/l2_sync/run.sh; echo "L2_EXIT=$?"` | `L2_EXIT=0`：主用例 `RESULT: checks=38 passed=38 failed=0`；变异 A（平局判据反转）`RESULT: checks=7 passed=4 failed=3`（`#3.1 #3.2 #3.3`）退出码 1 → `git show` 还原 `7/7` 退出码 0；变异 C（落库换算多 1000ms）`RESULT: checks=24 passed=17 failed=7`（`#1.2 #1.3 #1.4 #2.2 #2.3 #2.4 #6.3`）退出码 1 → 还原 `24/24` 退出码 0 |
+| `python3 tests/tools/check_l0.py --strict; echo "L0_EXIT=$?"` | `结论：PASS —— 基准自洽，文档无已知冲突`、`L0_EXIT=0` |
+| `git status --short` | 仅 `?? tests/tools/repro/`（**verifier-oc 的 t69 产物，非本任务 inScope**）；本任务全部改动已提交，无 `M` 行 |
+
+指纹与等价性（同一趟输出）：
+
+```
+构建前 app/**/*.ets 全量 sha256 指纹 = df1b93937f7a0fd8cc33cab69b7ee34cc13b73bfdec2f64ed18ea124ac63685f
+仓库 SyncService.ets sha256 = 3a6f8de87b9b51279ba33c35c66e9c3cdfdbba1c3e45c22729b181e2eb588739
+构建副本 sha256             = 3a6f8de87b9b51279ba33c35c66e9c3cdfdbba1c3e45c22729b181e2eb588739   （逐字节一致）
+变异副本（A 腿）sha256        = 126840d1b5762916fa4aa0ec3b7e2cf667975e81245773c436a29ee143f0b288
+变异副本（C 腿）sha256        = bc08f9984bbe05fe6889245c64ac3463c4c8a5d3b41b3a672225e3103538c1ad
+跑完后 app/**/*.ets 全量 sha256 指纹 = df1b93937f7a0fd8cc33cab69b7ee34cc13b73bfdec2f64ed18ea124ac63685f   （不变 ⇒ 全程未碰 app/**）
+```
+
+**变异 C 的红项数在两次运行间是 7 vs 8（本趟 7 条，见上；§8.6 引用的那一趟是 8 条含 `#4.9`）**：
+`#4.9` 除了严格不变量，还带一条对本机值的 ±3s 抖动容差；当某一轮的本机行恰好被「采纳对端」时，
+该轮 `本机 + offsetMs === 服务端` 会因 1000ms 偏差不等而变红，未被采纳时则仍绿。
+**两趟都必然为红（退出码 1）**，可变的是红项条数；这条分支性已列入 §8.8 的未决问题。
