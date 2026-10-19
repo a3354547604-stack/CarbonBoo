@@ -344,3 +344,61 @@ STOP: 并发同日入账合计 = 1600 > 200（任务书场景 3 的期望判据�
 4. 没有性能数据（N5）；`384 个并发请求全部 200` 只说明没崩，不说明快。
 5. `S2b` 是**概率性**竞态：单次跑到 0/8 不能证明它不存在（run5），四次跑合计 11/32 违反才是判据。
 6. 本报告不替代 `server/tests/`（237 条顺序 pytest），后者是顺序功能口径，两者互不替代。
+
+---
+
+## §8 t66：严格模式（F2）与「确定性红」的归属
+
+> t65 复核的两条 must-fix 之一：本工具**没有**开启严格模式，导致 S2b 的 LWW 违反计数不影响退出码 ——
+> 修复一旦回归，`run.sh` 仍会打印一行 STOP 发现后照样 `RESULT: PASS`（假绿）。本节是修复后的口径与判据。
+
+### 8.1 `run.sh` 显式导出 `CONC_STRICT_CONTRACT=1`
+
+`tests/tools/concurrency_e2e/run.sh` 第 17 行（`set -uo pipefail` 之后）新增：
+
+```bash
+export CONC_STRICT_CONTRACT=1
+```
+
+于是探针（`lib/conc_probe.py:46`）的 `STRICT_CONTRACT` 恒为真，**门禁级发现**会让退出码变 1。
+
+### 8.2 「门禁级发现」= 代码缺陷，不含待裁决的契约口径
+
+`lib/conc_probe.py` 的 `finding(..., gating=...)`：缺省按 severity 判定，`blocker|high` 拦门禁；
+`S3`（并发同日入账合计 > 200、服务端无封顶路径）显式 `gating=False`，`S1-note`（服务端无 `sync_state`
+列）同为 `info` 不拦。理由写死在 `GATING_SEVERITIES` 的注释里：**契约口径是产品/队长待拍板的问题，
+不是被测代码的回归** —— 让它拦门禁，「绿」就不再表示「无回归」，退出码随之失去信号意义。
+（`S2b.1` 仍是 `high` ⇒ 默认拦门禁，这正是 F2 要的。）
+
+### 8.3 关键事实：S2b 是**概率性**探测，别只看 `RESULT: PASS`
+
+- 修复前（t63 之前、`_merge_lww` 先 SELECT 再无条件 UPDATE）本工具**单跑曾出现 `LWW 违反轮次 = 0/8`**
+  （t61 run5）—— 单次 0/8 **不能**证明竞态不存在；
+- 四次跑合计 **11/32** 轮违反才是修复前的判据；
+- **确定性**的红来自 `server/tests/test_sync.py::test_lww_concurrent_push_converges_to_max_updated_at`
+  （`8` 轮 × `16` 并发、`threading.Barrier` 同步起跑，修复前 `2 failed`，`-k concurrent_push` 即可复现）。
+
+### 8.4 可逆演示（判据：违反非零 ⇒ `run.sh` 非零退出）
+
+```bash
+# ① 触发回归：把「比较 + 写入」的原子条件临时置空（等价退回旧行为）
+#    server/app/services/sync_service.py 的 _merge_lww 内
+#    `if_newer_than=(remote_updated, remote_device)` → `if_newer_than=None`
+bash tests/tools/concurrency_e2e/run.sh; echo "CONC_MUT_EXIT=$?"     # 期望：非零（S2b 违反 ⇒ 门禁级发现 ⇒ 1）
+# ② 还原（禁 cp，必须走 git 对象）
+git show <sha>:server/app/services/sync_service.py > server/app/services/sync_service.py
+cmp <(git show <sha>:server/app/services/sync_service.py) server/app/services/sync_service.py   # 期望：无输出
+bash tests/tools/concurrency_e2e/run.sh; echo "CONC_EXIT=$?"          # 期望：0
+```
+
+复现日志与逐行原始输出见 t66 提交信息 / 任务报告；本节只固定**判据与命令**。
+
+### 8.5 t66 附带的同批修复（与 F2 无关，但同一次提交）
+
+`server/app/services/sync_service.py` 的平局比较加了显式 `collate("utf8mb4_bin")`（t65 F1）：
+列的默认排序规则 `utf8mb4_0900_ai_ci` 会把 `'A-dev'` 与 `'a-dev'` 判成相等，使字节序更大的远端
+永远赢不了平局，与客户端（`SyncService.ets` 的 `remoteDevice > localDevice`）永久不收敛。
+回归用例：`server/tests/test_sync.py::test_lww_tie_break_uses_byte_order_not_column_collation`。
+**已知边界（F4，不属本任务）**：比较处用服务端基准（`updated_at + offset_ms`），落库处写客户端裸时间戳
+（`sync_service.py:545` / `:600-601`）—— 归 t68，本报告只记一句，未改。
+

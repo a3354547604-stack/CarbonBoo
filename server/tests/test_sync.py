@@ -487,6 +487,100 @@ def test_lww_tie_break_by_device_id_lexicographic(client):
     assert data_of(pull(client, account))["tables"]["carbon_record"][0]["amount"] == 9.0
 
 
+@pytest.mark.parametrize(
+    ("smaller", "bigger"),
+    [
+        ("A-dev", "a-dev"),  # 0x41 < 0x61
+        ("l2-dev-Z", "l2-dev-z"),  # 0x5A < 0x7A
+    ],
+)
+def test_lww_tie_break_uses_byte_order_not_column_collation(client, db_session, smaller, bigger):
+    """t66 回归（t65 F1）：平局必须按 `device_id` **字节序**，不能走列的排序规则。
+
+    列 `device_id` 的默认排序规则是 `utf8mb4_0900_ai_ci`（大小写与重音不敏感）：
+    `COALESCE(device_id,'') < 'a-dev'` 在该规则下把 `'A-dev'` 与 `'a-dev'` 视作相等、判假，
+    于是「字节序更大」的远端永远赢不了平局 —— 服务端与客户端（`SyncService.ets` 的
+    `remoteDevice > localDevice`，JS 字符串比较 = UTF-16 码元序，ASCII 上与 UTF-8 字节序一致）
+    就此在大小写不同的 deviceId 上**永久不收敛**。
+
+    判据：同 `(user_id, id)`、同 `updated_at`，先推 `smaller` 再推 `bigger`
+    ⇒ 第二次必须 `accepted=1` 且落库 `device_id == bigger`；
+    反方向（再推 `smaller`）必须 `accepted=0` 且落库仍是 `bigger`（严格不等，不是「任何不同都赢」）。
+    """
+    account = register_user(client)
+    user_id = str(account["userId"])
+    rid = "rec-tie-bytes"
+    ts = T0 + 20 * MS_PER_DAY
+
+    def snapshot() -> dict:
+        db_session.rollback()  # 结束上一个事务，避免 REPEATABLE READ 读到旧快照
+        row = (
+            db_session.execute(
+                text("SELECT device_id, amount, updated_at FROM carbon_record WHERE id = :rid AND user_id = :uid"),
+                {"rid": rid, "uid": user_id},
+            )
+            .mappings()
+            .first()
+        )
+        assert row is not None, "行未落库"
+        return dict(row)
+
+    first = data_of(
+        push(
+            client,
+            account,
+            {"carbon_record": [carbon_record(user_id, rid, amount=1.0, updated_at=ts, device_id=smaller)]},
+            device_id=smaller,
+        )
+    )
+    print(
+        f"[t66 探针] 先推 {smaller!r} → accepted={first['accepted']} "
+        f"ignored={first['ignored']} rejected={first['rejected']}"
+    )
+    assert first["accepted"] == 1
+    assert snapshot()["device_id"] == smaller
+
+    second = data_of(
+        push(
+            client,
+            account,
+            {"carbon_record": [carbon_record(user_id, rid, amount=2.0, updated_at=ts, device_id=bigger)]},
+            device_id=bigger,
+        )
+    )
+    stored = snapshot()
+    print(
+        f"[t66 探针] 再推 {bigger!r}（字节序更大）→ accepted={second['accepted']} "
+        f"ignored={second['ignored']} rejected={second['rejected']} errors={second['errors']}"
+    )
+    print(
+        f"[t66 探针] 落库 device_id={stored['device_id']!r} amount={stored['amount']} "
+        f"updated_at={stored['updated_at']}"
+    )
+    assert second["accepted"] == 1, "字节序更大的 device_id 必须赢得平局（accepted=1）"
+    assert second["ignored"] == 0
+    assert second["rejected"] == 0
+    assert stored["device_id"] == bigger
+    assert float(stored["amount"]) == 2.0
+
+    third = data_of(
+        push(
+            client,
+            account,
+            {"carbon_record": [carbon_record(user_id, rid, amount=3.0, updated_at=ts, device_id=smaller)]},
+            device_id=smaller,
+        )
+    )
+    kept = snapshot()
+    print(
+        f"[t66 探针] 反向再推 {smaller!r} → accepted={third['accepted']} "
+        f"ignored={third['ignored']} rejected={third['rejected']}；落库 device_id={kept['device_id']!r}"
+    )
+    assert third["accepted"] == 0
+    assert kept["device_id"] == bigger
+    assert float(kept["amount"]) == 2.0
+
+
 def test_true_conflict_requires_both_sides_changed_since_last_sync(client):
     """真冲突 = 两端自上次同步后都改过这一行（附录 B §6.3:912）。"""
     account = register_user(client)

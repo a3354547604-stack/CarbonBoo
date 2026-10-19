@@ -602,13 +602,18 @@ def _apply_update(
     statement = table.update().where(table.c.id == row_id, table.c.user_id == user_id)
     if if_newer_than is not None:
         remote_updated, remote_device = if_newer_than
-        # 平局规则（附录 B §6.3）：updated_at 相等时 device_id 字典序大者胜；NULL 视为空串
+        # 平局规则（附录 B §6.3）：updated_at 相等时 device_id **字典序**大者胜；NULL 视为空串。
+        # ⚠️ 必须显式 `collate("utf8mb4_bin")`（t65 F1 / t66 修复）：列 `device_id` 的默认排序规则是
+        # `utf8mb4_0900_ai_ci`（大小写与重音不敏感），用它比较会把 `'A-dev'` 与 `'a-dev'` 判成相等、
+        # `'A-dev' < 'a-dev'` 得假 —— 于是字节序更大的远端永远赢不了平局，与客户端
+        # （`SyncService.ets` 的 `remoteDevice > localDevice`，JS 字符串按 UTF-16 码元比较、ASCII 上
+        # 等价于 UTF-8 字节序）在大小写不同的 deviceId 上永久不收敛。
         statement = statement.where(
             or_(
                 table.c.updated_at < remote_updated,
                 and_(
                     table.c.updated_at == remote_updated,
-                    func.coalesce(table.c.device_id, "") < remote_device,
+                    func.coalesce(table.c.device_id, "").collate("utf8mb4_bin") < remote_device,
                 ),
             )
         )

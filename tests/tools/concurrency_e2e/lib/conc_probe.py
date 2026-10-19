@@ -11,8 +11,11 @@
   * 本文件只读服务端行为，不碰 `server/**`、`app/**` 一行；
   * 断言只陈述可观测量（HTTP 状态码 / SQL 结果 / 响应计数），发现真缺陷写 finding（STOP 三行）
     并在 REPORT.md §4 记录 —— **不为让断言变绿而放宽断言、删用例、改期望值或吞错**；
-  * 夹具自身的断言失败 → 退出码 1；环境不可达 → 退出码 2；契约层发现（如服务端无封顶路径）
-    默认记 finding 但不改退出口 = 0，可用 `CONC_STRICT_CONTRACT=1` 让发现也变 1（见 README）。
+  * 夹具自身的断言失败 → 退出码 1；环境不可达 → 退出码 2；
+  * `CONC_STRICT_CONTRACT=1`（t66 起 **run.sh 默认导出**）时，**门禁级发现**会让退出码变 1。
+    门禁级 = 默认 severity ∈ `blocker|high`（被测代码的缺陷/协议偏差，如 S2b 的 LWW 丢更新）；
+    「契约口径待裁决」类发现（S3 封顶归属、S1-note 的服务端结构差异）显式 `gating=False`，只报告不拦
+    —— 理由见 `GATING_SEVERITIES` 的注释：待产品拍板的口径问题不是回归，不该让「绿」失去信号意义。
 
 环境变量（由 run.sh 注入）：
   CONC_BASE_URL, CONC_MYSQL_HOST/PORT/USER/PASSWORD/DB, CONC_UVICORN_LOG, CONC_ONLY(可选)
@@ -53,6 +56,12 @@ TRIGGERS_OK: bool = False
 TRIGGER_ERR: str = ""
 CHECKS: list[tuple[str, str, bool, str]] = []
 FINDINGS: list[tuple[str, str, str]] = []
+#: 严格模式（`CONC_STRICT_CONTRACT=1`）下**哪些发现真拦门禁**（t66 F2）。
+#: 拦的是「被测代码的缺陷 / 协议偏差」类（默认 severity ∈ blocker|high，如 S2b 的 LWW 丢更新）；
+#: 「契约口径待裁决」类（如 S3 的封顶归属：服务端按设计不做封顶；S1-note 的服务端结构差异）
+#: 只报告、不拦 —— 它们要产品/队长拍板，不是回归，拦了会让「绿 = 无回归」这个信号失效。
+GATING_SEVERITIES: tuple[str, ...] = ("blocker", "high")
+GATING: dict[str, bool] = {}
 
 
 # --------------------------------------------------------------------------- 输出工具
@@ -69,9 +78,16 @@ def check(cid: str, title: str, ok: bool, note: str = "") -> bool:
     return bool(ok)
 
 
-def finding(fid: str, severity: str, three_lines: str) -> None:
+def finding(fid: str, severity: str, three_lines: str, *, gating: bool | None = None) -> None:
+    """记一条 STOP 发现（只报告不改）。
+
+    `gating` 决定它在 `CONC_STRICT_CONTRACT=1` 下是否拦门禁：缺省按 severity 判定
+    （blocker/high 拦）；契约口径类发现显式传 `gating=False`（见 `GATING_SEVERITIES` 的注释）。
+    """
     FINDINGS.append((fid, severity, three_lines))
-    print(f"\n[!] 发现 {fid}（{severity}，只报告不改）\n{three_lines}")
+    GATING[fid] = severity in GATING_SEVERITIES if gating is None else bool(gating)
+    gate_mark = "拦门禁" if GATING[fid] else "仅报告"
+    print(f"\n[!] 发现 {fid}（{severity}，{gate_mark}）\n{three_lines}")
 
 
 def want(name: str) -> bool:
@@ -404,7 +420,8 @@ def s2b_lww_race(user_id: str, token: str) -> None:
        "\n".join(table) +
        f"\n\n统计：LWW 违反轮次 = {bad}/{rounds}；自称 accepted 却未存活的响应数 = {phantoms}")
     # 判定口径（写进 REPORT §0）：产品契约被并发违反时，按任务书「发现真缺陷写三行 STOP 只报告不改」
-    # 以 **STOP 发现**呈现（severity=high），不混进工具自身的断言计数；CONC_STRICT_CONTRACT=1 时它会让退出码变 1。
+    # 以 **STOP 发现**呈现（severity=high）；它是**门禁级**发现（t66 F2：`gating` 缺省按 severity 判定），
+    # 故 `CONC_STRICT_CONTRACT=1`（run.sh 已默认导出）时它会让退出码变 1 —— 修复回归无法再假绿。
     if bad == 0:
         check("S2b.1", f"并发推同一 id 的 {n} 个版本后，最终行 = updated_at 最大者（LWW 守恒）",
               True, f"违反 0/{rounds} 轮")
@@ -509,12 +526,14 @@ def s3_daily_cap(user_id: str, token: str) -> None:
     # 但冻结契约把封顶算在客户端（AGENTS §2 铁律 1「云端只搬运、不参与业务计算」；附录 A §3 公式
     # A = max(0, min(C, 200 − D)) 由客户端 PointService 持有）。因此本场景**只断言服务端能保证的部分**
     # （并发不丢行、不重复行、无读-改-写路径），把「合计 > 200」作为原始证据 + 判据冲突如实列出，
-    # 由队长裁决；`CONC_STRICT_CONTRACT=1` 时该发现会让退出码变 1。
+    # 由队长裁决。**该发现显式 `gating=False`（t66 F2）**：它是契约口径问题（服务端按设计不做封顶），
+    # 不是被测代码的回归 —— 严格模式只拦 blocker/high 级的代码缺陷（S2b 属此类），
+    # 否则「合计 > 200」这条待裁决项会让门禁永远无法变绿、退出码失去回归信号的意义。
     check("S3.3", "服务端无封顶读-改-写路径（无 `200 − D` 算术、不写 point_daily_stat）",
           pds["n"] == 0 and not SERVER_CAP_CODE(),
           f"point_daily_stat={pds['n']} 行；server/app 内封顶算术命中 = {len(SERVER_CAP_CODE())}")
     if total > 200:
-        finding("S3", "medium",
+        finding("S3", "medium", gating=False, three_lines=(
                 f"STOP: 并发同日入账合计 = {total} > 200（任务书场景 3 的期望判据），但服务端并无封顶路径。\n"
                 f"冲突: server/app 全端点（auth/backup/config/shop/sync）与 services/ 内无 `200 − D` 封顶算术"
                 f"（自动扫描命中 = {SERVER_CAP_CODE() or '无'}），`points_daily_cap` 仅由 config_service.py:80 下发给客户端；"
@@ -522,7 +541,7 @@ def s3_daily_cap(user_id: str, token: str) -> None:
                 "↔ 任务书 t61 场景 3「合计实入不超过 200」。\n"
                 "建议: 二者只能取一 —— 若要服务端封顶须先改契约（新增服务端入账/裁决，与铁律 1 冲突）；"
                 "否则把场景 3 判据改为「并发入账不重复/不丢行 + 无封顶 RMW 路径」，"
-                "并把「同账号多设备各自满额入账 ⇒ 云端合计可超 200」登记为已知协议边界。")
+                "并把「同账号多设备各自满额入账 ⇒ 云端合计可超 200」登记为已知协议边界。"))
 
 
 def s4_pool(user_id: str, token: str) -> None:
@@ -753,10 +772,17 @@ def main() -> int:
         print(f"{'PASS' if ok else 'FAIL'}  {cid}  {title}" + (f"   [{note}]" if note else ""))
     print(f"断言：{len(CHECKS) - len(failed)}/{len(CHECKS)} 通过")
     print(f"发现（STOP，只报告不改）：{len(FINDINGS)} 条 —— " + ", ".join(f[0] for f in FINDINGS))
+    gating_hits = [f for f in FINDINGS if GATING.get(f[0], f[1] in GATING_SEVERITIES)]
+    print(
+        f"门禁级发现（严格模式下影响退出码）：{len(gating_hits)} 条 —— "
+        + (", ".join(f"{f[0]}({f[1]})" for f in gating_hits) or "无")
+    )
     if failed:
         return 1
-    if FINDINGS and STRICT_CONTRACT and any(f[1] in ("blocker", "high", "medium") for f in FINDINGS):
-        print("CONC_STRICT_CONTRACT=1：存在非 info 级发现 ⇒ 退出码 1")
+    if STRICT_CONTRACT and gating_hits:
+        print(
+            f"CONC_STRICT_CONTRACT=1：存在门禁级发现（{', '.join(f[0] for f in gating_hits)}）⇒ 退出码 1"
+        )
         return 1
     return 0
 

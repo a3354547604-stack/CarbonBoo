@@ -5,12 +5,20 @@
 #   CONC_ONLY=s1,s5 bash tests/tools/concurrency_e2e/run.sh
 #   CONC_KEEP=1 bash tests/tools/concurrency_e2e/run.sh   # 保留临时目录（取证用）
 #
-# 退出码：0 = 全部断言通过（允许 info 级「只报告不改」的发现）
-#         1 = 有断言失败（或 CONC_STRICT_CONTRACT=1 时存在非 info 发现）
+# 退出码：0 = 全部断言通过，且无**门禁级**发现（见下）
+#         1 = 有断言失败，或有门禁级发现（CONC_STRICT_CONTRACT=1 生效时）
 #         2 = 环境不可达（缺 docker / MySQL 容器 / 端口 / venv / 建库失败）
+#
+# 严格模式（t66 F2）：本脚本**显式导出** `CONC_STRICT_CONTRACT=1`，让「门禁级发现」真影响退出码 ——
+#   门禁级 = 默认 severity ∈ blocker|high（被测代码缺陷/协议偏差，典型是 S2b 的 LWW 丢更新：
+#   修复一旦回归，run.sh 必须变红，而不是打印一行 STOP 后照样 RESULT: PASS）。
+#   「契约口径待裁决」类发现（S3 封顶归属、S1-note 的服务端结构差异）显式 gating=False，只报告不拦。
 #
 # 边界：本脚本只读 server/**、app/**，一行都不改；所有写操作只落在 `carbonboo_conc_*` 任务库。
 set -uo pipefail
+
+# t66 F2：严格模式默认开启（此处显式导出，拒绝「静默假绿」；覆盖外部传入的 0）
+export CONC_STRICT_CONTRACT=1
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO"
