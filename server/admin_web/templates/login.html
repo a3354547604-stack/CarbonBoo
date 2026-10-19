@@ -26,9 +26,10 @@
     客户端令牌访问本页或任何 <code>/admin/*</code> 一律 403。
   </p>
 
-  {% if error %}
-  <div class="flash is-error" role="alert">{{ error }}</div>
-  {% endif %}
+  {# 错误容器常驻并带 id="flash"：admin.js 的 flash() 第一句就是 document.getElementById('flash')，
+     缺 id 时会回退成原生 window.alert —— 原生模态弹窗会阻塞渲染进程，自动化会挂死（t55 §R12.6-1 实测）。
+     无错误时用 hidden 保持不可见，语义与原来的 {% if error %} 等价（服务端渲染错误时立即可见）。 #}
+  <div id="flash" class="flash is-error" role="alert"{% if not error %} hidden{% endif %}>{{ error }}</div>
 
   <form id="login-form" method="post" action="{{ prefix }}/login" autocomplete="off">
     <input type="hidden" name="next" value="{{ next }}">

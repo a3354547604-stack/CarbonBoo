@@ -54,8 +54,6 @@ fail() { printf '[FAIL] %s\n' "$*"; }
 envfail() { printf '[ENV-FAIL] %s\n' "$*"; }
 
 mkdir -p "$TMP"
-rm -rf "$ARTIFACTS"
-mkdir -p "$ARTIFACTS"
 
 # --------------------------------------------------------------------------- #
 # 0. 环境可达性（任何一条不通 → 退出码 2，绝不降级冒充）
@@ -234,6 +232,11 @@ cat > "$RUNJSON_WIN" <<JSON
   "upload_png": "$(printf '%s' "$UPLOAD_PNG_WIN" | sed 's|\\\\|\\|g')"
 }
 JSON
+
+# 清理时机：只在**环境检查全部通过之后、驱动启动之前**清目录。
+# 改前这行在脚本开头（env 早退分支之前），一次 env 不可达的失败跑会清掉上一轮的有效截图（t55 踩过）。
+rm -rf "$ARTIFACTS"
+mkdir -p "$ARTIFACTS"
 
 log ""
 log "=== 浏览器级端到端驱动（Edge headless + CDP over WebSocket） ==="

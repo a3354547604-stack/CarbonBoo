@@ -794,12 +794,23 @@ def main() -> int:
     time.sleep(1.2)
     report.check("⑥ 负向对照：改密后旧口令登录被拒（POST /admin/login → 401）",
                  bool(fail_hit) and fail_hit["status"] == 401, describe(fail_hit))
+    # 修后语义（t59）：登录失败必须走**页内 #flash**，不得再弹原生 window.alert。
+    # 改前这里断言的是「dialog 必须出现」（反过来的期望），现已翻转为正向断言。
     dialogs = list(cdp.dialogs)
-    dialog_text = dialogs[0]["message"] if dialogs else ""
-    report.check("⑥ 失败提示以浏览器原生 alert 弹出（登录页 .flash 无 id=\"flash\" → admin.js:16 回退 window.alert）",
-                 bool(dialogs) and dialogs[0].get("type") == "alert" and bool(dialog_text),
-                 f"Page.javascriptDialogOpening type={dialogs[0].get('type') if dialogs else '无'}"
-                 f" message={dialog_text!r}（驱动已自动 accept，否则渲染进程会被卡死）")
+    flash_probe = js(cdp, "(function(){var b=document.getElementById('flash');"
+                          "if(!b){return JSON.stringify({found:false});}"
+                          "return JSON.stringify({found:true,text:b.textContent,"
+                          "hidden:b.hidden,cls:b.className});})()")
+    flash = json.loads(flash_probe) if isinstance(flash_probe, str) else {}
+    report.check("⑥ 失败提示不再走浏览器原生 alert（Page.javascriptDialogOpening 事件数应为 0）",
+                 not dialogs,
+                 f"dialogs={len(dialogs)}（改前 1 条 type=alert message='管理员用户名或口令错误'）；"
+                 f"本条即 §R12.6-1 的修复验证")
+    report.check("⑥ 失败提示落在页内 #flash（文本非空、可见、不再是模态弹窗）",
+                 flash.get("found") is True and bool(str(flash.get("text", "")).strip())
+                 and flash.get("hidden") is False,
+                 f"#flash found={flash.get('found')} hidden={flash.get('hidden')} "
+                 f"text={str(flash.get('text', ''))!r} class={flash.get('cls')!r}")
     report.check("⑥ 旧口令被拒后仍停在登录页", js(cdp, "location.pathname") == "/admin/login",
                  f"location.pathname={js(cdp, 'location.pathname')}")
     screenshot("12_old_password_rejected", green_min=200, dup_ok=True)
