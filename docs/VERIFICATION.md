@@ -9,6 +9,71 @@
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
 
+## §R14 round 14（t60 · **交付验收总表**：把全项目验收口径逐条映射到「证据类型 + 结论」，并重写未运行清单）
+
+> **本节绑定**：本节写入时的 `git rev-parse HEAD` = `1df70c10dfa333d9d6cf299240220f6e4fc7e098`（`tests/README.md §5.3` 那条 `docs:` 提交，其父 = `84f96a5accf75ad4f19465c9f9f996d45bd685cf`）；
+> 本节自身的 `docs:` 提交使 HEAD 再前进一格（该 40 位 SHA 记在 `git log -1 --format=%H` 与本次任务汇报里）。
+> **首行导航句与顶部 blockquote 仍停在 round 12，以本节为准**（受「§R1–§R13 一行不改」约束，未改动它们）。
+> 本节的定位：**只做汇总与索引，不新增任何门禁结论**；表里每一行的「证据」都能追到一条命令或一个报告章节。
+
+### §R14.1 交付验收总表（一行 = 一条验收口径 → 证据类型 → 结论）
+
+| # | 验收口径 | 证据类型（实跑命令 / 报告章节 / 仍未运行） | 结论 |
+|---|---|---|---|
+| 1 | **L0** 文档与数值一致性 | 实跑：`python3 tests/tools/check_l0.py --strict` → `检查项：28 错误：0`、`扫描文件：89 命中：0`、`L0-3 0 条`、`L0_EXIT=0`（§R4、§R13.4；本节提交前再跑一次同值） | ✅ 通过 |
+| 2 | **数值唯一真相源零改动** | 实跑：`md5sum tests/cases/carbon-calc.json app/entry/src/ohosTest/resources/rawfile/carbon-calc.json` → 两份同为 `e096b2db77bbcc9a43ee8728cbd883e9`；`git diff --stat -- tests/cases/` 空（§R11 语义比对 4 个历史 commit 到 HEAD 差异 0） | ✅ 通过（本轮未重跑，绑定 §R13/§R14 提交时的字节） |
+| 3 | **L1 碳计算 18 组 + 封顶 5 组**（离线真执行） | 实跑：`bash tests/tools/l1_offline/run.sh` → `PASS=55 FAIL=0`、`checked=323 passed=true`；`run_tests.sh` → `it_executed=36 passed=36 failed=0 requires_device=0`（§5.1、§R10、§R11） | ✅ 通过（**离线**） |
+| 4 | **L1 18 组 / 封顶 5 组在设备上** | **仍未运行**：无真机（`hdc` 不在 `PATH`、SDK 内 hdc 直调 `Connect server failed`）、无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 glibc 2.43；`timeout 420 hvigorw --no-daemon test` → `TEST_EXIT=124` | ⛔ **未运行（不算通过）** |
+| 5 | **铁律 1 本地优先**（未登录 = 纯单机 + 五类网络例外） | 实跑：`bash tests/tools/offline_first/run.sh` → `RESULT: PASS=32 FAIL=0`（断网段零出网 + 五类例外确实出网；变异 `PASS=20 FAIL=3`）；协议级：`tests/tools/l2_sync/` 35 条；静态：`docs/VERIFICATION.md §8`、`NotLoggedIn.test.ets` | ✅ 通过（**逻辑层**）；真机飞行模式 ⛔ 见第 17 行 |
+| 6 | **铁律 2 单一计算入口** | 静态：唯一 `static calculate` = `app/entry/src/main/ets/service/CarbonService.ets:76`（`:101 calculatePreview` 转调）；唯一因子乘法 = `service/CarbonCalc.ets:153`（`Dec.from(amount).mul(Dec.from(factorValue))`）；`pages/` 与 `components/` 因子乘法零命中（§R6、§R11、§R12） | ✅ 通过（静态） |
+| 7 | **铁律 3 因子快照** | 静态：`app/entry/src/main/ets/data/schema/ClientSchema.ets:85-88` 四列全 `NOT NULL`（`factor_value/factor_version/factor_source/confidence`）；实跑：`l2_sync` #1.2/#1.3 逐列快照一致 | ✅ 通过 |
+| 8 | **铁律 4 积分单向可追溯** | 静态：唯一写入点 `viewmodel/PointService.ets:153`（`INSERT OR IGNORE INTO point_record`）；`UPDATE|DELETE FROM point_record` 在 `app/ server/ tests/` 源码树**零命中**；余额同口径 `COALESCE(SUM(points), 0)` 见 `PointService.ets:91/:121/:136/:235`、`net/SyncService.ets:362/:377`（§R6、§R11） | ✅ 通过（静态） |
+| 9 | **L3 服务端**（账号 / 鉴权隔离 / 取价 / 同步幂等与冲突） | 实跑：`cd server && CARBONBOO_TEST_DB=carbonboo_test_<后缀> .venv/bin/python -m pytest tests/ -q` → `237 passed`（逐文件 85/40/29/25/10/48；§R4、§R6、§R13.4 实测 `237 passed in 199.20s`） | ✅ 通过 |
+| 10 | **鉴权 403 隔离**（客户端令牌打 `/admin/*` 必 403） | 实跑：L3 `test_admin.py` 85 条（含 `test_client_token_on_every_admin_path_is_forbidden`）；浏览器侧：`admin_e2e` ⑦ 客户端令牌 `fetch` → **403 FORBIDDEN**（§R12） | ✅ 通过 |
+| 11 | **契约 A/B/C 一致性** | 实跑：`check_l0.py --strict` 的 DOC_SCAN（89 文件 0 命中、0 条 `docConflicts`）；历史：§9 抽查（§R4/§R6 复验全等） | ✅ 通过 |
+| 12 | **客户端 19 表 / 服务端 21 表** | 实跑：`ClientSchema.ets` 19 个 `CREATE TABLE IF NOT EXISTS`；`server/sql/schema.sql` 21 个 `CREATE TABLE`；`deploy_e2e` 探针 `2.3 任务库表数 = 21`（§R14.2 第 12 行） | ✅ 通过 |
+| 13 | **`/admin` 七项功能** | 实跑：`bash tests/tools/admin_e2e/run.sh` → `checks: PASS=98 FAIL=0`、`RUN_EXIT=0`（t59 后 98 项；t55 时 97 项），13 张 1440×900 截图 + `artifacts/report.json`（§R12、§R13.1） | ✅ 通过（**仅 Edge / 明文 HTTP / 单一视口**） |
+| 14 | **部署四件实物**（nginx / TLS / 限流 / 备份还原 / migrate） | 实跑：`bash tests/tools/deploy_e2e/run.sh` → `探针：PASS=49 FAIL=0`、三次连跑 `EXIT=0`；仓库 nginx 配置**字节不改**过 `nginx -t`（容器内 sha256 = 仓库 sha256）、限流 32×429 / 20×503、dump 导入独立容器 21/21 表一致、`migrate.sh` 安全阀 `EXIT=2/3`（`tests/tools/deploy_e2e/REPORT.md`） | ✅ 通过（**容器化**）；systemd 真启动 / certbot / 公网 ⛔ 见第 18–20 行 |
+| 15 | **云端备份三端点**（`POST/GET /sync/backup`、`POST /sync/backup/restore`） | 实跑：L3 `test_sync.py` 48 passed；客户端往返：`BackupRoundTrip.test.ets` 离线 PASS（§R10/§R11） | ✅ 通过 |
+| 16 | **L2 双设备协同**（协议级两端收敛） | 实跑：`bash tests/tools/l2_sync/run.sh` → `RESULT: checks=35 passed=35 failed=0`、退出码 0（八项）；变异反转平局判据 → `EXIT=1`，`git show` 还原 → `EXIT=0`（`tests/tools/l2_sync/REPORT.md`） | ✅ 通过（**协议级**）；**真机 L2（两条真机跑协同）仍未运行**（§13 N3）；且工具报出 **F1（blocker）/ F2（high）未修**（§R14.4） |
+| 17 | **离线优先：未登录全功能可用** | 同第 5 行（`offline_first` 32 断言）；静态 §8、`NotLoggedIn.test.ets` | ✅ 通过（**逻辑层**） |
+
+### §R14.2 仍未运行（**一条都不算通过**）
+
+> 口径说明：本表按**交付口径**列 8 项（U1–U8），与 §13 的 `N` 编号表**不是同一张表** —— §13 另有 N3（真机 L2 端侧集成）、N6（t18 运行态）、N7（t13 运行态）三项运行态项，结论同样「未运行」，编号与成因见 §13。
+
+| # | 项 | 为什么仍未运行（原始依据） | 本仓库现有的最强替代证据 | 效力 |
+|---|---|---|---|---|
+| U1 | **真机 hypium：10 套件 / 36 个 `it()`** | `command -v hdc` → EXIT=127；SDK 内 hdc 直调 `Connect server failed`；`/dev/kvm` 不可写；`timeout 420 hvigorw --no-daemon test` → `TEST_EXIT=124` | `l1_offline/run_tests.sh` → `it_executed=36 passed=36 failed=0 requires_device=0` | **不等价**（离线转译 + `node:sqlite` 垫片，非 ArkTS 运行时；不覆盖 UI/生命周期/权限/端侧能力） |
+| U2 | **真机飞行模式** | 需真机；本机无设备 | `offline_first` 的断网陷阱（端口层 + 平台层双记录，命中即红） | **不等价**（陷阱 ≠ 系统飞行模式；不覆盖系统网络栈/权限弹窗/后台策略） |
+| U3 | **App 18 页视觉走查（截图腿）** | `hdc` 未安装、无模拟器、Previewer 崩于 glibc 2.43 ⇒ 18 页**零截图** | `vision_check` 判 **17 个设计令牌色板** → `RUN_EXIT=0`（17/17） | **不等价**（判令牌，不判页面渲染） |
+| U4 | **`systemd` 单元真启动** | 本机无 PID1 systemd（WSL 与容器内都没有）；`systemd-analyze verify` 的报错全是环境性（`/mnt/c` drvfs 全 0777 + `/opt/carbonboo` 不存在） | `deploy_e2e` 对三个单元做**内容级逐条断言**（ExecStart 形态 / `--workers 2` / `Restart=always` / `ProtectSystem=strict` / timer 的 `OnCalendar`+`RandomizedDelaySec`+`Persistent`） | **不等价**（未启动 = 未验证进程管理、日志、自启与重启策略的实际行为） |
+| U5 | **`certbot` 接真实 ACME** | 容器内用 `openssl` **自签**（SAN 三项）；未接 Let's Encrypt | `deploy_e2e` 探针 3.1–3.3（签发成功 / SAN 含域名 / `notAfter` 有效）+ `curl --cacert` 200 | **不等价**（自签 ≠ 生产证书链；未验续期与 OCSP） |
+| U6 | **公网域名 / DNS / 防火墙** | 本机无公网入口；`--resolve` 把 `api.example.com` 指到 `127.0.0.1` | `deploy_e2e` 的 301 对照 + HTTPS 反代 + `/docs` 404 | **不等价**（未验真实 DNS、证书链信任、防火墙与 80/443 暴露面） |
+| U7 | **非 Edge 浏览器** | `admin_e2e` 只驱动 Windows 侧 Edge（`Edg/155.0.4283.62`）；无 Firefox/Chrome 自动化依赖（零新增依赖约束） | 同第 13 行（Edge 下 98 项 + 13 张截图） | **不等价**（Safari/Firefox 的 CSS/JS 差异未验；移动端视口未验） |
+| U8 | **并发性能**（多客户端并发同步 / 服务端吞吐 / 大库 dump 耗时） | 从未测：`deploy_e2e` 明确「大库 dump 耗时未测」；`l2_sync` 只有两台设备；L3 无压测 | 无 | **无替代证据**（不得以「单机 237 passed」推断并发能力） |
+
+> **口径**：本表任何一行**不得**被读成「通过」；也**不得**用第 3/5/16 行的离线或协议级证据折算成 U1/U2/U7 的通过。三态严格分开：**已运行（离线/协议级/容器化）**、**已运行（设备/云 VM）—— 无**、**未运行**。
+
+### §R14.3 §13 表的改动（未运行 8 行 → 6 行；**未删除任何一行**）
+
+- **改前**：`§13 未能真实运行的验证项` 表 **8 行**全部是「未运行」（N1–N8）。
+- **改后**：**6 行未运行**（N1 / N2 / N3 / N6 / N7 / N8），**2 行改为已运行**（N4、N5）。
+- **逐条**：**N5（`/admin` 浏览器交互）** 由「无浏览器驱动」改为「**已运行**：真实 Edge headless + CDP，见 §R12；t59 后 98 项见 §R13」；**N4（部署脚本实跑）** 由「本机无部署目标」改为「**已运行（容器化）**：49 探针、三次 `EXIT=0`，见 §R14.1 第 14 行与 `tests/tools/deploy_e2e/REPORT.md`；**其中 `systemd` 真启动 / certbot / 公网仍未运行**——已拆到 U4–U6」。
+- **未删除**：N1–N8 编号全保留，t31 复核补正与 t42/t55 补记**一字未动**；其余 6 行结论不变（依赖真机/模拟器或缺截图腿）。
+
+### §R14.4 未决问题（本节不修，只登记）
+
+1. **`l2_sync` 报出的 F1（blocker）**：全新设备首同步撞 `uq_ua` / `uq_uprofile` 等唯一索引（客户端 pull 侧只按 `id` 认领本机行）⇒ 「两台设备首次协同」在当前客户端实现下**不可完成**（`tests/tools/l2_sync/REPORT.md §4 F1`）。**未修**（`app/**` 不在本任务写入范围）。
+2. **`l2_sync` 报出的 F2（high）**：`SyncPullData` 无 `offsetMs`、客户端只解析 pull 响应体 ⇒ 附录 B §6.4-6 的 `clientOffsetMs = −respOffsetMs` 在真实链路上**不可达**（同上 §4 F2）。**未修**（`server/**` 不在本任务写入范围）。
+3. **U1–U8 八项**：见 §R14.2，环境未变，本轮不重跑、不折算。
+
+### §R14.5 边界句
+
+> 本表只汇总**已经跑出来的证据**与**仍然没跑的项**，**不产生新的通过结论**：
+> 「离线执行」≠ 真机 hypium；「设计令牌色板判读」≠ 18 页视觉走查；「容器化实跑」≠ 云 VM 真实部署；
+> 「逻辑层零出网」≠ 真机飞行模式；「两个进程实例」≠ 真双设备。**未运行项一条都不算通过**。
+
 ## §R13 round 13（t59 · 收 §R12.6 的两条实测项：登录页 `#flash` 修复 + 登出语义留档 + `admin_e2e` 清理时机）
 
 > **本节绑定**：基准 HEAD（本节开工时 `git rev-parse HEAD`）= `4a295698bdfbf259db9863a57631dc3d416b5b03`（与 `git ls-remote origin main` 同值）；
@@ -1753,6 +1818,8 @@ ohosTest 副本 app/entry/src/ohosTest/resources/rawfile/carbon-calc.json md5 �
 | round 10 | t48（`fixer-oc`，**新增证据轮 + 缺陷登记轮**） | `e83d3c17ae2150feabadb857dbca5561d60bf033` | 2026-10-19 | **离线 L1 从 18/18 收敛到 36/36**：`RESULT: it_executed=36 passed=36 failed=0 requires_device=0`、`checked=323 passed=true`（`run.sh` 的 `RESULT: PASS=55 FAIL=0` 不变）；并逐条登记本轮执行器暴露、随后由 `973081a`（前 3 条）与 `1f9ca88`（后 2 条）修复的 **5 条 `app/` 生产缺陷**（徽章解锁不落库 / 下行 `goalRewards` 读取侧被整条丢弃 / `MemoryFiles.list()` 返回名违反端口契约 / 备份恢复 SQL 保留字列 `order` / 同分钟同名备份互相覆盖）；**hypium 在设备上仍未运行**，两证不可互相顶替；L0 `EXIT=0` | 本文 §R10（文件最前；本节由 `de0eac1` 插入） |
 | round 11 | t50（`verifier-oc`，**非作者独立验证轮，不新增门禁结论**） | `f1b66c1516d67a0e8b45b1282761f2e8ed2e30c8` | 2026-10-19 | **对 §R10.3 登记的 5 条 `app/` 生产缺陷修复做非作者独立验证**：离线真跑直证 + 变异退回自证（4 次授权变异，每次都在同一批命令内用 `git show HEAD:<path> > <path>` 还原并以 `cmp` + `sha256sum` 证同）⇒ **5 条全部成立且承重，`verdict = pass`**，并补上第 5 条（同分钟同名备份互相覆盖）原本标为**「未核」**的直证；本节**不改任何被测字节**、不新增门禁结论；**hypium 在设备上仍未运行**，两证不可互相顶替；L0 `EXIT=0` | 本文 §R11（文件最前；本节由 `68c5b71` 插入） |
 | round 12 | t55（`verifier-oc`，**浏览器级 E2E 新增证据轮**） | `585fca94008ce1cd7486d75f50875ac908758276` | 2026-10-19 | **`/admin` 浏览器级端到端验证（补上 §13 N5「无浏览器驱动」）**：Windows 侧**真实 Edge headless + CDP**（`Edg/155.0.4283.62`）驱动七项功能（登录 / 用户列表 / 操作日志 / 配置读写 / 商品图标真实上传 / 改密 / 登出）与**四条鉴权边界**（登出清 Cookie、未登录 `/admin/users` **浏览器侧 303**、旧 Cookie 重放仍 200 的无状态语义、客户端令牌 **403**）⇒ `checks: PASS=97 FAIL=0`、`RUN_EXIT=0`，**四次连跑检查名集合逐条一致**；落 **13 张 1440×900 截图 + `report.json`**，新增 `tests/tools/admin_e2e/`（**零新增依赖**、退出码 0/1/2）；实测发现 2 条（登录页 `.flash` 缺 `id` ⇒ `admin.js` 回退 `window.alert`；登出只清 Cookie、JWT 无状态）**如实记录、未修**；**被测字节零改动**、不新增其它门禁结论；**L1 设备执行 / L2 / `deploy` 实跑 / App 18 页视觉走查仍未运行**，一条不算通过；L0 `EXIT=0` | 本文 §R12（文件最前；由紧随本节后的同一次提交引入） |
+| round 13 | t59（`verifier-oc`，**修复 + 留档轮**） | `4a295698bdfbf259db9863a57631dc3d416b5b03`（修复提交 `dac2eb8` / 文档提交 `24fa9e9`） | 2026-10-19 | **收 §R12.6 的两条实测项 + 工具自身一条瑕疵**：① 登录页 `.flash` 补 `id="flash"` ⇒ 错误口令不再弹原生 `window.alert`（e2e **97 → 98 项**，`dialogs=0`、`#flash found=True hidden=False text=…`）；② `admin_e2e` 的 `rm -rf artifacts` 从 env 检查前移到之后（`ENV_EXIT=2` 且 artifacts md5/mtime 未变）；③ 管理端「登出清 Cookie ≠ 吊销令牌」写进 `server/README.md`（**未实现**，产品决策）；`admin.js` 字节未动、L0 `EXIT=0`、pytest `237 passed`、`git diff --stat -- app/ tests/cases/` 空 | 本文 §R13（文件最前；`24fa9e9` 引入） |
+| round 14 | t60（`verifier-oc`，**交付级文档收口轮，不新增门禁结论**） | `1df70c10dfa333d9d6cf299240220f6e4fc7e098`（本节自身的 `docs:` 提交再前进一格） | 2026-10-19 | **新增 §R14「交付验收总表」**：把 17 条验收口径逐条映射到「实跑命令 / 报告章节 / 仍未运行 + 结论」，并重写 §13 未运行清单 —— **8 行 → 6 行**（N5 `/admin` 浏览器交互 → **已运行**（§R12/§R13）、N4 部署实跑 → **已运行（容器化）**（§R14.1 第 14 行）；**未删除任何行**），另列 **U1–U8 八项仍未运行**（真机 hypium 36 `it()` / 真机飞行模式 / 18 页视觉走查 / systemd 真启动 / certbot ACME / 公网域名防火墙 / 非 Edge 浏览器 / 并发性能）；`tests/README.md` 新增 §5.3 登记 6 个证据工具 + 五条边界；L0 `EXIT=0`、`tests/README.md` 纯插入 25 行 | 本文 §R14（文件最前；本节由紧随其后的 `docs:` 提交引入） |
 
 > **导航说明（t52 补记）**：§R10 首段「本文件首行轮次索引与顶部 blockquote **未重写**，仍停留在 round 9 的表述 —— 以本节为准」
 > 是 **t48 时点**的记录（当时受「只追加」约束、未维护导航）。**t52 已按「维护导航」补上 round 10 / round 11 两行并更新首行标题与顶部 blockquote，
@@ -2759,13 +2826,18 @@ t21 按验收要求把它们显式接入本页…业务路径上它们仍**不�
 | **N1** | L1 全部 hypium（10 套件 / 36 `it()`） | 无真机（`hdc` = `Connect server failed`）、无模拟器（`/dev/kvm` 不可写）、SDK Previewer 崩于 GLIBC 2.43 | 离线复算 70/70（**不等价**：不经过 ArkTS 运行时，不验证 `CarbonCalc` 的实际实现，只验证基准自洽与我的独立算术）。**（t38 补记）** 后半句已过时：`tests/tools/l1_offline/` **确实**执行 `CarbonCalc.ets` 与 `CalcBaselineValidator.ets` 的真实实现（esbuild 转译 + Node，非重写），故它强于「只验证基准自洽」；但它仍不经过 ArkTS 运行时与 OHOS 环境、不覆盖 UI/DB/网络/生命周期，**36 个 `it()` 仍未运行** ——「不等价」这个总判断成立（§R5） |
 | **N2** | `hvigorw test` 执行段 | 编译段通过后 `timeout 420` **EXIT=124**，零用例输出 | 「编译通过」≠「用例通过」 |
 | **N3** | L2 端侧集成 | 需两条设备 | 无 |
-| **N4** | 部署脚本实跑（systemd/nginx/TLS/定时备份） | 本机无部署目标（`/opt/carbonboo/…` 不存在、nginx 未装） | round 2 的 `bash -n` / `systemd-analyze verify` / `migrate.sh --dry-run`（EXIT=0）与安全阀（EXIT=2）；**本轮未重跑（环境未变）** |
-| **N5** | `/admin` 浏览器交互（SSR 渲染、`admin.js`） | 无浏览器驱动 | HTTP/JSON 层已实测（§6.2） |
+| **N4** | 部署脚本实跑（systemd/nginx/TLS/定时备份） | **（t60 改写：已运行 —— 容器化）** 容器化实跑见 §R14.1 第 14 行与 `tests/tools/deploy_e2e/REPORT.md`：仓库 nginx 配置**字节不改**过 `nginx -t` 并真终止 TLS、限流真限住（32×429 / 20×503）、dump 导入独立容器 21/21 表一致、`migrate.sh` 安全阀 `EXIT=2/3`；**其中 `systemd` 单元真启动 / `certbot` ACME / 公网域名防火墙仍未运行**（已拆到 §R14.2 的 U4–U6） | 49 探针、三次连跑 `EXIT=0`；**容器化 ≠ 云 VM**（`/opt/carbonboo` 本机不存在，验的是脚本与配置内容） |
+| **N5** | `/admin` 浏览器交互（SSR 渲染、`admin.js`） | **（t60 改写：已运行）** Windows 侧**真实 Edge headless + CDP**（`Edg/155.0.4283.62`）驱动七项功能 + 四条鉴权边界，见 **§R12**；t59 修 `#flash` 后 **98 项**见 **§R13** | `checks: PASS=98 FAIL=0`、`RUN_EXIT=0`；13 张 1440×900 截图 + `artifacts/report.json`；**只覆盖 Edge / 明文 HTTP / 单一 1440×900 视口**（非 Edge 浏览器仍未验，见 §R14.2 U7） |
 | **N6** | t18 运行态（配置下发在真机生效） | 同 N1 | 用例存在且登记（未运行） |
 | **N7** | t13 运行态（真机备份往返） | 同 N1 | 服务端侧备份用例真实通过（`test_sync.py` 48 passed） |
 | **N8** | 前端视觉走查（18 页面截图 + 视觉模型判图） | 截图腿：`hdc` 未安装（`Command 'hdc' not found`，EXIT=127）、无真机无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 glibc 2.43 ⇒ **18 个页面一张截图都产生不出来**（**结论未变**）。判图腿**（t41 更正）**：原写「`ARK_API_KEY` 在本会话不存在」并据此判「不可能有视觉结论」—— **失真**：key 在**凭据库** `.dsh/.credentials.yaml → refs.ARK_API_KEY`，实测识图 **HTTP=200** 判读正确（§R7） | **页面级视觉走查：无**（零截图，本轮结论不变）。**判图链路：有替代证据且强于「无」** —— `tests/tools/vision_check/`：从 `AppTheme.ets` 源码解析 17 个真实令牌色值 → 生色板 → 视觉模型判读 17/17、`RUN_EXIT=0`。**但它判的是设计令牌，不是任何页面渲染结果**，不能替代 18 页视觉走查（§R7.6） |
 
 > **（t55 补记）** 上表 **N5（`/admin` 浏览器交互）**「原因：无浏览器驱动」是 **t31 时点**的事实；**t55 已补上浏览器驱动**（Windows 侧真实 Edge headless + CDP，见 **§R12**），N5 的结论**由 §R12 覆盖**。**N1 / N2 / N3 / N4 / N8 五项一条都没变**（无真机、无模拟器、Previewer 与 GLIBC 2.43 冲突、无部署目标、App 侧零截图）——尤其 **N8**：§R12 的 13 张截图**全是 `/admin`**，**不能**替代 App 的 18 页视觉走查。
+
+> **（t60 补记 · 未运行行数变化）** 上表由 **8 行未运行**改为 **6 行未运行**（N1 / N2 / N3 / N6 / N7 / N8）：
+> **N5 → 已运行**（真实浏览器，§R12 / §R13）、**N4 → 已运行（容器化）**（§R14.1 第 14 行 + `tests/tools/deploy_e2e/REPORT.md`）。
+> **未删除任何一行**（N1–N8 编号全保留，t31 复核补正与 t42/t55 补记一字未动）；其余 6 行结论不变（依赖真机/模拟器或缺截图腿）。
+> 逐条对照见 §R14.3；`systemd` 真启动 / `certbot` ACME / 公网域名防火墙**仍未运行**（拆到 §R14.2 U4–U6）。
 
 > 另：**L3 全量本轮未执行** —— 本轮口径是「`server/` 零 diff，只跑子集」。我跑了 `test_sync.py`（48）+
 > `test_admin.py` 403 子集（19），是**真实结果**；其余 66+ 例未跑。全量 **237 passed** 是 **round 2 在 `971d042` 上的实测**，
