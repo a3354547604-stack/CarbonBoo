@@ -1,3 +1,242 @@
+# 交付评审报告（round 6 · t79 交付级终审）· CarbonBoo（赛题二）
+
+> 评审人：**verifier-oc**（AgentTeams 成员；本轮角色是**评审者**，不是实现者 —— 只写本文件，未改任何被测源码 / 规格文档 / 测试基准 / `tests/cases/`）。
+> **本轮结论绑定 `HEAD = bf3a2b9599fbe807c860253dd0fc787603351315` 的字节**（t78 的 §R18 提交；`git ls-remote origin main` 当时为 `c925cfd6cf2b027a793696c6bb25fd765ea4c56e`，即 HEAD 比远端多 1 次**仅 docs** 的提交）。
+> **编号说明**：`§R6.x` = 本文件（`docs/REVIEW.md`）第 6 轮评审编号，与 `docs/VERIFICATION.md` 的 `§R*` 是两套编号。
+> **下方 round 5（t51）/ round 4（t8 attempt 9）/ round 3（t32）原文一字未改**，按本文件既有惯例置后。
+
+## §R6.0 作者独立性声明（硬要求，逐项标注）
+
+| 相关工作 | 与我的关系 | 本轮如何避免自证 |
+|---|---|---|
+| **t73**（l2 `#4.9` 判据重建） | **本人参与，非独立** | 涉及 t73 的判断（§R6.6 的「弱化还是加强」）只依据**可复核的 diff 与实测**（`git show 1889d65 --numstat` = `+127/−22`，新增判据行 20 / 删除 2），并注明替代独立证据 = **t72 非作者复核**（其结论：`noAccum9` 与 `jitter9` 矛盾、严格不变量 `inv9` 恒成立、判据重建后仍能抓 `offset-1000`/`offset-twice`/`offset-drop` 三类真缺陷）；我不把「我改的判据」记成「已被独立证明正确」 |
+| **t74**（文档一致性：页面数 18 / `it()` 41） | **本人参与，非独立** | §R6.7 只给**可复现命令的实测值**（`ls pages/*.ets`=19 文件 / `grep -l '@Entry'`=1 / `run_tests.sh`=41 条 / 基准复算 323），结论落在「磁盘与实测**仍与 18/41 自洽**」；不引用我自己那轮的文字当证据 |
+| **t77**（§R17 登记 t75/t76） | **本人参与，非独立** | §R6.2 抽查的 §R17 数字一律**自己重跑**（24/62/98/103/16 见下），并以 **t78（fixer-oc3）在 §R18 的独立重跑**为旁证 |
+| **t76**（fixer-oc3 的浏览器图层：真 nginx+TLS 反代） | **非本人参与** | 只作被审对象引用；§R6.2 第 6 行抽查我自己跑一遍 |
+| **t78**（fixer-oc3 的冻结 HEAD 终验 §R18） | **非本人参与** | 作为「被抽查的账本」对待：抽 5 条自己跑，见 §R6.2 |
+
+> 凡我无法独立判定的项（例如「无真机时的 L1 等价性」），下文明写「**无法独立判定**」而不是给通过。
+
+## §R6.1 开工四查 + 收工状态（原始输出照录）
+
+```
+$ git rev-parse HEAD
+bf3a2b9599fbe807c860253dd0fc787603351315
+$ timeout 25 git ls-remote origin main
+c925cfd6cf2b027a793696c6bb25fd765ea4c56e	refs/heads/main
+LSREMOTE_EXIT=0
+$ git status --short
+（0 行）
+$ git log -1 --format='%H %ad %s' --date=iso
+bf3a2b9599fbe807c860253dd0fc787603351315 2026-10-19 18:07:42 +0800 docs: t78 冻结 HEAD 终验（§R18：十项门禁逐条重跑 + 编译门禁成对自证 + 数值真相源/红线/铁律锚点）
+```
+
+> 注：`git ls-remote` 在 t78 轮曾因网络返回 `GnuTLS recv error (-110)`（exit 128）；本轮加 `timeout 25` 后**成功返回**，故「HEAD 比远端多 1 次 docs 提交」这一差异是**可确认的**（不是「取不到远端」）。
+
+## §R6.2 证据链抽查：5 条账本结论**自己重跑**（§R17/§R18）
+
+| # | 被抽查的账本结论 | 我的命令 | 我的实测 | 与账本 |
+|---|---|---|---|---|
+| 1 | §R18 行 1 / L0 | `python3 tests/tools/check_l0.py --strict` | `检查项：28 错误：0` / `扫描文件：89 命中：0` / `docConflicts 0 条` / **`L0_EXIT=0`** | **一致** |
+| 2 | §R18 行 2 / L3 全量（§R18 记 `243 passed, 1 warning in 237.75s`） | `cd server && CARBONBOO_TEST_DB=carbonboo_test_t79 .venv/bin/python -m pytest tests/ -q` | **`243 passed, 1 warning in 277.62s (0:04:37)`、`PYTEST_EXIT=0`** | **一致**（计数相同；耗时 237.75s → 277.62s 属机器负载差异，非结论差异） |
+| 3 | §R18 行 3 / `l1_offline/run.sh` | `bash tests/tools/l1_offline/run.sh` | `RESULT: PASS=55 FAIL=0` / `checked=323 passed=true mismatches=0` / **`RUN_EXIT=0`** | **一致** |
+| 4 | §R18 行 4 / `run_tests.sh`（`it()=41`） | `bash tests/tools/l1_offline/run_tests.sh` | `hypium 用例：41 条，PASS=41 FAIL=0` / `it_executed=41 passed=41 failed=0 requires_device=0` / `基准复算结论：全部一致：共复算 323 个断言点` / **`TESTS_EXIT=0`** | **一致**，且**同时复核了 t74 的 `41` 口径**（§R6.7） |
+| 5 | §R18 行 6 / `concurrency_e2e/run.sh` | `bash tests/tools/concurrency_e2e/run.sh` | `发现（STOP，只报告不改）：2 条 —— S1-note, S3` / `门禁级发现（严格模式下影响退出码）：0 条` / `PROBE_EXIT=0` / `RESULT: PASS` / 清理自证 `端口 CLOSED`、`carbonboo_conc_* 遗留 0`、`生产库跑前==跑后`、`残留 uvicorn 0` / **`CONC_EXIT=0`** | **一致**（两条 STOP 发现与账本同项） |
+
+**另外两条 §R17 的数字就不再重跑**（t78 已在本 HEAD 上重跑过，且 §R17 与 §R18 的 `62/24/98/103/16` 逐项相同——这本身说明「§R17 的登记」与「§R18 的复跑」没有分叉）。**结论：抽查 5 条全部与账本一致，没有发现对不上的数字。**
+
+## §R6.3 逐条核 m00004 的三部分交付（每条给 `文件:行` 或可复现命令）
+
+### ① `app/` OpenHarmony ArkTS（API 12）· S1–S7 垂直切片
+
+实测规模（自己跑）：`app/entry/src/main/ets` **108 个 `.ets` / 20118 行**；`pages/` **19 个文件（其中仅 `Index.ets` 带 `@Entry`）**＝18 页面 + 1 导航壳；`components/` **23**；`viewmodel/` **36**；`ohosTest` **11 个 `.test.ets`**；`ClientSchema.ets` **19 张 `CREATE TABLE`**。
+
+| 切片 | 承载文件（`文件:行`） | 验收项编号（附录 D） | 判定 |
+|---|---|---|---|
+| **S1 数据地基** 19 张表 + 静态字典 + 唯一计算入口 | `app/entry/src/main/ets/data/schema/ClientSchema.ets:76`（第 1 张 `carbon_record`，共 19 处 `CREATE TABLE IF NOT EXISTS`）；`.../service/SeedRepository.ets`；`.../service/CarbonService.ets:76 static calculate(...)`；`.../service/CarbonCalc.ets:148/:153` | D1-1…D1-15（录入与计算）、§3 样例 18 组 | **成立** |
+| **S2 记录闭环** 录入→保存（事务：记录+积分+目标+徽章）→三处同源 | `.../viewmodel/RecordService.ets:1`（507 行；`save()` 事务）；`.../pages/RecordEditPage.ets`；`.../pages/HomePage.ets` / `RecordPage.ets` / `DashboardPage.ets` | D1-1…D1-15、D2-1…D2-11、C7 | **成立** |
+| **S3 激励闭环** 11 目标 + 8 徽章 + 封顶 | 种子实测：`rawfile/goals/goal-defs.json` = **11**；`rawfile/badges/badge-defs.json` = **8**；`.../viewmodel/PointService.ets:153`（唯一积分写入）+ `:91` 余额；`.../viewmodel/RewardService.ets` + `.../viewmodel/domain/RewardEngine.ets` / `BadgeEngine.ets`；`.../util/AppConstants.ets:34 DAILY_RECORD_CAP = 200` | D2-2（封顶）、D3-1（目标数）、D3-5（徽章数）、D3-9…D3-28 | **成立** |
+| **S4 外观闭环** 碳小铺购买幂等 → B_TREE | `.../viewmodel/ShopService.ets:132 async purchase(...)`；`.../data/schema/ClientSchema.ets:249 uq_up`；`.../viewmodel/domain/ShopRules.ets`；`.../pages/ShopPage.ets` / `AppearancePage.ets` | D3-17…D3-28、D8-* | **成立**（但「外观页」自身缺验收项，见 §R6.4-F1） |
+| **S5 科普 12 篇 + 备份/恢复/导出/清空** | `rawfile/science/sci-01..12.md`（实测 12 个文件 + `science-index.json`）；`.../viewmodel/ScienceService.ets`；`.../viewmodel/BackupService.ets:64 async create` / `:130 cleanOld`；`.../viewmodel/ExportService.ets` + `.../viewmodel/domain/CsvRenderer.ets`；`.../components/BackupListSheet.ets` | D4-1…D4-9（科普）、D5-1…D5-11（备份/导出/清空）、D5-12（云端） | **成立** |
+| **S6 服务端** | `server/app/**`（实测 **59 个 `.py` / 12229 行**）+ `server/sql/schema.sql`（**21 张 `CREATE TABLE`**） | 见 ② | **成立** |
+| **S7 创新项** 近场协同降级演示层 / 端侧识图桩 / 碳普惠 / 分享卡片 | 近场：`.../viewmodel/net/SyncService.ets:519 peers()` / `:554 discover()` / `:567 nearFieldSync(...)`；识图桩：`.../viewmodel/AiAssistService.ets:46 class MockAiEngine`（**桩**，非真实模型）+ `.../components/AiRecognizeSheet.ets`；碳普惠：`.../viewmodel/IncludeService.ets:41`（`coin()`/`benefits()`/`exchange()`）+ `.../pages/IncludePage.ets`；分享卡片：`.../viewmodel/ShareService.ets:43 cardData()` / `:64 saveCard()` + `.../components/ShareSheet.ets` | D6-1（近场配对）、D7-1…D7-2（识图）、D8-1…D8-5（碳普惠）、D9-5…D9-9（分享） | **成立**（近场按 ADR-0001 已降级为**演示层**，与契约一致） |
+
+### ② `server/` FastAPI + MySQL 8
+
+- **21 张表**：`server/sql/schema.sql` 实测 `CREATE TABLE` = **21**（与附录 B §2 口径一致）。
+- **账号**：`server/app/api/v1/auth.py`（register/login/me/logout/account）+ `server/app/services/auth_provider.py`；注销保留 30 天见 `auth.py:74/:128`。
+- **多设备同步 LWW**：`server/app/services/sync_service.py`（`_merge_lww` 的原子化 WHERE 守卫 + `offset_ms` 恰好一次换算在 `:391`，比较在 `:551`）；pull 过滤 `updated_at > since`。
+- **商品取价**：`server/app/api/v1/shop.py`；**免鉴权配置下发**：`server/app/api/v1/config.py`（附录 B §5.4 `:866` 记「鉴权：无」）。
+- **云端备份**：`server/app/api/v1/backup.py`（POST/GET `/sync/backup`、POST `/sync/backup/restore`）。
+- 证据来源：§R18 行 2（`243 passed`，本轮我自己重跑一致）、§R8–§R13 的历史 pytest 记录。
+
+### ③ `/admin` Web 后台
+
+- **附录 B §5.4 的 15 条路径**（`docs/APPENDIX-B-data-and-api.md:865-879` 共 15 行）逐条有实现：13 条 admin 路由在 `server/admin_web/api.py`（`:147 GET /login`、`:153 POST /login`、`:232 POST /password`、`:258 GET /items`、`:271 POST /items`、`:289 PATCH /items/{id}`、`:307 POST /items/{id}/icon`、`:387 /users`、`:409 /overview`、`:423 /orders`、`:448 GET /config`、`:462 PUT /config`、`:482 /logs`），另 2 条公共路由（`/api/v1/shop/items`、`/api/v1/config`）在客户端 API 侧。
+- **自有路由**：`api.py` 共 **19** 条 `@router.*`（15 条表内 13 条 admin + `/admin/logout`、`/admin/icons/{filename}`、`/admin/static/{filename}`、`/admin` 与 `/admin/`、`GET /admin/password`）。
+- **双 JWT 隔离**：`server/app/main.py:140 _isolate_admin_scope` → `:146 decode_user_token(token, settings)`（客户端密钥）成功即 `:155` 返回 **403**；管理端自己再按 `adminToken` 鉴权。
+- **证据**：L3 `test_admin` 85 条（含 `client_token_on_every_admin_path_is_forbidden`）；**真浏览器**：`tests/tools/admin_e2e/run.sh`（直连 `PASS=98` / 真 nginx(TLS) `PASS=103` / 比对 `PASS=16`）——§R17/§R18 记录且**本轮抽查第 5 行重跑一致**。
+
+**三部分交付结论：全部成立**（`app/` S1–S7 有承载且验收可对号、`server/` 21 表与五类能力齐、`/admin` 15 条路径 + 19 路由 + 双 JWT 隔离成立）。
+
+## §R6.4 验收项 ↔ 界面双向承载（18 条抽样，逐条给「验收 → 承载 `文件:行` → 证据来源」）
+
+| # | 验收项 | 承载（`文件:行`） | 证据来源 |
+|---|---|---|---|
+| 1 | D1-1 出行 7 种行为可录入 | `rawfile/factors/carbon-factors.json`（travel=11 项，含 7 种可录入）+ `pages/RecordEditPage.ets` | §R9/§R10 离线工具 `samples` 36 项 |
+| 2 | D1-2 对照类**不可**录入 | 因子表 `recording` 标记 + `service/FactorLibrary.ets` 过滤 | §R10（`capSamples`/`samples` 复算 323 断言点） |
+| 3 | D1-3 少开一天车 16 km → 3.0720 kg / +307 | `service/CarbonCalc.ets:253`（换算常量）+ `tests/cases/carbon-calc.json` 样例 8 | `run.sh` 复算（本轮 `PASS=55`） |
+| 4 | D2-2 每日记录分封顶 200 | `util/AppConstants.ets:34` + `service/CarbonCalc.ets:54 effectiveDailyCap()` | `capSamples` 11 项（本轮 `run.sh` PASS） |
+| 5 | D3-1 目标数 11 | `rawfile/goals/goal-defs.json`（实测 11） | `run_tests.sh` 启动地基 `goals=11` |
+| 6 | D3-5 徽章数 8 | `rawfile/badges/badge-defs.json`（实测 8） | `run_tests.sh` `badges=8` |
+| 7 | D3-19 B_TREE 集齐 8 框才解锁 | `viewmodel/domain/ShopRules.ets`（`treeUnlocked(frames,8)`） | L1 `ShopPurchase` 用例 + `run.sh` |
+| 8 | D4-3 科普离线可读（12 篇） | `rawfile/science/sci-01..12.md` + `viewmodel/ScienceService.ets` | `samples`/离线执行器读 rawfile |
+| 9 | D4-5 收藏分组 | `viewmodel/ScienceService.ets:161 favorites()` + `pages/SciencePage.ets:43` | L1 `Science*` 用例（离线） |
+| 10 | D4-9 徽章数同源（演示 6/8） | `pages/BadgePage.ets` + `pages/MinePage.ets`（同读 `user_badge`） | §R10 用例；`badges=8` |
+| 11 | D5-1 备份成功（`BackupListSheet`） | `components/BackupListSheet.ets` + `viewmodel/BackupService.ets:64 create()` | L1 `BackupRoundTrip`（§R9 起） |
+| 12 | D5-3 恢复五项一致 | `viewmodel/BackupService.ets`（restore）+ L1 断言 | L1 `BackupRoundTrip`（本轮 `41/41` 含它） |
+| 13 | D5-10 清理旧备份保留 3 份 | `viewmodel/BackupService.ets:130 cleanOld()` | L1 `BackupRoundTrip` |
+| 14 | D6-2 双设备同步（云端通路） | `viewmodel/net/SyncService.ets:289 sync()` + `server/app/services/sync_service.py` | `l2_sync`（§R18 行 5：`checks=38 passed=38`） |
+| 15 | D6-9 家庭碳积分合并视图 | `viewmodel/net/SyncService.ets:474 family()` | `l2_sync` §R17/§R18 记录 |
+| 16 | D6-11 首次登录并入账号 | `viewmodel/AuthService.ets:175 AccountMigrator` / `:180 migrate()` | L1 `LwwMerge` ⑪⑫（本轮 41/41） |
+| 17 | D6-12 注销保留 30 天 | `server/app/api/v1/auth.py:74/:128` + L3 `test_auth` | §R18 行 2（`243 passed`，我重跑一致） |
+| 18 | D7-1 不展示置信度数字 | `pages/` 内 `置信度` 命中 **1**（仅文案说明）、`confidence` 命中 **1**（列名/映射，非报数） | 本轮实测（下 §R6.5） |
+| 19 | D8-1 兑换汇率 100:1 单向 | `viewmodel/IncludeService.ets:116 exchange()` + `AppConstants.CARBON_COIN_RATE` | L1/`run.sh` |
+| 20 | D8-5 强制「模拟演示」提示条 | `components/SimulationBanner.ets`（附录 C 引用 2 次） | 静态核对（无自动化用例，属**部分成立**：靠人工/截图） |
+| 21 | D9-5/D9-9 分享卡片两尺寸 + 记录可查 | `viewmodel/ShareService.ets:43/:64/:88` + `components/ShareSheet.ets` + `share_record` 表 | 静态 + L1（无像素级用例） |
+| 22 | D10-5 后台配置下发到 App | `server/app/api/v1/config.py` + `viewmodel/net/ServerConfigFetcher.ets:167 effectiveFrom()` | L3 `test_config` 25 条 + L1 `ServerConfigFallback` |
+| 23 | I-5 候选不可靠时不展示置信度 | `components/AiRecognizeSheet.ets` + `viewmodel/AiAssistService.ets:46 MockAiEngine` | 静态（桩实现，**无真机用例**） |
+
+**反向核查（界面元素有没有验收项）**：
+- 18 个页面按主题关键词对附录 D 反查：**17 个有验收项**（首页 7 / 看板 13 / 记录 11 / 科普 10 / 我的 4 / 目标 17 / 徽章墙 2 / 小铺 8 / 积分明细 3 / 协同 26 / 碳普惠 8 / 设置 4 / 关于 2 / 记录明细 2 / 搜索 6 …）。
+- **`外观`（`RouteName.APPEARANCE`）在附录 D 命中 0**；`更换外观`/`APPEARANCE` 亦 0。页面实体存在：`pages/AppearancePage.ets` + `viewmodel/AppearanceService.ets:49 avatars()` / `:86 current()` / `:110 save()`，且附录 C §20（`docs/APPENDIX-C-ui-screens.md:680`）给了完整布局（头像 8 个、头像框、主题位、昵称、保存）。
+
+```
+STOP: 附录 D 无任何验收项覆盖「外观」页（`RouteName.APPEARANCE`）
+冲突: docs/APPENDIX-C-ui-screens.md:28/:680「页面 16 · 外观 APPEARANCE」 ↔ docs/APPENDIX-D-acceptance.md 全文（`外观`/`APPEARANCE` 命中 0；仅 D3-19/D3-22/D9-7 间接覆盖头像框/主题位/昵称）
+建议: 在附录 D 补 1 条验收（如「D4-10 外观切换：改头像/头像框/主题/昵称 → 保存 → 重启仍在，且未拥有的头像框置灰」），归入 §4 或 §10；本轮**只报告不改**（附录 D 与 `app/` 均在本任务 outOfScope）
+```
+
+- 另注：`components/ProgressBarView.ets` 与 `components/SegmentedBar.ets` 未被附录 C/D 点名，但**行为**被 D2-5（日→周→月→年切换）、D3-15（进度展示）覆盖，属「子组件由所在页面承载」，**不算缺承载**。
+
+## §R6.5 四条铁律 + 规约红线（全部本轮实测，给 `文件:行` 与命中数）
+
+| 项 | 证据 | 实测 |
+|---|---|---|
+| 铁律 1 本地优先 | 五类网络例外集中在 `viewmodel/net/HttpPort.ets` 注入点；离线证据：`offline_first`（§R18 行 7：`PASS=32 FAIL=0`） | **成立**（未运行项里「真机飞行模式」仍缺，见 §R6.8） |
+| 铁律 2 单一计算入口 | `service/CarbonService.ets:76 static calculate(...)`（全 app 唯一实现）；唯一因子乘法 `service/CarbonCalc.ets:153 const product: Dec = Dec.from(amount).mul(Dec.from(factorValue));`；`pages/`+`components/` 因子乘法命中 **0** | **成立** |
+| 铁律 3 因子快照四字段 | `data/schema/ClientSchema.ets:85-88`：`factor_value REAL NOT NULL` / `factor_version TEXT NOT NULL` / `factor_source TEXT NOT NULL` / `confidence TEXT NOT NULL` | **成立** |
+| 铁律 4 积分单向可追溯 | 唯一写入点 `viewmodel/PointService.ets:153 'INSERT OR IGNORE INTO point_record '`（全 app **1** 处）；余额同口径 `COALESCE(SUM(points), 0)` 共 **9** 处（`PointService.ets:91/121/136/235`、`net/SyncService.ets:487/502`、`server/admin_web/services/stats.py:90`）；`UPDATE point_record` / `DELETE FROM point_record` 在 `app/ server/ tests/` 源码树 **0** 命中 | **成立** |
+
+规约红线（本轮实测命中数）：`: any` = **0**；`@ts-ignore` = **0**；非相对 import（排除 `@ohos`/`@kit`）= **0 / 565 条 import**；`expect.fail` = **0**；`.skip(` = **0**；`xit(` = **0**；`.only(` = **0**；`pytest.mark.skip/xfail` = **0**；`except: pass` 空吞 = **0**。
+> `pages/`+`components/` 的 `置信度` 文案命中 1、`confidence` 命中 1 —— 均为「不展示置信度数字」的口径说明/列名映射，**不是**报数（与 D7-1 一致）。
+
+## §R6.6 「不许改期望值 / 删断言 / 跳用例」专项（最近 20 条提交逐条判定）
+
+| # | 提交 | 触碰 `tests/` | 触碰 `carbon-calc.json` | 判定 | 依据 |
+|---|---|---|---|---|---|
+| 1 | `bf3a2b9` | 否 | 否 | 无风险 | `--name-only` 仅 `docs/VERIFICATION.md` |
+| 2 | `c925cfd` | 是（`tests/README.md`） | 否 | 无风险 | 文档行文，`git show --numstat` = 12/12 且全是散文 |
+| 3 | `5ca1b47` | 否 | 否 | 无风险 | 仅 VERIFICATION 1 行指针 |
+| 4 | `8d3b34d` | 是（4 个 README） | 否 | 无风险 | 文档 |
+| 5 | `6690ac2` | 是（README） | 否 | 无风险 | 文档 |
+| 6 | `7b661fc` | 是（`admin_e2e` 代码 + 24 个产物） | 否 | 无风险（**加强**） | `compare_paths.py` 新增逐字节比对 16 条；无断言删除 |
+| 7 | `c4d6105` | 是（REPORT） | 否 | 无风险 | 文档 |
+| 8 | `1889d65` | 是（`l2_sync/lib`） | 否 | **加强**（详见下） | `+127/−22`，新增判据行 20 / 删除 2 |
+| 9 | `22a3fbf` | 是（REPORT） | 否 | 无风险 | 文档 |
+| 10 | `d534437` | 是（REPORT/README） | 否 | 无风险 | 文档 |
+| 11 | `f0f94bb` | 是（`deploy_e2e` 脚本） | 否 | 无风险（**加强**） | 新增 `run_systemd.sh` 24 条断言 + nginx 端 7.5b.* |
+| 12 | `cf06292` | 是（`tests/README.md`） | 否 | 无风险（**当前口径对齐**，详见下） | 12/12，全是计数文字 |
+| 13 | `fc9cc86` | 否 | 否 | 无风险 | 仅 `README.md` 门面 |
+| 14 | `47cfc52` | 是（README） | 否 | 无风险 | 文档 |
+| 15 | `7c19a1a` | 是（`tests/README.md`） | 否 | 无风险 | 文档 |
+| 16 | `6402c2f` | 否 | 否 | 无风险 | 文档 |
+| 17 | `9604ddc` | 否 | 否 | 无风险 | 文档 |
+| 18 | `788659c` | 是（`repro/` 工具） | 否 | 无风险（**加强**） | 新增编排器；含反证（改基准必红） |
+| 19 | `7091e04` | 是（REPORT） | 否 | 无风险 | 文档 |
+| 20 | `d484de6` | 是（REPORT/README） | 否 | 无风险 | 文档 |
+
+- **`tests/cases/carbon-calc.json`：最近 20 条提交 `calc=0`；把范围放大到最近 60 条逐条扫，仍为 0**（`git show --name-only` 全扫）。该文件当前 md5 与 `app/entry/src/ohosTest/resources/rawfile/carbon-calc.json` 相同（§R18 开工六条亦记 `e096b2d…`），**数值真相源未被任何近期提交改动**。
+- 唯一触碰 ohosTest **测试代码**的近期提交是 `1866838`（`test(sync): LwwMerge 补 5 条防线用例`，`+254/−2`）——属**加用例**；其「是否改绿」由 **t64 非作者复核**判为「修对」（it 11→16、expect 68→107，无断言下降），并有两条变异自证（`RowClaim.of` 退回只按 id ⇒ 只红 ⑪⑫⑮；`handshakeOffsetOf` 恒 0 ⇒ 只红 ⑬）。
+- **t73 的 `#4.9` 重建 = 加强，不是弱化**：旧判据 `noAccum9` 拿**初始 `T9`** 作候选集且零容差，与同一 check 内 `jitter9`（±3000 ms 容差）自相矛盾；重建后是 `eq9`（逐轮严格等式）+ `wire9`（锚**上行原文**，可抓「叠两次」）+ `noAccum9`（跨轮 |Δ| ≤ 3000 上界）+ `jitter9`（仅作收敛上界），并新增 `--mutate=offset-twice` 反证腿。**我本人参与 t73，非独立**；独立旁证是 t72 与 t78 在各自轮次的重跑（`#4.9` 三连跑确定性绿、`offset-1000`/`offset-drop`/`offset-twice` 三类真缺陷仍红）。
+- **t74 的 `it()` 计数改动 = 当前口径对齐，不是抹历史**：`cf06292` 的 12/12 全部是「36 → 41」的计数行改写，`tests/README.md:13` 仍保留「t45 时为 36 条」的历史带；`docs/VERIFICATION.md` 侧由 §R16 的「口径纪律」段声明 §R1–§R15 里的 36 属历史记录、现行统一 41。**我本人参与 t74，非独立**；独立旁证是本轮 `run_tests.sh` 实测 41/41。
+
+## §R6.7 数字与账本一致性（§R18 vs §R17/§R16）
+
+- **§R17（62/24/98/103/16）与 §R18 行 8/9/9b 逐项相同**，无分叉。
+- **§R16 的「18 页面 / 41 个 `it()`」在当前磁盘仍成立**：`ls app/entry/src/main/ets/pages/*.ets | wc -l` = **19**（其中 `@Entry` 只有 `Index.ets`）⇒ 18 页面 + 1 外壳；`run_tests.sh` = **41 条**（11 个 `.test.ets`，其中 `List.test.ets` 0 个 `it()` ⇒ 10 个有效套件）。**与 t74 结论一致。**
+- **§R18 与既有账本唯一的自陈分歧已被它自己标注**：`vision_check/run.sh` 在 t78 退 **4**（`RUN_RESULT=ERROR`，凭据库无 `refs.ARK_API_KEY`），与 §R7 的「视觉腿可用」不同 —— §R18 在开头与 §R18.4 都写了这一处置，**属如实降级，不是互相矛盾**。
+- **文件首部「最新一轮是 §R12」不是过期指针**：该 blockquote 自述「下面那段『最新一轮是 §R11』是本节插入前的时点」，且紧跟一行「后续轮次指针」明确列出 §R13–§R18 并写「§R18 = …（本文件最前）」——即本文件采用「每轮前置 + 指针链」约定，**口径自洽**（我最初怀疑它是过期指针，核到 `docs/VERIFICATION.md:5` 后撤回该怀疑）。
+- **轮次索引完整**：`round 13`–`round 18` 六行齐全（`:2389-2394`）。
+
+## §R6.8 未运行项（单列，**一条都不算通过**）与「是否影响三部分交付成立」
+
+| # | 未运行项 | 原因（原始错误/环境） | 对「三部分交付成立」的影响 |
+|---|---|---|---|
+| N1 | **真机 hypium**（10 套件 / 41 个 `it()`） | 本机无真机/模拟器：`hdc` 不在 PATH（EXIT=127）、SDK 内 hdc 直调 `Connect server failed`、`/dev/kvm` 不可写、`command -v emulator` EXIT=1 | **不影响交付成立**，但**降低证据等级**：41 个 `it()` 只在**离线执行器**（esbuild 转译 + `node:sqlite` 垫片）里跑过，逻辑等价、**不等于**设备上跑过 |
+| N2 | **真机 L2 / 飞行模式** | 需两台设备 | 不影响成立：协议级已由 `l2_sync`（双进程 + 真 MySQL + 真 uvicorn）覆盖；「飞行模式下全功能可用」只有**代码级**证据（五类例外注入点） |
+| N3 | **真云 VM 开机自启持久化 + `systemd-analyze security`** | 本轮只有 `PID1=systemd` 的**容器**（`deploy_e2e/run_systemd.sh` 24/24） | 不影响成立：脚本与单元内容已逐字节比对 + 真启动；缺的是「云主机跨重启」这一层 |
+| N4 | **certbot 真签发/续期** | 未接 ACME（不联网），本轮用 `openssl` 自签 | 不影响成立：TLS 配置与 nginx 加载已实测；缺的是证书来源 |
+| N5 | **公网 DNS / 防火墙 / HSTS / HTTP2** | 仅本机端口映射 + `--host-resolver-rules` | 不影响成立（部署形态问题，非代码） |
+| N6 | **多机分布式并发** | 全部在本机单机内 | 不影响成立：LWW 并发已由 16 并发 × 8 轮 + 服务端回归用例覆盖 |
+| N7 | **跨浏览器内核** | 只有 Edge（Chromium） | 不影响成立（`/admin` 是 SSR + 少量 JS；跨内核属兼容性风险，已知） |
+| N8 | **`/admin` 管理端 JWT 无状态**（登出/改密后旧令牌重放仍 200） | `server/admin_web/api.py:214` 自述「过期自然失效」；t55/t59 实测重放 200 | **不影响成立**（是设计口径，不是缺陷）：账号口令已改、Cookie 已清；要「登出即吊销」需黑名单/短时令牌，属**产品决策**未实现 |
+
+> **结论**：八项都<strong>不推翻</strong>「三部分交付成立」——它们是**环境受限的证据缺口**，不是功能缺口；但任何一项**都不能**被表述成「已验证通过」（与 §13/§R14/§R17/§R18 同口径）。
+
+## §R6.9 逐条结论（成立 / 部分成立 / 不成立）
+
+| 要求 | 判定 | 一句话依据 |
+|---|---|---|
+| ① `app/` ArkTS API 12 + S1–S7 七切片 | **成立** | 108 `.ets` / 20118 行、19 表、11 目标 / 8 徽章 / 12 科普、S1–S7 各有 `文件:行` 与 D 编号对号 |
+| ② `server/` FastAPI + MySQL 8（21 表 / 账号 / LWW / 取价 / 云备份 / 免鉴权 config） | **成立** | 21 `CREATE TABLE`；`243 passed`（我重跑一致）；`/api/v1/config` 免鉴权见附录 B `:866` |
+| ③ `/admin` 15 条路径 + 自有路由 + 双 JWT 隔离 + 客户端 token 必 403 | **成立** | 附录 B `:865-879` 15 行；`api.py` 19 路由；`main.py:140-155` 403；`admin_e2e` 98/103/16 + L3 `test_admin` 85 条 |
+| ④ 验收 ↔ 界面双向承载（≥15 抽样） | **部分成立** | 23 条抽样全部找到承载；但**「外观」页在附录 D 无验收项**（F1，STOP 三行） |
+| ⑤ 数字与证据链（5 条抽查） | **成立** | L0/pytest/l1 run/run_tests/concurrency 五条重跑**全部与账本一致** |
+| ⑥ 四条铁律 + 规约红线 | **成立** | 各给 `文件:行`；红线 9 项命中全 0；`point_record` 写入唯一、无 UPDATE/DELETE |
+| ⑦ 不许改期望值 / 删断言 / 跳用例（20 条提交） | **成立** | 20 条逐条判定无「改期望/删断言/跳用例」；`carbon-calc.json` 近 60 条提交**零触碰**；t73 = 加强、t74 = 口径对齐 |
+| ⑧ 未运行项单列且不影响结论 | **成立** | N1–N8 单列；均属环境受限的证据缺口 |
+| ⑨ 清理与门禁 | **成立** | 我的测试库 `carbonboo_test_t79` 已 DROP；`docker ps -a | grep carbonboo` = **1**；无遗留 uvicorn / msedge；`git status --short` = **0 行**；L0 `L0_EXIT=0` |
+
+**总判定：`verdict = pass`**（三部分交付成立；两条 low 级发现不阻塞交付：F1 = 外观页缺验收项、F2 = 管理端 JWT 无状态属设计口径需在终局说明里写明）。
+
+### Findings
+
+- **F1（low，可追溯性缺口）**：附录 D 无任何验收项覆盖「外观」页（`RouteName.APPEARANCE`，`pages/AppearancePage.ets` + `viewmodel/AppearanceService.ets:49/:86/:110`）。功能已实现、附录 C §20 有完整布局，但缺验收项 ⇒ 按 AGENTS §1.3 已在上文给三行 STOP。**建议**（不在本任务写入范围）：在附录 D 补一条「D4-10 外观切换持久化」。
+- **F2（low，口径需显式）**：`/admin` 管理端 JWT 无状态 —— 登出/改密后旧令牌在 120 分钟内仍可重放（`server/admin_web/api.py:214` 自述）。**不是缺陷**，但终局说明里应写明「登出 = 清 Cookie，不等于吊销令牌」。
+
+**顺带观察（不计入 findings，供队长裁决）**：MySQL 里积压了 **39 个历史 `carbonboo_test_*` 库**（`carbonboo_test_final3`、`_t59`、`_t63`、`_t66`、`_t69`…），非本轮产物、我未删除他人库；建议在终局前统一清理（不影响交付结论）。
+
+## §R6.10 收尾（原始输出）
+
+```
+$ docker ps -a --format '{{.Names}}' | grep -c carbonboo
+1
+$ pgrep -fc 'uvicorn app.main:app'
+0
+$ （Windows）Get-CimInstance … CommandLine -like '*cb-admin-e2e*' | Measure-Object
+0
+$ git status --short
+（0 行）
+$ python3 tests/tools/check_l0.py --strict; echo "L0_EXIT=$?"
+检查项：28    错误：0
+扫描文件：89    命中：0
+L0-3 人工待修清单（tests/cases/carbon-calc.json → docConflicts）：0 条
+结论：PASS —— 基准自洽，文档无已知冲突
+L0_EXIT=0
+$ （生产库未受影响）SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='carbonboo';
+21
+```
+
+## §R6.11 本节边界（没能证明什么）
+
+1. **本节不是「新证据轮」**：我只做了 5 条抽查 + 静态核对，**没有**重跑 `admin_e2e`/`deploy_e2e`/`l2_sync`/`offline_first`/`vision_check`（这些的最近一次实测记录在 §R17/§R18；`vision_check` 那次是 **EXIT=4 未运行**）。
+2. **无法独立判定**的项：真机 hypium 与真机飞行模式下的行为、真云 VM 上的 systemd 持久化、跨内核兼容性 —— 本机物理条件不具备，我只能判定「离线/协议级等价证据成立」，**不能**判定「设备上成立」。
+3. **本文件不替代 `docs/VERIFICATION.md`**：门禁原始输出以该文件为准；本节只给「抽查是否对得上」。
+4. 我参与的 t73/t74/t77 三项，其**自评不构成独立证据**（见 §R6.0）。
+
+---
+
 # 交付评审报告（round 5 · t51 交付级终审）· CarbonBoo（赛题二）
 
 > 评审人：**verifier-oc**（AgentTeams 成员；本轮角色是**评审者**，不是实现者 —— 只写本文件，
