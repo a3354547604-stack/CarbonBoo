@@ -123,3 +123,17 @@ bash tests/tools/l2_sync/run.sh        # 退出码 0=全过 / 1=有失败 / 2=�
 
 > 真机 hypium 执行数在本机是 **0**（无 hdc / 无模拟器 / `/dev/kvm` 不可写）：L1 的 41 条是**离线转译后在 Node 里跑**的，
 > 不等于真机通过；端侧真机 L2 同样未运行。这两项在 [REPORT.md](REPORT.md) §6 单列。
+
+## 9. t68 追加：跨端时间戳基准与**严格基准断言**（无容差）
+
+- **断言形态**：`basisOf(row, offsetMs) = updated_at + offsetMs` 表示「把该端存储值换算到**服务端基准**」。
+  跨端一致性断的是 **`basisOf(A行, 该端当次 offsetMs) === basisOf(B行, 该端当次 offsetMs)`**，并要求逐字节等于
+  服务端那一份 —— **不再用「两端差值 ≤3s」的容差**。理由：容差会把 1000ms 级的符号/倍率错误吃成绿，
+  而这里根本不需要容差（同一次 `sync` 调用的 push 与 pull 用的是同一个 `offsetMs`，换算可精确逆回）。
+- **只有换算不参与的比较**（本机自写行 vs 自己的目标值）才用 ±3s 抖动容差，并在断言标题里写明理由（见 `#4.9`）。
+- **反证 C（必跑）**：`node lib/build.mjs <repo> <dir> --mutate=offset-1000` 把客户端落库换算多 1000ms ⇒
+  `L2_ONLY=baseline,lww,delete,clock` 必须 **红**（实测 `16/24`，红的恰是 `#1.2 #1.3 #1.4 #2.2 #2.3 #2.4 #6.3 #4.9` 八条严格断言）；
+  `git show HEAD:app/entry/src/main/ets/viewmodel/net/SyncService.ets > <dir>/src/main/ets/viewmodel/net/SyncService.ets`
+  + `cmp` + `--skip-copy` 重转译 ⇒ 必须 **绿**（`24/24`）。`run.sh` 的第 6b 段会自动跑这一腿。
+- **`#4.10`**：服务端库内 `updated_at` 必须**逐字节等于** `raw + offset_ms`（§5.3:1095；改前服务端存客户端裸值，t68 修复）。
+- **t68 主用例规模**：38 条断言（t62 的 35 条 + `#4.8`/`#4.9`/`#4.10`）。

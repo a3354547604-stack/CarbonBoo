@@ -3300,3 +3300,78 @@ ANSWER_END
 - **hypium / L2 / `server/deploy/` 实跑 / `/admin` 浏览器交互 仍未运行** —— 本轮与 §R6 相比在这四项上**没有任何变化**，一条都不能算通过。
 - **不 push**：本轮提交由队长推送；「已推送」以队长的 `git ls-remote origin main` 原始输出为准（AGENTS.md §5.1-4）。
 - **（t42 更新）** 本节四项未运行项与「构建」无关；而历轮另一处共同局限「只有增量构建、不能证明全量可编译」已由 **§R8** 的**全量干净构建实测**消除（`CompileArkTS` 真实重编 35 s 423 ms、`CLEAN_BUILD_EXIT=0`）。**本节四项一条都没变。**
+
+
+---
+
+## §R13 round 13（t68 · 跨端时间戳基准：服务端落库 = 服务端基准、客户端落库 = 客户端基准）—— 本节只追加，不改上文任何原始记录
+
+> **绑定提交**：`cee94ff6ff97684043e403a23950bf61f73b68f3`（服务端落库换算 + 严格基准断言与负向对照），父提交 `1b85147`（客户端 pull 落库换算到客户端基准）。两处都在 t68 的 inScope 内；**文档正文一行未改**（本节是唯一写入）。
+> 完整证据（逐条断言 + 原始输出 + 三条反证腿）见 `tests/tools/l2_sync/REPORT.md §8`；夹具 `bash tests/tools/l2_sync/run.sh` 退出码 `0`。
+
+### R13.1 判定（先说结论）
+
+| 事项 | 判定 |
+|---|---|
+| 服务端库内 `updated_at` 是否是**服务端基准**（附录 B `§5.3:1095` / `:1097`） | **改前不是**：落库写的是**客户端裸时间戳** ⇒ **实现对既有契约的偏离**（不是契约缺口）；**改后是**：`raw + offset_ms` |
+| 偏离的后果是否真实可复现（`§5.3:1089` 的 `since` 基准） | **是**：偏移客户端 push 的行，在增量 `since`（服务端基准）边界上**既会漏行、也会重复拉**（原文见 R13.2） |
+| 客户端本机库是否混了两套基准（`§5.3:1097`） | **改前是**（本机自写行 = 客户端基准，pull 落库行 = 服务端裸值）；`1b85147` 已在**落库前**换算到客户端基准，`§5.3:1096` 的取反校正改为取自 **push 握手腿** |
+| 封顶口径 `§6.4-3`（`:1081`，不追回已发分、`ignored` 不计 `conflicts`） | **本任务未改动**（`git diff cee94ff -- server/app/services/sync_service.py` 中无相关改动） |
+| 「两端逐列完全相同」类断言 | 改为**严格基准等价式** `端上值 + offsetMs === 服务端值`（**无容差**）—— 用时差容差会把 1000ms 级符号/倍率错误吃成绿；负向对照见 R13.4 |
+
+### R13.2 定事实实测（真 uvicorn + 真 MySQL，只读）
+
+命令：`cd server && .venv/bin/python /tmp/t68/fact_probe.py`（自挑空闲端口起 uvicorn、`MYSQL_DB=carbonboo_test_t68`、httpx 打真 API、pymysql 直查；脚本在仓外 `/tmp`，不入库）。
+
+改前（`1b85147` 之前的服务端代码）：
+
+```
+push 请求体 clientNow = 1792386683895；行 updated_at(T) = 1792390223895
+push 响应：accepted=1 ignored=0 rejected=0 conflicts=0 offsetMs=-59974 serverTime=1792386623929
+直查 MySQL：SELECT updated_at, device_id FROM carbon_record WHERE id='rec-t68-a' ⇒ {'updated_at': 1792390223895, 'device_id': 't68-dev'}
+判定：库内 updated_at = 1792390223895 ；T + offsetMs = 1792390163921（服务端基准）⇒ 库内是 T（客户端基准！）
+```
+
+改后（`cee94ff`）：
+
+```
+判定：库内 updated_at = 1792393606916 ；T + offsetMs = 1792393606916 ⇒ 库内是 T+offsetMs（服务端基准）
+场景 3（客户端钟慢 60000ms）：直查 ⇒ 1792397327047 = T+offsetMs（服务端基准）
+场景 4（同一行再推、无 clientNow ⇒ offsetMs=0）：直查 ⇒ 库内仍 = 推上去的 T（换算退化为恒等，不报错、不漂移）
+```
+
+增量边界：`cd server && .venv/bin/python /tmp/t68/boundary_probe.py`（场景 A = 客户端钟**慢** 60 秒；场景 B = 客户端钟**快** 60 秒；`since` 取上一次 `serverTime`）。
+
+```
+改前：判定：✗ 漏行：该行服务端基准下晚于 since，却没被拉到
+     判定：✗ 重复拉：该行服务端基准下早于 since，仍被拉回
+改后：判定：✓ 未漏行（拉到了） / ✓ 未重复拉（正确排除）
+```
+
+### R13.3 改了什么（文件:行）
+
+| 文件 | 改动 |
+|---|---|
+| `server/app/services/sync_service.py` | push 行循环、模式分派**之前**做一次换算 `values["updated_at"] = int(values["updated_at"]) + offset_ms`（`offset_ms = started_at − client_now`，`clientNow` 缺失时 `0`）；`_merge_lww` 去掉 `offset_ms` 形参、比较直接用已换算值 ⇒ **全链路只换算一次**（避免 ±2×offset 的典型错误） |
+| `server/tests/test_sync.py` | +2 条回归用例（带 / 不带 `clientNow`），锁住「库内 = 服务端基准」 |
+| `app/entry/src/main/ets/viewmodel/net/SyncService.ets` | `1b85147`：pull 落库前把对端行换算到**客户端基准**（`rowOnClientBasis`）、`lastSyncAtLocal = since + clientOffsetMs`、取反校正取自 push 握手腿；只碰这一个 app 文件 |
+| `app/entry/src/ohosTest/ets/test/LwwMerge.test.ets` | `1b85147`：+5 条防线用例（⑪⑫⑮⑬⑭） |
+| `tests/tools/l2_sync/**` | 严格基准等价式替换容差断言；服务端存基准值后夹具期望值同步；新增反证 C 一腿 |
+
+### R13.4 四条门禁与反证（原始输出节选）
+
+| 项 | 命令 | 结果 |
+|---|---|---|
+| 服务端 pytest | `cd server && CARBONBOO_TEST_DB=carbonboo_test_t68 .venv/bin/python -m pytest tests/ -q` | `243 passed, 1 warning in 252.99s`（exit 0） |
+| L1 hypium（**离线转译执行**） | `bash tests/tools/l1_offline/run_tests.sh; echo $?` | `it_executed=41 passed=41 failed=0 requires_device=0`（exit 0） |
+| L1 纯逻辑 | `bash tests/tools/l1_offline/run.sh; echo $?` | `PASS=55 FAIL=0`、`checked=323 passed=true mismatches=0`（exit 0） |
+| L0 | `python3 tests/tools/check_l0.py --strict; echo $?` | `结论：PASS —— 基准自洽，文档无已知冲突`（exit 0） |
+| L2 夹具 | `bash tests/tools/l2_sync/run.sh; echo $?` | 主用例 `checks=38 passed=38 failed=0`；**反证 A**（平局判据反转）`4/7` 红 `#3.1 #3.2 #3.3` ⇒ 还原 `7/7` 绿；**反证 C**（落库换算多 1000ms）`16/24` 红 `#1.2 #1.3 #1.4 #2.2 #2.3 #2.4 #6.3 #4.9`（**恰好全是严格基准断言**）⇒ `git show` 还原 + `cmp` 逐字节一致 ⇒ `24/24` 绿；exit 0 |
+
+### R13.5 边界（写死）
+
+- 本节证明的是**跨端时间戳基准**在真 HTTP + 真 FastAPI + 两个独立 `node:sqlite` 客户端库上的**协议级**行为，**不能替代真机 L2**：**不覆盖** UI、Ability 生命周期、端侧权限（含系统时间/时区与真实时钟漂移）、近场通路。
+- **hypium 在设备上仍未运行**（`run_tests.sh` 的 `it_executed` 是**离线转译执行**），两者不可互相顶替。
+- **未运行项与 §R12 相同**：真机 L2、`server/deploy/` 部署实测、`/admin` 浏览器交互（后者已有 §R12 结论，本轮无变化）。
+- **文末位置说明**：本节按 t68 任务书「只允许**追加** `docs/VERIFICATION.md`」追加在**文件末尾**；文件第 1 行的 round 索引行**按规未改**（改它等于修改既有正文），故该行仍写「最新 round 12」——**最新一轮实为 §R13（round 13 / t68）**，索引统一留待后续轮次处理。
+- **不 push**：本轮提交由队长推送；「已推送」以队长的 `git ls-remote origin main` 原始输出为准（AGENTS.md §5.1-4）。

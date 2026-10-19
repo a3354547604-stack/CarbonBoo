@@ -1292,3 +1292,133 @@ RUNSH_EXIT=0
 | 真机 hypium 单测执行（`hdc` 跑到设备/模拟器上） | 本机无 `hdc`、无模拟器、`/dev/kvm` 不可写 | 执行数 **0**；§3.4 的 41 条是**离线转译后在 Node 里跑**的，**不等于真机通过** |
 | 端侧真机 L2（两条真机跑协同脚本：UI + 生命周期 + 权限 + 近场） | 同上（物理不可达） | 未运行；本报告用协议级夹具替代，边界见 §4 |
 | 服务端 L3 pytest 全量 | 属服务端任务范围（本任务只读 `server/**`） | 未在本任务内运行 |
+
+
+---
+
+## §8 t68 追加节：跨端时间戳基准（服务端落库 / 客户端落库）与严格基准断言
+
+> **绑定提交**：`cee94ff6ff97684043e403a23950bf61f73b68f3`（父 `1b85147 fix(sync): pull 落库换算到客户端基准（§5.3:1097）`）。
+> 本节按 t62 的形态**只追加**：§0–§7 原文逐字未改；两者不一致时以本节为准。
+
+### §8.0 结论速览
+
+| # | 契约条款（`docs/APPENDIX-B-data-and-api.md`） | 改前实测 | 改后实测 | 证据 |
+|---|---|---|---|---|
+| 1 | `:1095`「本机（库内）行已是服务端基准」 | 服务端库内 = **客户端裸时间戳 `T`** | 服务端库内 = **`T + offset_ms`** | §8.2 `fact_probe` 改前/改后原文 |
+| 2 | `:1089`「`since` 取服务端基准」的增量边界 | 场景 A **漏行**；场景 B **重复拉** | ✓ 未漏行；✓ 未重复拉 | §8.3 `boundary_probe` 改前/改后原文 |
+| 3 | `:1097`「本机业务行的 `updated_at` = 客户端基准」 | pull 落库写**服务端裸值**（本机库两套基准并存） | 落库前换算到**客户端基准** | 提交 `1b85147` + LwwMerge ⑪⑫⑮⑬⑭ |
+| 4 | `:1096` 判据（`respOffsetMs=+60000` ⇒ 对端 `T` 在本机显得更旧 `T−60000`） | pull 响应**无** `offsetMs` ⇒ 取反换算在真链路不可达 | 校正取自 **push 握手腿**（`clientOffsetMs = −offsetMs`） | 提交 `1b85147`；本节 §8.5 |
+| 5 | 跨端一致性断言形态 | 「两端 `updated_at` 差 **≤3s**」容差 | **严格等价式** `端上值 + offsetMs === 服务端值`（无容差） | §8.5 + §8.6 反证 C |
+| 6 | `:1081`（封顶不追回、`ignored` 不计 `conflicts`） | 未涉及 | **未改动**（本任务一行未碰） | `git diff cee94ff -- server/app/services/sync_service.py` 中无封顶计数改动 |
+
+### §8.1 任务与契约依据（逐字引用）
+
+- `docs/APPENDIX-B-data-and-api.md:1095`：判据表里**服务端**一行 —— 「`local_updated > last_sync_at` 且 `int(values["updated_at"]) + offset_ms > last_sync_at` —— **对端（客户端）行加偏移换算到服务端基准；本机（库内）行已是服务端基准**」。
+- `:1097`（规范性总则）：**凡跨端使用的时间戳都必须能说清在哪个基准上** —— `clientNow` / 本机业务行的 `updated_at` = **客户端基准**；`serverTime` / `lastSyncAt`（线上）/ 服务端与云端行的 `updated_at` = **服务端基准**。
+- `:1089`：`lastSyncAt` 之所以选服务端基准，是因为 `GET /sync/pull?since=` **没有 `clientNow`**，服务端无从换算客户端基准的锚点。
+- `:1096` 自证判据：`respOffsetMs = +60000` ⇒ `clientOffsetMs = −60000` ⇒ 服务端时间戳 `T` 在本机基准下是 `T − 60000`（**显得更旧**）。
+- 结论：改前服务端把**客户端裸时间戳**落库，是**实现对既有契约的偏离**（不是契约缺口）⇒ 按 `:1095` 修写入路径，**不改文档正文**（`docs/VERIFICATION.md` 只追加，见 §R9）。
+
+### §8.2 定事实（只读实测，真 uvicorn + 真 MySQL）
+
+命令：`cd server && .venv/bin/python /tmp/t68/fact_probe.py`（脚本自挑空闲端口起 uvicorn，`MYSQL_DB=carbonboo_test_t68`，httpx 打真 API、pymysql 直查库，用完杀进程）。
+
+**改前（提交 `cee94ff` 之前）原始输出节选：**
+
+```
+push 请求体 clientNow = 1792386683895；行 updated_at(T) = 1792390223895
+push 响应：accepted=1 ignored=0 rejected=0 conflicts=0 offsetMs=-59974 serverTime=1792386623929
+直查 MySQL：SELECT updated_at, device_id FROM carbon_record WHERE id='rec-t68-a' ⇒ {'updated_at': 1792390223895, 'device_id': 't68-dev'}
+判定：库内 updated_at = 1792390223895
+      T + offsetMs   = 1792390163921  （服务端基准）
+      ⇒ 库内是 T（客户端基准！）
+```
+
+**改后（`cee94ff`）原始输出节选：**
+
+```
+判定：库内 updated_at = 1792393606916
+      T + offsetMs   = 1792393606916  （服务端基准）
+      ⇒ 库内是 T+offsetMs（服务端基准）
+----- 场景 3：客户端钟慢 60000ms 的一行 -----
+直查 MySQL：库内 updated_at = 1792397327047；T=1792397267019；T+offsetMs=1792397327047 ⇒ T+offsetMs（服务端基准）
+----- 场景 4：同一行再推一次（无 clientNow ⇒ offsetMs=0）-----
+直查 MySQL：库内 updated_at = 1792393666877（推的是 T=1792393666877）
+```
+
+（场景 4 说明：`clientNow` 缺失时 `offset_ms = 0`，换算退化为恒等、**不得报错也不得漂移**，与改前一致。）
+
+### §8.3 pull 边界自洽（`since` = 上一次的 `serverTime`）
+
+命令：`cd server && .venv/bin/python /tmp/t68/boundary_probe.py`。场景 A = 客户端钟**慢** 60 秒（服务端基准下该行**晚于** `since`），场景 B = 客户端钟**快** 60 秒（服务端基准下该行**早于** `since`）。
+
+**改前：**
+
+```
+MySQL: SELECT updated_at FROM carbon_record WHERE id='rec-t68-b1' ⇒ 1792386784841
+⇒ 库内是 T（客户端基准，偏离 :1095）
+判定：✗ 漏行：该行服务端基准下晚于 since，却没被拉到
+判定：✗ 重复拉：该行服务端基准下早于 since，仍被拉回
+```
+
+**改后：**
+
+```
+⇒ 库内是 T + offsetMs（服务端基准 ✓）   判定：✓ 未漏行（拉到了）
+⇒ 库内是 T + offsetMs（服务端基准 ✓）   判定：✓ 未重复拉（正确排除）
+```
+
+### §8.4 改了什么（文件:行）
+
+| 文件 | 改动 |
+|---|---|
+| `server/app/services/sync_service.py` | push 的行循环里、模式分派**之前**插一次换算：`values["updated_at"] = int(values["updated_at"]) + offset_ms`（注释标 §5.3:1095）；`_merge_lww` 去掉 `offset_ms` 形参、比较直接用已换算值（**只换算一次**，避免 ±2×offset 的错误） |
+| `server/tests/test_sync.py` | +2 条回归用例：带 `clientNow`（`offsetMs≠0` ⇒ 库内 = `raw + offset_ms`）/ 不带 `clientNow`（`offsetMs=0` ⇒ 库内 = `raw`，不报错） |
+| `tests/tools/l2_sync/lib/l2_run.mjs` | 新增 `basisOf(row, offsetMs)` / `offsetOf(run)`；把 1.2/1.3/1.4/2.2/2.3/2.4/6.3 的「差值 ≤3s」换成严格等价式；4.9 改成不变式 + 「服务端值只能是单次换算值」；4.10 改成逐字节相等；1.3/3.4/4.1/4.2/4.3 的期望值从「服务端存裸值」改为「服务端存服务端基准值」 |
+| `tests/tools/l2_sync/lib/build.mjs` | 新增 `--mutate=offset-1000`（把 `out['updated_at'] = updatedAt;` 改成 `+ 1000`），只改构建副本 |
+| `tests/tools/l2_sync/run.sh` | 新增反证 C 一腿（变异 ⇒ 必红；`git show` 还原 + `cmp` ⇒ 必绿），汇总与退出码纳入 |
+
+### §8.5 为什么可以（也必须）**严格**相等，而不是容差
+
+`offsetMs` 的定义是 **服务端 − 客户端**（`:1087-1090`），客户端落库用 `clientOffsetMs = −offsetMs`（`:1096`）。于是：
+
+- 该轮 push 被服务端接受 ⇒ 服务端存的就是 `本机上行值 + offset_ms` ⇒ `本机值 + offsetMs === 服务端值` **恒等**；
+- 该轮 push 被服务端拒绝 ⇒ 本机采纳的是 `服务端存量 − offsetMs`（pull 落库换算）⇒ 同一条等式**仍然恒等**。
+
+两条分支都不含"要容差才成立"的项，因为**同一次 sync 调用里 push 与 pull 用的是同一个 `offsetMs`**（push 响应测得、客户端取反后传给 `applyPull`）。`updated_at` 的基准差就是两端时钟偏移本身（几十 ms～几分钟），只有**换算不参与**的那部分（例如"本机自写行与自己的 T9"这种同侧比较）才允许容差，本节里只剩 4.9 的"本机值 ± 抖动"一条，并在断言里明写理由。
+
+### §8.6 反证 C：1000ms 的换算偏差必须让严格断言变红
+
+`bash tests/tools/l2_sync/run.sh` 的第 6b 段：构建副本注入 `--mutate=offset-1000` ⇒ 跑严格组（`L2_ONLY=baseline,lww,delete,clock`）。
+
+```
+变异副本 sha256 = <见运行日志>（仓库原件 3a6f8de87b9b51279ba33c35c66e9c3cdfdbba1c3e45c22729b181e2eb588739）
+RESULT: checks=24 passed=16 failed=8
+失败项：#1.2 #1.3 #1.4 #2.2 #2.3 #2.4 #6.3 #4.9
+[stderr 无] 退出码 = 1（必须非 0）
+```
+
+红的 8 条**恰好全是严格基准断言**（1.2/1.3/1.4/2.2/2.3/2.4/6.3/4.9）；`git show cee94ff:app/entry/src/main/ets/viewmodel/net/SyncService.ets > <构建副本>` + `cmp` ⇒ 逐字节一致 ⇒ `--skip-copy` 原处重转译 ⇒
+
+```
+RESULT: checks=24 passed=24 failed=0     退出码 = 0
+```
+
+⇒ 「±3s 容差会把 1000ms 级符号/倍率错误吃成绿」这条风险被实证排除。
+
+### §8.7 四段门禁（原始输出节选）
+
+| 门禁 | 命令 | 结果 |
+|---|---|---|
+| 服务端 pytest | `cd server && CARBONBOO_TEST_DB=carbonboo_test_t68 .venv/bin/python -m pytest tests/ -q` | `243 passed, 1 warning in 252.99s`（`PYTEST_EXIT=0`） |
+| L1 hypium（离线转译执行） | `bash tests/tools/l1_offline/run_tests.sh; echo "TESTS_EXIT=$?"` | `RESULT: it_executed=41 passed=41 failed=0 requires_device=0`（`TESTS_EXIT=0`） |
+| L1 纯逻辑 | `bash tests/tools/l1_offline/run.sh; echo "RUN_EXIT=$?"` | `RESULT: PASS=55 FAIL=0`、`RESULT: checked=323 passed=true mismatches=0`（`RUN_EXIT=0`） |
+| L0 | `python3 tests/tools/check_l0.py --strict; echo "L0_EXIT=$?"` | `结论：PASS —— 基准自洽，文档无已知冲突`（`L0_EXIT=0`） |
+| L2 夹具 | `bash tests/tools/l2_sync/run.sh; echo "L2_EXIT=$?"` | 主用例 `RESULT: checks=38 passed=38 failed=0`；三条反证腿（平局反转 / 换算多 1000ms）均红、还原均绿；`L2_EXIT=0` |
+
+### §8.8 覆盖 / 不覆盖边界（本节新增部分）
+
+- **覆盖**：跨端时间戳**基准**（服务端落库、客户端落库、`since` 增量边界）在**真 HTTP + 真 FastAPI + 两个独立 node:sqlite 客户端库**上的端到端行为；严格基准等价式与它的负向对照。
+- **不覆盖（与 §7.4 一致，本节未改变）**：真机 L2（UI、Ability 生命周期、端侧权限、系统时间/时区、近场通路）；真机 hypium 执行（执行数 0，只有离线转译执行）；`/admin` 浏览器交互；`server/deploy/` 部署实测。
+- **未决问题**：① 客户端 pull 侧的校正完全依赖**同一次 sync 的 push 握手腿**；若将来服务端在 pull 响应里回 `offsetMs`，客户端会**优先用响应字段**（`1b85147` 已实现优先级），无需再改。② push 腿非 200 时整轮失败、不落库（`1b85147` 未改该行为）。③ 本节的严格等价式对**多轮重推**场景只保证「服务端值 ∈ 单次换算候选集」（4.9 的 `noAccum9`），因为服务端会拒绝换算后更旧的重复上行、保留上一轮的值。
