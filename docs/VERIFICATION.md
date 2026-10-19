@@ -1,8 +1,8 @@
-# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；round 7 = t41 判图腿真相更正 + 首次实跑见 §R7；round 8 = t42 全量干净构建 + 离线 L1 门禁自证见 §R8；round 9 = t43 hypium 36 个 it() 首次离线真执行（PASS=18/FAIL=18 + 缺口清单）见 §R9；round 10 = t48 离线 L1 从 18/18 收敛到 36/36 + 5 条 app 生产缺陷登记见 §R10；round 11 = t50 5 条缺陷修复的非作者独立验证（`verdict = pass`）见 §R11；round 13 = t59 登录页 `#flash` 修复 + `admin_e2e` 清理时机 + 登出语义留档见 §R13；round 14 = t60 交付验收总表（17 行 + U1–U8）见 §R14；round 15 = t69 可复现性独立验证（干净副本内五条门禁逐条真跑）见 §R15；**最新 round 17 = t77 t75/t76 交付级证据登记（`/admin` 经真 nginx TLS + systemd 真启动 + 真浏览器图层）见 §R17**（round 16 = t74 文档一致性收口见 §R16）（更早 round 12 = t55 `/admin` 浏览器级端到端验证见 §R12））
+# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；round 7 = t41 判图腿真相更正 + 首次实跑见 §R7；round 8 = t42 全量干净构建 + 离线 L1 门禁自证见 §R8；round 9 = t43 hypium 36 个 it() 首次离线真执行（PASS=18/FAIL=18 + 缺口清单）见 §R9；round 10 = t48 离线 L1 从 18/18 收敛到 36/36 + 5 条 app 生产缺陷登记见 §R10；round 11 = t50 5 条缺陷修复的非作者独立验证（`verdict = pass`）见 §R11；round 13 = t59 登录页 `#flash` 修复 + `admin_e2e` 清理时机 + 登出语义留档见 §R13；round 14 = t60 交付验收总表（17 行 + U1–U8）见 §R14；round 15 = t69 可复现性独立验证（干净副本内五条门禁逐条真跑）见 §R15；**最新 round 18 = t78 冻结 HEAD 终验（十项门禁逐条亲自重跑 + 编译门禁成对自证 + 数值真相源/红线/铁律锚点）见 §R18**（round 17 = t77 t75/t76 交付级证据登记见 §R17）（round 16 = t74 文档一致性收口见 §R16）（更早 round 12 = t55 `/admin` 浏览器级端到端验证见 §R12））
 
 > **最新一轮是 §R12（round 12 / t55，绑定 HEAD `585fca9`；`server/**` 自 `1f9ca88` 起未变）**：用**真实浏览器**（Windows 侧 Edge headless + CDP）驱动 `/admin` 的**七项功能与四条鉴权边界**，补上 §13 里一直写着「**无浏览器驱动**」的 **N5** —— 新增 `tests/tools/admin_e2e/`（`run.sh` 退出码 **0/1/2**、纯标准库 CDP 驱动、**零新增依赖**）、**13 张 1440×900 截图 + `artifacts/report.json`**（97 条判定 + 13 条截图指标 + 11 条 INFO，**四次连跑全绿且检查名集合逐条一致**）；**被测字节零改动**，本节**不新增其它门禁结论**；L1 在设备上 / L2 / `server/deploy/` / App 18 页视觉走查 **仍未运行**（一条不算通过）。下面那段「最新一轮是 §R11」是**本节插入前的时点**，效力不变。
 >
-> **后续轮次指针（本节插入后新增，本节结论未被推翻）**：§R13 = t59 登录页 `#flash` + `admin_e2e` 清理时机；§R14 = t60 交付验收总表；§R15 = t69 可复现性独立验证；§R16 = t74 文档一致性收口；**§R17 = t77 交付级证据登记（本文件最前）**。本节（§R12）的 97 项判定与 13 张截图证据不受影响。
+> **后续轮次指针（本节插入后新增，本节结论未被推翻）**：§R13 = t59 登录页 `#flash` + `admin_e2e` 清理时机；§R14 = t60 交付验收总表；§R15 = t69 可复现性独立验证；§R16 = t74 文档一致性收口；**§R17 = t77 交付级证据登记**；**§R18 = t78 冻结 HEAD 终验（本文件最前）**。本节（§R12）的 97 项判定与 13 张截图证据不受影响。
 >
 > **最新一轮是 §R11（round 11 / t50，绑定 HEAD `f1b66c1`）**：对 §R10.3 登记、由 `973081a`（前 3 条）与 `1f9ca88`（后 2 条）修复的 5 条 `app/` 生产缺陷做**非作者独立验证**（离线真跑直证 + 变异退回自证；4 次授权变异每次都在同一批命令内用 `git show HEAD:<path> > <path>` 还原，并以 `cmp` + `sha256sum` 证同）—— **5 条全部成立且承重，`verdict = pass`**，并补上第 5 条（同分钟同名备份互相覆盖）原本标为**「未核」**的直证；本节所有「真跑」都在 `node` + `tests/tools/l1_offline/platform/` 垫片上，**不是设备上的 `ohosTest`**，**§R11 不新增门禁结论、不改任何被测字节**。上一轮 §R10（round 10 / t48，绑定 HEAD `e83d3c1`）：用同一套离线执行器把离线 L1 从 **`PASS=18 / FAIL=18` 收敛到 36/36**（`RESULT: it_executed=36 passed=36 failed=0 requires_device=0`、`checked=323 passed=true`），并逐条登记本轮执行器暴露、随后由 `973081a` / `1f9ca88` 修复的 **5 条 `app/` 生产缺陷**（徽章解锁不落库 / 下行 `goalRewards` 读取侧被整条丢弃 / `MemoryFiles.list()` 返回名违反端口契约 / 备份恢复 SQL 保留字列 `order` / 同分钟同名备份互相覆盖）—— **§R10 同样不新增未验证结论、不改任何被测字节**。更早的 §R9（round 9 / t43，绑定 HEAD `804ad92`）：`tests/tools/l1_offline/run_tests.sh` 把 `ohosTest` 的 **36 个 `it()`** 用 `node:sqlite` 垫片在离线环境**逐条真执行**（`RESULT: it_executed=36 passed=18 failed=18 requires_device=0`、`checked=323 passed=true`），18 条失败的逐条 `文件:行` 归因见 §R9.3（3 条真实实现缺陷 + 11 条用例缺陷 + 4 条用例顺序耦合）；**hypium 在设备上仍未运行**，两证不可互相顶替。上一轮 §R8（round 8 / t42 证据登记，绑定 HEAD `6a0404e`）：队长清空 `build/` 与 `.hvigor/` 后跑出**全量干净构建**（`CompileArkTS` 真实重编 `35 s 423 ms`、`BUILD SUCCESSFUL`、`EXIT=0`、产物 2,445,614 B、工作树零污染），并在 `git archive` 干净副本里给离线 L1 执行器做了**注入→翻转→从 git 还原**的门禁自证（`POINTS_PER_KG` 100→101 ⇒ 16 处 FAIL / `EXIT=1`；还原后全绿 / `EXIT=0`）——**§R8 不新增门禁结论、不改任何被测字节**。上一轮 §R7（round 7 / t41，绑定 HEAD `46d2fcf`）：视觉模型通道**已验证可用**、判图链路**已实跑**（`tests/tools/vision_check/`，`RUN_EXIT=0`），但**页面级视觉走查仍不可做**（18 页零截图）；§R7 **不新增任何门禁结论**，**门禁结论仍以 §R6（绑定 `a8b78ef`）为准**。下面这段说的是 round 5 与更早的轮次：
 > **round 5 / t38 只做 L1 表述修正，不新增门禁结论。** 起因：t37 把「用 esbuild 转译仓库
@@ -10,6 +10,177 @@
 > 「**替代证据为零**」一类断言从「当时的真话」变成了「**漏报已完成的工作**」。§R5 把这类断言逐处改为准确陈述，
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
+
+## §R18 round 18（t78 · **冻结 HEAD 终验**：十项门禁逐条亲自重跑 + 编译门禁成对自证 + 数值真相源/规约红线/四条铁律锚点复核；数字全部为本轮**实测原文**）
+
+> **绑定字节**：`git rev-parse HEAD` = `c925cfd6cf2b027a793696c6bb25fd765ea4c56e` = 开工时 `git ls-remote origin main` 的 `refs/heads/main`；开工 `git status --short` **0 行**；`docker ps -a | grep carbonboo` = **1**（只有共享 `carbonboo-mysql`，`e8a1880cc93c mysql:8.0`，`127.0.0.1:13307→3306`）。
+> **本节的性质**：在**同一个冻结 HEAD** 上，把仓库里**已入库的全部验收工具与门禁自己重跑一遍**，并把**原始输出**（不是转抄各工具 README）登记为中央账本。本节**不改任何被测字节**：唯一写入 = 本节 + 首行导航 + 顶部 blockquote 一条 + 轮次索引一行。
+> **与既有账本不一致处（已显式标注）**：本轮 `vision_check/run.sh` **退 4（未运行 / 环境不可达）**，与 §R7「视觉模型通道已验证可用」**不一致**，原始报错见 §R18.4；其余各条与 §R16/§R17 的数字一致。
+> **命令与日志**：11 条门禁由串行跑器 `/tmp/t78/run_gates.sh` 逐条执行，每条独立日志 `/tmp/t78/logs/<NAME>.log` + 退出码 `<NAME>.exit`，总表 `/tmp/t78/gates.log`。所有退出码都用 `$?` 单独取（不经管道）。
+
+### §R18.1 开工冻结（六条原始输出）
+
+```
+$ git rev-parse HEAD
+c925cfd6cf2b027a793696c6bb25fd765ea4c56e
+$ git ls-remote origin main
+c925cfd6cf2b027a793696c6bb25fd765ea4c56e	refs/heads/main
+$ git status --short
+（0 行）
+$ md5sum tests/cases/carbon-calc.json app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+e096b2db77bbcc9a43ee8728cbd883e9  tests/cases/carbon-calc.json
+e096b2db77bbcc9a43ee8728cbd883e9  app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+$ docker ps -a | grep carbonboo
+e8a1880cc93c   mysql:8.0   "docker-entrypoint.s…"   20 hours ago   Up 20 hours   0.0.0.0:13307->3306/tcp   carbonboo-mysql
+$ git log -1 --format='%H %ad %s' --date=iso
+c925cfd6cf2b027a793696c6bb25fd765ea4c56e 2026-10-19 17:45:36 +0800 docs: t77 登记 t75/t76 交付级证据（§R17）+ tests/README §5.3 对齐实测
+```
+
+开工时 `uvicorn` / `msedge` / `node` 进程各 **0** 个；端口 `8000/8041/8131/8141/8142` 均空闲。
+
+### §R18.2 十项门禁逐条重跑（绑定上述 HEAD，原始退出码）
+
+| # | 门禁命令 | 本轮实测结果 | 退出码 |
+|---|---|---|---|
+| 1 | `python3 tests/tools/check_l0.py --strict` | 检查项 **28** / 错误 **0**；扫描文件 **89** / 命中 **0**；`docConflicts` **0 条**；`结论：PASS —— 基准自洽，文档无已知冲突` | `L0=0` |
+| 2 | `cd server && CARBONBOO_TEST_DB=carbonboo_test_final4 .venv/bin/python -m pytest tests/ -q` | `243 passed, 1 warning in 237.75s (0:03:57)` | `L3=0` |
+| 3 | `bash tests/tools/l1_offline/run.sh` | `samples(18×2) PASS=36` / `capSamples(5×2+1) PASS=11` / `conversions(2) PASS=2` / `boundary 20/21/22(6) PASS=6`；`RESULT: PASS=55 FAIL=0`；`RESULT: checked=323 passed=true mismatches=0` | `L1R=0` |
+| 4 | `bash tests/tools/l1_offline/run_tests.sh` | `RESULT: it_executed=41 passed=41 failed=0 requires_device=0`；`基准复算结论：全部一致：共复算 323 个断言点` | `L1T=0` |
+| 5 | `bash tests/tools/l2_sync/run.sh` | 主用例 `RESULT: checks=38 passed=38 failed=0`；四条反证腿「变异必红 + `git show` 还原必绿」全部成立（`tie-flip` 7→`4/3` 红 ⇒ 还原 `7/7`；`offset-1000` 24→`16/8` 红 ⇒ 还原 `24/24`；`offset-twice` 24→`15/9` 红 ⇒ 还原 `24/24`）；末行 `RESULT: 全部通过（八项断言 + 四条反证：平局反转 / 落库换算多 1000ms / 偏移叠两次 各自「变异必红 + git show 还原必绿」）` | `L2=0` |
+| 6 | `bash tests/tools/concurrency_e2e/run.sh` | `RESULT: PASS`；**LWW 违反轮次 = 0/8**（`S2b.1 并发推同一 id 的 16 个版本后，最终行 = updated_at 最大者`）；`384` 个并发查库请求**全部 200**（`直方图={"200": 384}`、`峰值=20 pool上限=20 max_connections=30`、无 `QueuePool`/`Too many connections`）；限流 `429=40 / 200=20`、`放行=20 上限=20`；`发现（STOP，只报告不改）：2 条 —— S1-note, S3`；**门禁级发现（严格模式下影响退出码）：0 条** | `CONC=0` |
+| 7 | `bash tests/tools/offline_first/run.sh` | `RESULT: PASS=32 FAIL=0`（未登录断网：只有免 token 的三处真发请求 = 登录/注册、商品取价、配置下发；同步/备份 `code=NOT_LOGGED_IN` **连请求都不发**；五类例外各自优雅降级；例外全失败后本机录入仍可用） | `OFF=0` |
+| 8 | `bash tests/tools/admin_e2e/run.sh` | 直连 `checks: PASS=98 FAIL=0 driver_exit=0`；真 nginx(TLS) `PASS=103 FAIL=0 driver_exit=0`；一致性校验 `PASS=16 FAIL=0 compare_exit=0`；14 张 `nginx_*.png` 全部落盘且 ≥3 张命中品牌主色 `#2E7D5B`（`nginx_01_login_page brand_pixels=14321`、`nginx_02=8214`、`nginx_03=7941`、`nginx_04=9120`、`nginx_05/06=44060`）；末行 `RESULT: PASS —— 直连与真 nginx(TLS) 反代两条路径均由真实 Edge headless + CDP 驱动通过` | `ADMIN=0` |
+| 9 | `bash tests/tools/deploy_e2e/run.sh` | `探针：PASS=62 FAIL=0`；`RESULT: PASS —— server/deploy/ 四件实物容器化实跑全部通过`（含单元拉起的 uvicorn 容器内 `/api/v1/health` 200、`/admin/login` 200、`User=carbonboo` 降权生效、`Restart=always`、purge timer 真触发一次 `purge_expired_accounts`） | `DEPLOY=0` |
+| 9b | `bash tests/tools/deploy_e2e/run_systemd.sh` | `PASS=24 FAIL=0`；`RESULT: PASS`（PID1=systemd 容器内真装单元 → `is-active=active`、`MainPID`、`NRestarts=0`、`list-timers` 列出 purge、临时副本与仓库文件逐字节一致） | `SD=0` |
+| 10 | `bash tests/tools/vision_check/run.sh` | **`RUN_RESULT=ERROR` + `RUN_EXIT=4`** —— 令牌源解析成功（`AppTheme.ets` 17 个颜色令牌、色板自检 `17/17 ✓`），但 `错误：凭据库 /mnt/c/Users/Administrator/.dsh/.credentials.yaml 里没有 refs.ARK_API_KEY（或值为空）` ⇒ **本轮判定「未运行 / 环境不可达」** | `VISION=4` |
+
+> **十项中九项 `EXIT=0`、一项（视觉）`EXIT=4` 如实记未运行**；`CONC` 的两条 STOP 发现与 `DEPLOY` 的 N1–N5 未运行清单**不折算任何通过**，各原文见下。
+>
+> `CONC` 两条 STOP 原文（`/tmp/t78/logs/CONC.log`）：`[!] 发现 S1-note`（并发同行只增表的幂等提示）与 `[!] 发现 S3（medium，仅报告）`→ `STOP: 并发同日入账合计 = 1600 > 200（任务书场景 3 的期望判据），但服务端并无封顶路径。`；工具同时给出 `S3.2/S3.3` 的证据：`point_daily_stat=0 行`、`server/app 内封顶算术命中 = 0` ⇒ **服务端不存在封顶读-改-写**，这是任务书判据与服务端设计口径的差异，**不是**并发丢更新。
+> `DEPLOY` 未运行清单原文（`/tmp/t78/logs/DEPLOY.log`）：`N1` 真云 VM 上的开机自启持久化（跨重启的 enable 状态）与 `systemd-analyze security` 评分（容器不是云主机，不冒充；容器内 systemd 真启动已由 9.8 关闭）、`N2` certbot 真实签发与续期（不联网，用 openssl 自签替代）、`N3` 公网 `api.example.com` 的 DNS/防火墙/WAF（只有本机端口映射 + Host 头）、`N4` `mysqldump` 锁表与耗时规模测试（任务库只有种子级数据）、`N5` 生产 MySQL 普通用户凭据（工具用 `server/.env` 管理员凭据建库/还原）。
+
+### §R18.3 编译门禁成对自证（真编 · 注入 → 失败 → 从 git 还原 → 成功）
+
+命令（原始）：`cd app && source ~/harmony-toolchain/env.sh && export OHOS_BASE_SDK_HOME=$DEVECO_SDK_HOME && hvigorw --no-daemon assembleHap`
+（`command -v hvigorw` 来自工具链 `PATH`；`node v18.20.1`、`java openjdk 21`。）
+
+```
+=== ① 注入前（基线）===
+> hvigor UP-TO-DATE :entry:default@CompileArkTS...
+> hvigor WARN: No signingConfig found for product default
+> hvigor BUILD SUCCESSFUL in 5 s 685 ms
+BASE_BUILD_EXIT=0
+（该次为**增量**：大量 UP-TO-DATE，不能单独证明「从零全量可编译」——如实标注；产物 entry-default-unsigned.hap 2466247 B）
+
+=== ② 注入未定义引用（有效代码区，模块级常量，entry/src/main/ets/viewmodel/net/SyncService.ets:45，紧接最后一个 import 之后）===
+const R18_GATE_PROBE: number = R18_UNDEFINED_PROBE_SYMBOL + 1;
+> hvigor ERROR: Failed :entry:default@CompileArkTS...
+> hvigor ERROR: ArkTS Compiler Error
+1 ERROR: ArkTS:ERROR File: /mnt/c/Users/Administrator/Desktop/CarbonBoo/app/entry/src/main/ets/viewmodel/net/SyncService.ets:45:32
+ Cannot find name 'R18_UNDEFINED_PROBE_SYMBOL'.
+COMPILE RESULT:FAIL {ERROR:2}
+> hvigor ERROR: BUILD FAILED in 24 s 771 ms
+INJECT_BUILD_EXIT=255
+
+=== ③ 还原（git show，**禁止 cp**）===
+$ git show c925cfd6cf2b027a793696c6bb25fd765ea4c56e:app/entry/src/main/ets/viewmodel/net/SyncService.ets > app/entry/src/main/ets/viewmodel/net/SyncService.ets
+RESTORE_EXIT=0
+$ git show <40位SHA>:<path> | cmp - app/entry/src/main/ets/viewmodel/net/SyncService.ets
+cmp: identical (EXIT=0)
+$ sha256sum app/.../SyncService.ets
+3a6f8de87b9b51279ba33c35c66e9c3cdfdbba1c3e45c22729b181e2eb588739   （= 注入前值）
+$ git hash-object app/.../SyncService.ets
+191b4ddd8b4df46cafb2302ad30afc6af7207424   （= HEAD 里的 blob）
+$ grep -c 'R18_GATE_PROBE' app/.../SyncService.ets
+0
+
+=== ④ 还原后重编（真实重编，非 UP-TO-DATE）===
+> hvigor Finished :entry:default@CompileArkTS... after 22 s 674 ms
+> hvigor BUILD SUCCESSFUL in 27 s 934 ms
+AFTER_BUILD_EXIT=0
+产物 entry/build/default/outputs/default/entry-default-unsigned.hap = 2,466,247 B，sha256 34bee5d8a6215c35e50356a7da580bde055ee79d1ce373a0a546870dd5eb760e
+```
+
+> **门禁真实**：注入侧自定位到 `SyncService.ets:45:32` 并给出 `Cannot find name`，退出码 **255**；还原后**真实重编**（`CompileArkTS 22 s 674 ms`）**`EXIT=0`**。还原方式为 `git show <40位SHA>:<path> > <path>` + `cmp` + `sha256sum` + `git hash-object` 四证，**未用 `cp`**；工作树在还原后 `git status --short` 无可归因于本次注入的改动。
+> **产物 sha256 每次不同**（未签名 HAP 内嵌时间戳），故本节的判据是**退出码 + 编译日志**，不是 hap 哈希；两次产物字节数相同（`2,466,247 B`）。
+
+### §R18.4 未运行 / 未达成项（**一条都不算通过**）
+
+1. **视觉走查腿（本轮实测退 4）**：`vision_check/run.sh` → `RUN_RESULT=ERROR` / `RUN_EXIT=4`，原因 `凭据库 .dsh/.credentials.yaml 里没有 refs.ARK_API_KEY（或值为空）`。**与 §R7 记的「通道已验证可用」不一致**：§R7 时该 key 在凭据库里可读，本轮读不到（环境变化，非仓库改动）。分两项如实单列：**（a）视觉模型通道**本轮未达成；**（b）App 18 页页面级视觉走查**从未运行（无真机/模拟器/Previewer，历轮同结论）。
+2. **真机 hypium**：§R16 已定真值 `it()` = **41**；本轮只有**离线转译执行**（`it_executed=41 passed=41 requires_device=0`），**设备上一条都没跑**；两证不可互相顶替。
+3. **真机 L2 端侧集成**：本轮只有**协议级** L2（`/tmp/cbl2-*` 临时构建 + 真 MySQL + 真服务端），**无两条真机/真机+模拟器**；真机飞行模式未跑。
+4. **真云 VM**：`DEPLOY`/`SD` 都是**容器化**实跑；开机自启持久化、`systemd-analyze security`、certbot 真签发与续期、公网 DNS/防火墙/WAF/HSTS/HTTP2 全未跑（DEPLOY N1–N5 原文见 §R18.2）。
+5. **多机分布式 / 鸿蒙近场通路**：未跑（近场在客户端侧仅有离线桩证据）。
+6. **跨浏览器内核**：`admin_e2e` 只跑 Windows **Edge**（Chromium 内核）；Firefox/Safari/鸿蒙原生内核未跑。
+7. **`/admin` 管理端 JWT 无状态语义**：§R12/§R13 已实测「登出只清 Cookie、旧 Cookie 重放仍 200」，本轮 `admin_e2e` 的鉴权边界判定**同样通过**，但「令牌吊销」是**未实现的产品决策**，不是通过项。
+
+### §R18.5 数值真相源与规约红线复核（本轮实测）
+
+数值真相源（`tests/cases/carbon-calc.json`）：
+```
+$ git diff c925cfd^..c925cfd -- tests/cases/carbon-calc.json | wc -l
+0
+$ git diff --stat 5ca1b4721f235765b464321b7ce6a89b4e1423a5..c925cfd6cf2b027a793696c6bb25fd765ea4c56e -- tests/cases/carbon-calc.json | wc -l
+0
+$ cmp tests/cases/carbon-calc.json app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+cmp: identical (EXIT=0)
+$ git log --oneline -20 -- tests/cases/carbon-calc.json | head -1
+fccf524 docs: 判据勘误与视觉走查未运行登记（t28 R2/R3 + B21/B42 登记补正）
+```
+⇒ **本轮窗口内基准零改动**（最后触及该文件的提交 `fccf524` 远早于本窗口；两份副本 md5 同值 `e096b2db…` 且逐字节相同）。
+
+规约红线（`app/entry/src/main/ets/`）：
+```
+$ grep -rn ': any' app/entry/src/main/ets/ | wc -l
+0
+$ grep -rn '@ts-ignore' app/entry/src/main/ets/ | wc -l
+0
+$ 非相对 import：命中 34 处，去重后仅 5 个说明符
+@kit.ImageKit
+@kit.MediaLibraryKit
+@kit.NetworkKit
+@kit.PerformanceAnalysisKit
+@ohos.base        （全为 SDK 内置，第三方 npm/HAR = 0）
+$ as 命中 2 处
+app/entry/src/main/ets/service/FactorLibrary.ets:28   FactorLibrary as FactorLibraryShape,   （import 别名，非断言）
+app/entry/src/main/ets/util/JsonUtil.ets:33           return v as JsonObject;               （前置运行时判定 + 三行注释说明，属 §7.1 允许的 SDK 类型缺失例外）
+$ point_record 的真实 UPDATE/DELETE 语句（全仓 .ets/.py/.sql）
+0   （grep 命中的 15 处全是 docs/ 与 .agent-teams/ 里对「grep 模式」的引用文字，非 SQL）
+```
+
+### §R18.6 四条铁律静态锚点（本轮实测，各给 `文件:行`）
+
+| 铁律 | 锚点（本轮实测） |
+|---|---|
+| ① 本地优先 | 五类网络例外之外无请求：`offline_first` 本轮 `PASS=32 FAIL=0`（未登录时同步/备份**连请求都不发**，`code=NOT_LOGGED_IN`；断网时例外各自优雅降级）；本机录入不依赖网络（`S1.16 ok=true`） |
+| ② 单一计算入口 | `app/entry/src/main/ets/service/CarbonService.ets:76 static calculate(activity: ActivityInput, factor: FactorSnapshot, options?: CalcOptions): CarbonCalculation`；**唯一因子乘法** `app/entry/src/main/ets/service/CarbonCalc.ets:153 const product: Dec = Dec.from(amount).mul(Dec.from(factorValue));`（`reductionOf` 定义 `:148`，调用点 `:238`）；`pages/` + `components/` 内 SQL 字面量与 `Dec.mul(` 命中 **0** |
+| ③ 因子快照 | `app/entry/src/main/ets/data/schema/ClientSchema.ets:85-88` 四列 `factor_value/factor_version/factor_source/confidence` 全 `NOT NULL`（注释 `-- 因子快照（铁律 3）`）；唯一构造点 `app/entry/src/main/ets/service/CarbonService.ets:187 static snapshotOf(`，调用 `app/entry/src/main/ets/viewmodel/RecordService.ets:149/:306/:367` |
+| ④ 积分单向可追溯 | 唯一写入点 `app/entry/src/main/ets/viewmodel/PointService.ets:153 'INSERT OR IGNORE INTO point_record ' +`；源码树 `UPDATE|DELETE FROM point_record` **0 命中**（删除走 `reverse()` 写负额新行）；余额同口径 `COALESCE(SUM(points), 0)`：`PointService.ets:91/:121/:136/:235`、`app/entry/src/main/ets/viewmodel/net/SyncService.ets:487/:502`、`server/admin_web/services/stats.py:90`；运行态佐证：`concurrency_e2e` `S6.1 余额 = 收入合计 − 支出合计（1000 vs 1000 − 0）`、`S6.2 point_record 只增不删（消失 0 / 改动 0）`、`S6.3 无重复 id（5 vs 5）`、`S6.4 rows=1 points=200（无丢更新）` |
+
+### §R18.7 清理与不变量（本轮实测）
+
+```
+$ docker ps -a | grep -c carbonboo
+1                      （只有共享 carbonboo-mysql；本轮起的 nginx/runtime/systemd 容器全部自删）
+$ pgrep -af 'uvicorn|fastapi' | wc -l
+0
+$ pgrep -af msedge | wc -l
+0
+$ ss -ltn | grep -E ':(8000|8041|8131|8141|8142)\b' | wc -l
+0
+$ 与本轮门禁相关的库（carbonboo_l2_* / carbonboo_conc_* / carbonboo_admin_e2e / carbonboo_deploy_* / carbonboo_offline_* / carbonboo_test_final4）
+0                      （L3 用的 carbonboo_test_final4 由本轮 DROP；其余工具自建自删）
+$ diff /tmp/t78/prod_counts_before.txt /tmp/t78/prod_counts_after.txt
+（空）                  ⇒ 生产库 carbonboo 21 表逐表 COUNT(*) 跑前==跑后
+```
+
+`tests/tools/admin_e2e/artifacts/` 的处置：`admin_e2e/run.sh` 每次运行都会**重新生成** `report.json` / `report_nginx.json` 与截图（内含时间戳，且这些是**被跟踪的文件**）。复跑后它们显示为 ` M`，而 `artifacts/` 属本任务 **outOfScope**，故本轮按队长授权执行 `git restore -- tests/tools/admin_e2e/artifacts/` 把工作树恢复到 HEAD 字节；**本轮的真证据是上面贴出的原始输出**，不是这些每次都会变的产物。另删除本轮 `offline_first` 生成的未跟踪日志 `tests/tools/offline_first/artifacts/run-20261019-175612.txt`（我跑门禁的产物）。
+
+### §R18.8 本轮边界（能证明什么 / 没能证明什么）
+
+- **能证明**：在 `c925cfd6cf2b027a793696c6bb25fd765ea4c56e` 这一份**冻结字节**上，仓内 9 条门禁 + 编译门禁成对自证**全部真跑且通过**，视觉腿**如实记未运行**；数值真相源零改动、规约红线 0/0/0（`as` 两处均属允许例外）、四条铁律静态锚点逐条落到 `文件:行`；清理后容器/进程/库/工作树不变量全部成立。
+- **没能证明**（一条都不算通过，见 §R18.4）：真机 hypium 41 个 `it()`、真机 L2/飞行模式、真云 VM 持久化与加固评分、certbot 真签发、公网 DNS/防火墙/HSTS/HTTP2、多机分布式与鸿蒙近场、非 Edge 内核、`/admin` 令牌吊销、**App 18 页视觉走查（且本轮视觉通道本身也不可达）**。
+- **漂移声明**：本节结论只对上述 40 位 SHA 的字节有效；之后任何对 `app/`、`server/`、`tests/`、`tests/cases/`、规格文档的改动都会使本节的「通过」需要重跑。
 
 ## §R17 round 17（t77 · **t75/t76 交付级证据登记**：`/admin` 经真 nginx(TLS) 反代 + systemd 真启动 + 真浏览器图层；数字为本轮**复跑实测**）
 
@@ -2220,6 +2391,7 @@ ohosTest 副本 app/entry/src/ohosTest/resources/rawfile/carbon-calc.json md5 �
 | round 15 | t69（`verifier-oc`，**可复现性独立验证轮**） | `1b85147e5f6be22a6129ee2b233e41e580bf0679`（收工时 HEAD 已推进到 `d484de64`；五个关键文件在 HEAD 上 sha256 逐个相同，④ 已在 HEAD 字节上重跑） | 2026-10-19 | **干净副本（`git archive`，352 文件 = `git ls-files`）里五条门禁逐条真跑**：L0 `EXIT=0`（28 项 0 错误 / 89 文件 0 命中）、离线 L1 `PASS=55 FAIL=0` + `checked=323 passed=true`、离线 hypium `it_executed=41 passed=41 failed=0`、服务端 `241 passed`（副本@`1b85147`）/ `243 passed`（HEAD 字节复跑；首次需**联网建 venv** + MySQL 8 容器 13307）、`assembleHap` `BUILD SUCCESSFUL in 11 s 500 ms`（副本内首次真实重编）；新增 `tests/tools/repro/`（退出码 0/1/2，`ENV-SKIP` 三支实测；**反证**：改一个 `expectedReductionKg` ⇒ `PASS=3 FAIL=2` / `EXIT=1` ⇒ 副本内 `git` 还原 ⇒ `5/5 PASS` / `EXIT=0`）；隐性依赖专项：**无**未跟踪文件 / `/tmp` 历史产物 / 仓库外脚本依赖，机器锁定项只有 `app/hvigor/hvigor-config.json5:14-15` 的 `/home/qinyixiang/…`（`docs/` 未写「换机器要改」⇒ §R15.8-F2）；`server/tests/` 有用例依赖 `.git` 元数据（副本必须 `git init`）；真机 hypium 41 `it()` / 真机 L2 / 云 VM / 18 页截图**仍未运行** | 本文 §R15（文件最前） |
 | round 16 | t74（`verifier-oc`，**文档一致性收口轮，不新增门禁结论**） | `6690ac241d024923031801f906bb1ca63445cf89` | 2026-10-19 | **页面数定真值 18**（`pages/` 19 个 `.ets` = 18 页 + `Index.ets` 导航壳；`APPENDIX-C:9/:11-33` 页面清单 18 行 + `REVIEW.md:305` 独立佐证；`README.md:7` 的「19 个页面」为 t71 误写已回正）；**`it()` 计数统一 41**（逐文件表 1/1/6/1/1/0/15/1/8/6/1；`run_tests.sh` → `it_executed=41 passed=41 failed=0`；§R1–§R15 的「36」是 t43 时点，原样保留）；**F1/F2 状态更正指针**（已由 t62/t68 修复，§R14.4 原文保留 + 追加指针）；门禁 `L0_EXIT=0`（28/0、89/0、0 条） | 本文 §R16（文件最前） |
 | round 17 | t77（`verifier-oc`，**交付级证据登记轮**） | `5ca1b4721f235765b464321b7ce6a89b4e1423a5` | 2026-10-19 | **三套工具本轮亲自复跑**（数字非转抄）：`run_systemd.sh` → `PASS=24 FAIL=0` / `SD_EXIT=0`（PID1=systemd 容器内真装单元→`is-active=active`、`MainPID=276`、`NRestarts=0`、容器内 `/api/v1/health` 200、`list-timers` 列出 purge、timer 真触发一次 purge（journal `purge_expired_accounts`））；`deploy_e2e/run.sh` → `探针：PASS=62 FAIL=0` / `DEPLOY_EXIT=0`（含 `/admin` 经真 nginx(TLS) 的 7.5b.1–7.5b.6）；`admin_e2e/run.sh` → 直连 `PASS=98`、nginx(TLS) `PASS=103`、逐字节比对 `PASS=16`、`ADMIN_E2E_EXIT=0`（登录页 HTML / `admin.css` / `admin.js` 两侧 sha256 相同、TLS 对端证书 == 挂载证书、14 张 `nginx_*.png`）；`server/deploy/**` 零改动；清理后 `docker ps -a \| grep carbonboo` = 1、生产库逐表 `COUNT(*)` 跑前==跑后；仍未运行 N1–N7（真云 VM 持久化/`systemd-analyze security`、certbot、公网 DNS/HSTS/H2、真机 L2/hypium、多机分布式、跨内核、管理端 JWT 无状态） | 本文 §R17（文件最前） |
+| round 18 | t78（`fixer-oc3`，**冻结 HEAD 终验轮**） | `c925cfd6cf2b027a793696c6bb25fd765ea4c56e` | 2026-10-19 | **十项门禁在同一冻结 HEAD 上逐条亲自重跑**（数字为本轮实测原文，非转抄工具 README）：L0 `EXIT=0`（28/0、89/0、0 条）、L3 `243 passed`（237.75s）、离线 L1 `PASS=55 FAIL=0` / `checked=323 passed=true`、离线 hypium `it_executed=41 passed=41 requires_device=0`、L2 协议级 `checks=38 passed=38` + 四条反证腿「变异必红 / `git show` 还原必绿」、并发 `RESULT: PASS`（**LWW 违反 0/8**、384 并发全 200、峰值连接 20、限流 429=40/200=20、门禁级发现 0 条）、离线优先 `PASS=32 FAIL=0`、`/admin` 直连 `PASS=98` + 真 nginx(TLS) `PASS=103` + 比对 `PASS=16`、`deploy_e2e` `探针 PASS=62 FAIL=0`、`run_systemd` `PASS=24 FAIL=0`；**编译门禁成对自证** `EXIT 0 → 255 → 0`（注入 `SyncService.ets:45:32 Cannot find name`，还原用 `git show` + `cmp` + sha256 四证，真实重编 `CompileArkTS 22 s 674 ms`）；数值真相源零改动、红线 `: any`/`@ts-ignore`/第三方 import = 0、四条铁律锚点逐条落 `文件:行`；**视觉腿本轮 `RUN_EXIT=4` 如实记未运行**（凭据库无 `refs.ARK_API_KEY`，与 §R7 不一致）；清理后容器=1、生产库 21 表行数跑前==跑后、工作树 0 行 | 本文 §R18（文件最前） |
 
 > **导航说明（t52 补记）**：§R10 首段「本文件首行轮次索引与顶部 blockquote **未重写**，仍停留在 round 9 的表述 —— 以本节为准」
 > 是 **t48 时点**的记录（当时受「只追加」约束、未维护导航）。**t52 已按「维护导航」补上 round 10 / round 11 两行并更新首行标题与顶部 blockquote，
