@@ -14,18 +14,24 @@
 bash tests/tools/concurrency_e2e/run.sh          # 全跑（约 3–5 分钟，含一次 uvicorn --workers 2 冷启动）
 CONC_ONLY=s1,s5 bash tests/tools/concurrency_e2e/run.sh   # 只跑某几个场景
 CONC_KEEP=1 bash tests/tools/concurrency_e2e/run.sh       # 保留 /tmp/cbconc.* 现场（取证/排错）
-CONC_STRICT_CONTRACT=1 bash tests/tools/concurrency_e2e/run.sh  # 把「只报告不改」的发现也变成退出码 1
+CONC_STRICT_CONTRACT=0 bash tests/tools/concurrency_e2e/run.sh  # 显式关掉严格模式（默认已由 run.sh 打开，见下）
 ```
 
 | 退出码 | 含义 |
 |---|---|
-| `0` | 全部断言通过。**产品侧「只报告不改」的发现（含 high）不影响退出码**，单列在 `REPORT.md §4` |
-| `1` | 有断言失败；或 `CONC_STRICT_CONTRACT=1` 且存在非 info 级发现（想让它拦住 CI 就用这个） |
+| `0` | 全部断言通过，且**门禁级发现 = 0**。契约口径类发现（`gating=False`，如 S3 封顶归属 / S1-note）只报告、不影响退出码，单列在 `REPORT.md §4` |
+| `1` | 有断言失败；或存在**门禁级发现**（`blocker` / `high`） |
 | `2` | 环境不可达：没有 docker / `carbonboo-mysql` 未运行 / MySQL 端口连不上 / 缺 `server/.env` 键 / 缺 `server/.venv` / 建库或灌 schema 失败 / uvicorn 起不来 |
 
 判定口径（为什么不把「发现」算进断言）：本工具的任务是**取证**——产品契约在并发下被违反时，
 按任务书「发现真缺陷写三行 STOP 只报告不改」以 `[!] 发现 …` + 三行 STOP + 原始数据呈现（`REPORT.md §4`），
-不与「工具自身断言」混在一个计数里；`CONC_STRICT_CONTRACT=1` 可把非 info 级发现转成退出码 1。
+不与「工具自身断言」混在一个计数里。**t66 起严格执行：`run.sh:21` 默认 `export CONC_STRICT_CONTRACT=1`**，
+门禁级（`blocker` / `high`）发现会转成退出码 1；「契约口径待裁决」类显式 `gating=False`，只报告不拦
+（不改口径就调 `CONC_STRICT_CONTRACT=0` 显式关闭）。
+
+> **S2b（LWW 丢更新）是概率性探测**：修前四次跑合计 11/32 轮违反、单跑曾出现 0/8，
+> 因此它**不能**单独当成回归判据；**确定性红**来自 `server/tests/test_sync.py::test_lww_concurrent_push_converges_to_max_updated_at`
+> （`-k concurrent_push` 可稳定复现，口径与 `REPORT.md §8` 一致）。
 
 `run.sh` 自己负责：建任务库 → 灌 `schema.sql` + `seed.sql` → 起 `uvicorn --workers 2` → 跑探针 →
 杀进程、drop 库、删临时目录 → 打印清理自证。**中途 Ctrl-C 也会走同一个 `trap` 清理。**
