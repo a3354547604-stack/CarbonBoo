@@ -6,6 +6,7 @@
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v4.2.3** | 2026-10-19 | **补验收项 D4-10「外观切换持久化」（t80）**：附录 D §1.4 紧邻 D4-8 / D4-9 追加 **D4-10**，覆盖「外观」页（`APPEARANCE` → `app/entry/src/main/ets/pages/AppearancePage.ets` + `app/entry/src/main/ets/viewmodel/AppearanceService.ets:49/:86/:110`），判据含「选择即生效 / 杀进程重开仍生效（落 `user_appearance`，`uq_ua(user_id)`）/ 未登录·无网络可用」；附录 C §20 逐元素标注承载（头像 / 头像框 / 昵称 / 主题 / `[ 保存 ]` / 未登录可用），关闭 t79 终审 F1（「验收项 ↔ 界面」双向承载由「部分成立」转「成立」）。**未改任何数值**，`tests/cases/carbon-calc.json` 零改动、`docConflicts` 仍 0 条（本项为契约缺口补齐、非冲突登记） |
 | **v4.2.2** | 2026-10-19 | **文档一致性勘误（t74）**：页面数定真值 **18**（`pages/` 19 个 `.ets` = 18 个页面 + `Index.ets` 导航壳，`README.md` 头部的「19 个页面」为 t71 误改已回正）；全仓 `it()` 计数统一到实测 **41**（历史留痕的「36」不改写、只加指针）；`docs/VERIFICATION.md` 的「F1/F2 均未修」过期结论加更正指针（F1/F2 已由 t62/t68 修复）。决策记录：`docs/DECISION-0004-doc-consistency-errata.md` |
 | **v4.2** | 2026-11-06 | **文档契约勘误（对齐已实现并验证的口径）**：`uq_pr_source` 补 `user_id`、同步契约七处收紧（备份三端点 / `clientNow` / `ignored` 与 `conflicts` 分离 / 鉴权）、附录 C 落盘路径与附录 D §9 演示数据口径；**后续（2026-11-07 追加）**：`offsetMs` 同名双视角消歧 + `lastSyncAt` 基准单一化、冻结免鉴权 `GET /api/v1/config` 配置下发通道（B46 / B47，见 §6）；**收尾回写（2026-11-07，见 §7）**：测试清单计数对齐仓库实测（L1 **10** 个用例文件 + `List.test.ets`、L3 **6** 个）、`LwwMerge` 行的失效 STOP 反转、`admin_web/README` 的 STOP-1 改记「已闭环」、附录 B §5.5 版本 bump 条件消歧；**再追加（2026-11-07，见 §8）**：`AGENTS.md §5.1-4` 增「已推送」证据条款（唯一合格证据 = `git ls-remote` 原始输出），该条以本节代 `docs/DECISION-*.md` 留痕 |
 | **v4.1** | 2026-11-06 | **文档契约冻结**：统一账号与同步口径、补齐可执行契约、验收与界面双向承载、因子基准收敛 |

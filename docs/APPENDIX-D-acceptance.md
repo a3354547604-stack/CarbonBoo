@@ -119,6 +119,9 @@
 | D4-7 | 搜索 | 搜文章关键字 | 命中正文与标题，无结果时空态 |
 | D4-8 | 进度可协同 | 设备 A 读第 3 篇 → 设备 B 拉取（同账号登录） | B 上该篇也显示"已读"（`science_progress` 参与同步） |
 | D4-9 | **徽章数同源** | 对照「我的」页与徽章墙 | 两处徽章数一致（演示数据下均为 6/8） |
+| D4-10 | **外观切换持久化**（页面 `appearance`，附录 C §20） | 在「外观」页点选 8 个头像之一 → 选头像框（仅已拥有可选）→ 填昵称（选填，≤12 字）→ 点「保存」→ 杀进程重开 App → 再进该页 | ① **选择即生效**：点头像即更新页内预览（`app/entry/src/main/ets/pages/AppearancePage.ets:94` → 预览 `:131`）；保存成功后首页昵称（`app/entry/src/main/ets/pages/HomePage.ets:128` 读 `state.displayName()`）与「我的」的昵称 / 头像（重进时 `app/entry/src/main/ets/pages/MinePage.ets:53` 重读 `appearance.current`）随之更新——`AppearancePage.ets:64` 调保存、`:68` 调 `AppState.refreshDisplayName`（定义 `app/entry/src/main/ets/viewmodel/AppState.ets:234`）；② **杀进程重开仍生效**：外观页回显同一 `avatar_id` / `frame_id` / `theme_id` / `nickname`（重开读回 `app/entry/src/main/ets/viewmodel/AppearanceService.ets:86`，页面装载 `AppearancePage.ets:34`）；③ **落库位置** = 本机 `user_appearance` 表（UPSERT 见 `AppearanceService.ets:110`；唯一键 `uq_ua(user_id)` 见 `app/entry/src/main/ets/data/schema/ClientSchema.ets:265`；头像字典见 `AppearanceService.ets:49`）；④ **未登录 / 无网络同样可用**（纯本地能力，全程不发网络请求，铁律 1）。本期主题仅投放一套免费「默认主题」、其余主题位预留（无切换控件），故本条只验收 头像 / 头像框 / 昵称 三项的持久化 |
+
+> **D4-10 归属说明（t80 追加）**：D4 系列表头是「主要功能④ 双碳科普专栏（F4）」，而 D4-10 覆盖的是「外观」页（附录 C §20；`AGENTS.md §4` 的 S4 外观闭环）。按 t80 要求**紧邻 D4-8 / D4-9 追加、不重编号、不重排**，故条目内容自描述；D4-1…D4-9 的含义一字未改。
 
 ### 1.5 主要功能⑤ 本地数据管理（F5）
 
