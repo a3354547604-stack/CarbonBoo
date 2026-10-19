@@ -1,11 +1,149 @@
-# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；round 7 = t41 判图腿真相更正 + 首次实跑见 §R7；round 8 = t42 全量干净构建 + 离线 L1 门禁自证见 §R8；round 9 = t43 hypium 36 个 it() 首次离线真执行（PASS=18/FAIL=18 + 缺口清单）见 §R9；round 10 = t48 离线 L1 从 18/18 收敛到 36/36 + 5 条 app 生产缺陷登记见 §R10；**最新 round 11 = t50 5 条缺陷修复的非作者独立验证（`verdict = pass`）见 §R11**）
+# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；round 7 = t41 判图腿真相更正 + 首次实跑见 §R7；round 8 = t42 全量干净构建 + 离线 L1 门禁自证见 §R8；round 9 = t43 hypium 36 个 it() 首次离线真执行（PASS=18/FAIL=18 + 缺口清单）见 §R9；round 10 = t48 离线 L1 从 18/18 收敛到 36/36 + 5 条 app 生产缺陷登记见 §R10；round 11 = t50 5 条缺陷修复的非作者独立验证（`verdict = pass`）见 §R11；**最新 round 12 = t55 `/admin` 浏览器级端到端验证（真实 Edge headless + CDP，七项功能 + 四条鉴权边界 97 项全过）见 §R12**）
 
+> **最新一轮是 §R12（round 12 / t55，绑定 HEAD `585fca9`；`server/**` 自 `1f9ca88` 起未变）**：用**真实浏览器**（Windows 侧 Edge headless + CDP）驱动 `/admin` 的**七项功能与四条鉴权边界**，补上 §13 里一直写着「**无浏览器驱动**」的 **N5** —— 新增 `tests/tools/admin_e2e/`（`run.sh` 退出码 **0/1/2**、纯标准库 CDP 驱动、**零新增依赖**）、**13 张 1440×900 截图 + `artifacts/report.json`**（97 条判定 + 13 条截图指标 + 11 条 INFO，**四次连跑全绿且检查名集合逐条一致**）；**被测字节零改动**，本节**不新增其它门禁结论**；L1 在设备上 / L2 / `server/deploy/` / App 18 页视觉走查 **仍未运行**（一条不算通过）。下面那段「最新一轮是 §R11」是**本节插入前的时点**，效力不变。
+>
 > **最新一轮是 §R11（round 11 / t50，绑定 HEAD `f1b66c1`）**：对 §R10.3 登记、由 `973081a`（前 3 条）与 `1f9ca88`（后 2 条）修复的 5 条 `app/` 生产缺陷做**非作者独立验证**（离线真跑直证 + 变异退回自证；4 次授权变异每次都在同一批命令内用 `git show HEAD:<path> > <path>` 还原，并以 `cmp` + `sha256sum` 证同）—— **5 条全部成立且承重，`verdict = pass`**，并补上第 5 条（同分钟同名备份互相覆盖）原本标为**「未核」**的直证；本节所有「真跑」都在 `node` + `tests/tools/l1_offline/platform/` 垫片上，**不是设备上的 `ohosTest`**，**§R11 不新增门禁结论、不改任何被测字节**。上一轮 §R10（round 10 / t48，绑定 HEAD `e83d3c1`）：用同一套离线执行器把离线 L1 从 **`PASS=18 / FAIL=18` 收敛到 36/36**（`RESULT: it_executed=36 passed=36 failed=0 requires_device=0`、`checked=323 passed=true`），并逐条登记本轮执行器暴露、随后由 `973081a` / `1f9ca88` 修复的 **5 条 `app/` 生产缺陷**（徽章解锁不落库 / 下行 `goalRewards` 读取侧被整条丢弃 / `MemoryFiles.list()` 返回名违反端口契约 / 备份恢复 SQL 保留字列 `order` / 同分钟同名备份互相覆盖）—— **§R10 同样不新增未验证结论、不改任何被测字节**。更早的 §R9（round 9 / t43，绑定 HEAD `804ad92`）：`tests/tools/l1_offline/run_tests.sh` 把 `ohosTest` 的 **36 个 `it()`** 用 `node:sqlite` 垫片在离线环境**逐条真执行**（`RESULT: it_executed=36 passed=18 failed=18 requires_device=0`、`checked=323 passed=true`），18 条失败的逐条 `文件:行` 归因见 §R9.3（3 条真实实现缺陷 + 11 条用例缺陷 + 4 条用例顺序耦合）；**hypium 在设备上仍未运行**，两证不可互相顶替。上一轮 §R8（round 8 / t42 证据登记，绑定 HEAD `6a0404e`）：队长清空 `build/` 与 `.hvigor/` 后跑出**全量干净构建**（`CompileArkTS` 真实重编 `35 s 423 ms`、`BUILD SUCCESSFUL`、`EXIT=0`、产物 2,445,614 B、工作树零污染），并在 `git archive` 干净副本里给离线 L1 执行器做了**注入→翻转→从 git 还原**的门禁自证（`POINTS_PER_KG` 100→101 ⇒ 16 处 FAIL / `EXIT=1`；还原后全绿 / `EXIT=0`）——**§R8 不新增门禁结论、不改任何被测字节**。上一轮 §R7（round 7 / t41，绑定 HEAD `46d2fcf`）：视觉模型通道**已验证可用**、判图链路**已实跑**（`tests/tools/vision_check/`，`RUN_EXIT=0`），但**页面级视觉走查仍不可做**（18 页零截图）；§R7 **不新增任何门禁结论**，**门禁结论仍以 §R6（绑定 `a8b78ef`）为准**。下面这段说的是 round 5 与更早的轮次：
 > **round 5 / t38 只做 L1 表述修正，不新增门禁结论。** 起因：t37 把「用 esbuild 转译仓库
 > **真实 ArkTS 实现**并在 Node 里离线执行」的链路固化进了仓库（`tests/tools/l1_offline/`），于是本文件里
 > 「**替代证据为零**」一类断言从「当时的真话」变成了「**漏报已完成的工作**」。§R5 把这类断言逐处改为准确陈述，
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
+
+## §R12 round 12（t55 · **`/admin` 浏览器级端到端验证**：真实 Edge headless + CDP 驱动七项功能与四条鉴权边界）
+
+> 本节是**新增证据轮**（`verifier-oc` 执行，非 `/admin` 作者）：把 §13 表里一直写着「**无浏览器驱动**」的
+> **N5（`/admin` 浏览器交互）** 从「未运行」补成「**已真实运行**」—— 服务端用项目自己的 `server/.venv` 起
+> `uvicorn`（**一行被测代码都没改**），浏览器用 **Windows 侧真实 Edge（`Edg/155.0.4283.62`）headless + CDP**
+> 驱动，七项功能与四条鉴权边界**逐项留证**，并落 **13 张 1440×900 截图 + `artifacts/report.json`**（机器可读）。
+> 本次唯一的指令注入是**驱动自己发起的**（`Input`/`Runtime.evaluate`/`DOM.setFileInputFiles`），**被测字节零改动**；
+> 本节**不新增其它门禁结论**（不跑 pytest / 不跑 `assembleHap` —— 与本轮范围无关，需引用时注明是别的轮次）。
+
+### §R12.0 本轮范围与绑定
+
+| 项 | 值 |
+|---|---|
+| 开工 `git rev-parse HEAD` | `585fca94008ce1cd7486d75f50875ac908758276` |
+| 开工 `git ls-remote origin main` | `585fca94008ce1cd7486d75f50875ac908758276`　`refs/heads/main`（**同值，已推送**） |
+| 本轮新增（提交前未跟踪） | `tests/tools/admin_e2e/**`（`run.sh` / `cdp_driver.py` / `README.md` / `artifacts/`） |
+| 本轮文档改动 | **只追加**本节 + 首行导航 + 顶部 blockquote 一条 + 轮次索引一行 + §13 的 N5 补记一条（见 §R12.8） |
+| 被测字节 | `app/` / `server/` / `tests/cases/` / `AGENTS.md` **零 diff**（本节的「通过」不改变任何被测文件） |
+| 被测服务端版本 | 同上 HEAD（`server/**` 自 `1f9ca88` 起未变） |
+
+> **与 §13 的 N5 的关系（必读）**：`§13` 表里 **N5 =「`/admin` 浏览器交互（SSR 渲染、`admin.js`）｜原因：无浏览器驱动｜替代证据：HTTP/JSON 层已实测（§6.2）」**
+> 是 **t31 时点**的事实。本轮已经补上浏览器驱动，**N5 的「无」由本节覆盖**；`§13` 原文按「只追加」约束**一字未改**，
+> 在其表后加了 `t55 补记` 指针（同样只是新增一行）。
+
+### §R12.1 为什么「浏览器在 Windows、服务端在 WSL」（三个实测事实）
+
+| 事实 | 原始证据 |
+|---|---|
+| **WSL → Windows 的入站被挡**（NAT） | `curl http://172.19.144.1:9333/json/version` → `curl: (28) Connection timed out after 6002 milliseconds`（`EXIT=28`）；另起 Windows `python -m http.server 9334` 从 WSL 连同样 `exit 28` |
+| **Edge 只监听 Windows 的 `127.0.0.1`** | 启动日志 `DevTools listening on ws://127.0.0.1:9333/devtools/browser/<uuid>`（`--remote-debugging-address=0.0.0.0` 在 Windows 上无效） |
+| **Windows → WSL 的 localhost 转发可用** | Windows `python` 的 `urllib` 打 WSL 的 `http://127.0.0.1:8055/` → `WSL_LOCALHOST: 200` ⇒ **Edge 能加载 WSL 里 uvicorn 的 `http://127.0.0.1:8041`** |
+
+Windows 侧 Python（`C:\Users\Administrator\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\python.exe`，`3.12.14` + `Pillow 12.3.0`）
+**没有** `requests` / `httpx` / `websockets` ⇒ `cdp_driver.py` 用**纯标准库**自实现 RFC6455 WebSocket 客户端（CDP 传输）+ `urllib`（旁路 HTTP 对照）+ `PIL`（上传夹具与截图像素校验），**不安装任何依赖**。
+
+### §R12.2 怎么跑（可复现）
+
+```bash
+bash tests/tools/admin_e2e/run.sh; echo "RUN_EXIT=$?"     # 0=全过 / 1=有断言失败 / 2=环境不可达
+```
+
+一把跑完：建**任务专属库** `carbonboo_admin_e2e`（用 `server/sql/schema.sql` + `seed.sql`，跑完 `DROP`）→ 起 `uvicorn`（`127.0.0.1:8041`，用 `server/.venv`）→ 起 Edge headless（CDP `9333`）→ 驱动 → 归档截图 → 杀进程。环境变量 `CB_ADMIN_E2E_DB|PORT|CDP_PORT|CONTAINER` 可覆盖；口令只经仓库外的 `$TMP/run.json` 传递（跑完失效），**不写进任何被提交文件**。
+
+### §R12.3 七项功能：逐项证据（本轮实跑，`[PASS]` 原文摘录）
+
+| # | 功能 | 关键证据（`/tmp/t55/run15.txt` 原文） |
+|---|---|---|
+| ① | 登录页 + 表单提交 | `GET /admin/login → 200`；innerText 含「管理员登录」「碳小布」；`#login-form` 有 `username`/`password`；提交后 `location.pathname=/admin` 且总览页含「数据总览」+ 管理员名；`document.cookie` 不含 `carbonboo_admin_token`（**HttpOnly**）；登录页与登录后截图 md5 不同（`c76e6600ddae…` vs `040881c8e836…`） |
+| ② | 用户列表 | `GET /admin/users → 200`；表头「账号」「首次接入」「最后同步」「设备（按 device_id 去重）」全含；**列表里出现刚用真实 API 注册的客户端账号 `e2e_client_1111287`**（库内真值，不是静态模板）；页脚口径「客户端只读取价，无权改价」 |
+| ③ | 操作日志 | `GET /admin/logs → 200`；含「操作日志」标题与「操作人」「改前 / 改后」表头；**含本次管理员 `e2e_admin` 的登录记录**（登录时写 `admin_op_log`，浏览器读到的就是库里的） |
+| ④ | 系统配置 读 + 写 | `GET /admin/config → 200`、`dailyCap` 输入框当前值 `200`；浏览器提交表单 → `PUT /admin/config → 200`；**重载后回显 `240`**（写前 200 → 写 240 → 重载后 240，真落库） |
+| ⑤ | 商品图标上传（**真实文件**） | 上传控件 `input[data-action="upload-icon"][data-item-id="frame_01"]` 命中（`nodeId=103`）→ `DOM.setFileInputFiles` 塞入 Windows 侧真实 PNG → `POST /admin/items/frame_01/icon → 200`；页面内 `fetch` 实读 `GET /admin/items`（Accept: application/json）→ `icon=/admin/icons/frame_01-884d9eab9a.png`；`GET /admin/icons/<file> → 200`、`content-type=image/png`、`magic=[137, 80, 78, 71, 13, 10, 26, 10]`、`bytes=518`；重载商品页 `img[src*="/admin/icons/"]` 命中 |
+| ⑥ | 改密 | `GET /admin/password → 200`；`POST /admin/password → 200`；页面回显「口令已更新（旧口令即时失效）」。**负向对照**：改密后用**旧口令**登录 → `POST /admin/login → 401`；**正向对照**：新口令在浏览器里登录成功并进入 `/admin` |
+| ⑦ | 登出 + 鉴权边界 | 见 §R12.4（四条边界逐条） |
+
+### §R12.4 四条鉴权边界：逐条证据
+
+| 边界 | 断言 | 原始证据 |
+|---|---|---|
+| **B1 登出清 Cookie** | 登出前 CDP 可见 `carbonboo_admin_token`；登出后为 0 条 | `carbonboo_admin_token 长度=361` → `POST /admin/logout → 200` → `location.pathname=/admin/login` → `Network.getCookies 中 carbonboo_admin_token 条数=0`（**正向对照成立**） |
+| **B2 未登录访问 `/admin/users` → 303** | **浏览器侧**看得到 303（不是只看 `urllib`） | `实测 HTTP 303 GET`（取自 `Network.requestWillBeSent` 的 `redirectResponse`）→ 最终停在 `/admin/login`；旁路 `urllib`（不跟随重定向）同值：`HTTP 303，Location=/admin/login?next=/admin/users` |
+| **B3 被清掉的旧 Cookie 重放** | 如实记录：**仍 200** | `旁路对照（非浏览器）：旧 Cookie 原样重放 → HTTP 200（312 字节）；管理端 JWT 无状态、服务端不吊销（admin_web/api.py:214 注释）` |
+| **B4 客户端令牌打 `/admin/*` → 403** | `aud=carbonboo-client` 的令牌一律 403 | 客户端账号 `e2e_client_1111287` 经真实 API 登录 `HTTP 200` → **浏览器内 `fetch` 打 `/admin/users` 实测 `HTTP 403 code=FORBIDDEN`**（隔离在 `server/app/main.py:139 _isolate_admin_scope` 中间件，早于 `/admin` 自身鉴权） |
+
+### §R12.5 13 张截图的像素级证据（1440×900）
+
+| 截图 | bytes | 非空白比例 | 颜色数 | 品牌色 `#2E7D5B` 像素 | md5（前 12） |
+|---|---|---|---|---|---|
+| `01_login_page.png` | 43580 | 0.8543 | 1126 | 14321 | `c76e6600ddae` |
+| `02_after_login.png` | 84289 | 0.3469 | 1964 | 8219 | `040881c8e836` |
+| `03_users.png` | 49718 | 0.7351 | 1382 | 7941 | `aac9503c8db0` |
+| `04_logs.png` | 63776 | 0.6433 | 1804 | 9120 | `df2d22a45e52` |
+| `05_config_read.png` | 84226 | 0.2207 | 1251 | 44060 | `d593e4dc53c7` |
+| `06_config_write.png` | 84210 | 0.2207 | 1251 | 44060 | `bf762593d1b8` |
+| `07_items_icon.png` | 114840 | 0.2224 | 1713 | 26207 | `0fcec507e8fe` |
+| `08_password.png` | 63754 | 0.5632 | 1559 | 24817 | `881fd7f69e34` |
+| `09_after_logout.png` | 43580 | 0.8543 | 1126 | 14321 | `c76e6600ddae`（**与 01 同画面，预期**） |
+| `10_users_unauthenticated.png` | 43580 | 0.8543 | 1126 | 14321 | `c76e6600ddae`（同上，预期） |
+| `11_client_token_probe.png` | 43580 | 0.8543 | 1126 | 14321 | `c76e6600ddae`（同上，预期） |
+| `12_old_password_rejected.png` | 46049 | 0.8560 | 977 | 15095 | `8de001c7ba2e` |
+| `13_relogin_new_password.png` | 101651 | 0.2206 | 2065 | 8214 | `27fe1ba82315` |
+
+每张都过了四项判定：**尺寸 == 视口 1440×900**、**非空白像素比例 ≥ 0.004**、**颜色数 ≥ 16**、**与其它截图 md5 查重**（`dup_ok=True` 的 3 张属「预期同画面」，报告里以 `[INFO]` 记录、不计为重复）。品牌主色 `#2E7D5B` 取自 `server/admin_web/static/admin.css:11 --primary`（与 `docs/APPENDIX-C-ui-screens.md` §3.1 同源）。
+
+### §R12.6 本轮实测发现的两条（如实记录，**均未修改**：`server/**` 不在本轮写入范围）
+
+1. **登录页失败提示退化成浏览器原生 `alert`（小缺陷）**：`server/admin_web/templates/login.html:30` 的错误容器是
+   `<div class="flash is-error" role="alert">`，**没有 `id="flash"`**；而 `server/admin_web/static/admin.js:16` 是
+   `if (!box) { window.alert(message); return; }` ⇒ 登录失败的提示走**原生弹窗**而不是页内红条。
+   原始证据：`Page.javascriptDialogOpening type=alert message='管理员用户名或口令错误'`。
+   **附带影响**：原生弹窗会**阻塞渲染进程**，任何浏览器自动化若不处理 `Page.javascriptDialogOpening` 都会在后续 `Runtime.evaluate` 上**永久挂住**（本轮驱动因此显式 `accept`）。
+   修法很小（给该 `div` 加 `id="flash"`），但属 `server/**`，**留给相应任务**。
+2. **管理端登出是「清 Cookie」而非「吊销令牌」（设计边界，不是缺陷）**：`server/admin_web/api.py:214` 原文
+   「清掉会话 Cookie；管理端 JWT 无状态，过期自然失效（附录 B §5.4 未列，后台自有路由）」，
+   `admin_jwt_expires_minutes=120`。故 **B3 的「旧 Cookie 重放仍 200」是设计使然**：浏览器侧的正向对照（Cookie 被清）成立，
+   但**被清掉的令牌原样重放仍在有效期内** —— 这一点必须让读者知道，**不许用「登出后即失效」的假绿掩盖**。
+
+### §R12.7 未运行 / 不覆盖（**一条都不算通过**）
+
+| 项 | 为什么本轮仍未运行 |
+|---|---|
+| **L1 全部 hypium（10 套件 / 36 `it()`）在设备上执行** | 无真机（`hdc` 不在 `PATH`，SDK 内直调 `Connect server failed`）、无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 GLIBC 2.43 —— 与 §13 的 N1/N2 **同一环境，本轮未改变**。离线执行器的 36/36 见 §R10/§R11，**两证不可互相顶替** |
+| **L2 端侧集成** | 需两台真实设备（同 §13 的 N3） |
+| **`server/deploy/` 实跑（systemd / nginx / TLS / 定时备份）** | 本机无部署目标（`/opt/carbonboo/…` 不存在、`nginx` 未安装），与 §13 的 N4 同 |
+| **App 18 页视觉走查（截图腿）** | 仍不可做：`hdc` + 模拟器 + Previewer 三断点未变，**App 侧零截图**；本轮 13 张截图**全是 `/admin`**，不能替代（与 §13 的 N8 同） |
+| **非 Edge 浏览器 / 移动端视口 / HTTPS** | 本轮只驱动 Edge headless（`Edg/155.0.4283.62`）、明文 `http://127.0.0.1:8041`、单一 1440×900 视口 |
+| **并发 / 性能 / 压测** | 单浏览器、串行点击，不产生任何性能结论 |
+
+### §R12.8 门禁与文件（本轮）
+
+* **L0**：`python3 tests/tools/check_l0.py --strict` → `检查项：28    错误：0`、`扫描文件：89    命中：0`、`L0-3 人工待修清单：0 条`、`结论：PASS —— 基准自洽，文档无已知冲突`、**`L0_EXIT=0`**（提交前实跑，本节落地后复跑同值）。
+* **本轮不新增其它门禁结论**：不跑 `pytest`（与 `/admin` 浏览器层无关，§R4/§R6 的 237 passed 绑定的是更早的字节）、不跑 `assembleHap`（本轮零 `app/` 改动）。
+* **`docs/VERIFICATION.md` 的 diff 单列**：**只追加** —— 新增本节（插在 §R11 之前）+ 首行导航句 + 顶部 blockquote 一条 + 轮次索引 `round 12` 一行 + `§13` 表后 `t55 补记` 一条；**§R1–§R11 与 §0–§15 的正文一字未改**（`git diff` 里除本文与新增工具目录外无其它路径）。
+* **本轮新增的仓库文件只有** `tests/tools/admin_e2e/{run.sh,cdp_driver.py,README.md}` 与 `tests/tools/admin_e2e/artifacts/`（13 PNG + `report.json`）。
+  工作树里另有**他任务**的未跟踪目录 `tests/tools/deploy_e2e/`，**不在本轮提交内、本轮未触碰**。
+
+### §R12.9 复现性与确定性
+
+* **同一份代码连跑四次全绿**：`run12` / `run13` / `run14` / `run15`（其中 run14/run15 是**最终代码**上的两次独立连跑）：每次都
+  `checks: PASS=97 FAIL=0  driver_exit=0`、`RUN_EXIT=0`；把四次 stdout 的 `[PASS]` 行名**排序后逐条比对** ⇒ **97 条检查名集合完全一致**（`diff` 为空）。
+* `artifacts/report.json`：`checks` 共 **121** 条 = **97** 条判定 + **13** 条截图指标 + **11** 条 `[INFO]` 旁证；`failed=0`；
+  `shots` 的键是 **10 个互不相同的 md5**（13 张里登录页状态被 4 张共用，属预期）；`dialogs=1`（§R12.6 的 alert）。
+* 退出码语义：**`0` 全过 / `1` 有断言失败 / `2` 环境不可达**（MySQL 容器、Edge、CDP、服务端任一不可用）—— `2` 一律如实记「未运行」，**不算通过**。
+
+### §R12.10 未决问题
+
+1. **`login.html` 的 `.flash` 缺 `id`（§R12.6-1）未修**：属 `server/**`，本轮写入范围之外 —— 需要时另开任务（一行改动）。
+2. **登出语义（§R12.6-2）**：若将来要求「登出即吊销」，需要服务端引入令牌黑名单/短时令牌 —— **属产品决策，本轮只如实记录**。
+3. **只覆盖 Edge**：其它浏览器与 TLS 部署下的 cookie `Secure` 分支（`cookie_secure`）**未验证**。
+
+### §R12.11 边界句（沿用既有口径）
+
+> **本节的「97 项全过」只证明**：在 **Edge headless + 本地明文 HTTP + 任务专属库** 下，`/admin` 的七项功能与四条鉴权边界**真的能用**。
+> 它**不等于** L1 在设备上跑过、**不等于** L2、**不等于** `server/deploy/` 能部署、**不等于** App 18 页视觉走查通过。
+> **「浏览器里点通了」与「设备上用例通过」是两件事，两证不可互相顶替。**
 
 ## §R11 round 11（t50 · **5 条 app 生产缺陷修复的非作者独立验证**：离线真跑直证 + 变异自证）
 
@@ -1529,6 +1667,7 @@ ohosTest 副本 app/entry/src/ohosTest/resources/rawfile/carbon-calc.json md5 �
 | round 9 | t43（`fixer-oc`，**新增证据轮**） | `804ad92` | 2026-11-07（与 R1–R8 同口径） | **hypium 36 个 `it()` 首次离线真执行**：`RESULT: it_executed=36 passed=18 failed=18 requires_device=0`、`checked=323 passed=true`（`RESULT: PASS=55 FAIL=0` 不变）；18 条失败逐条归因 —— 3 条真实实现缺陷（徽章解锁不落库 / 下行 `goalRewards` 读取侧被整条丢弃 / `MemoryFiles.list()` 返回名违反端口契约）、11 条用例自身缺陷（10 条 LWW 夹具用户名含 `-` + 1 条封顶期望过期）、4 条用例间共享库顺序耦合（单跑全过）；门禁自证 `POINTS_PER_KG` 100→101 ⇒ `EXIT=1`，`git show` 还原后 `EXIT=0`；**hypium 在设备上仍未运行**，两证不可互相顶替；L0 `EXIT=0` | 本文 §R9（文件最前） |
 | round 10 | t48（`fixer-oc`，**新增证据轮 + 缺陷登记轮**） | `e83d3c17ae2150feabadb857dbca5561d60bf033` | 2026-10-19 | **离线 L1 从 18/18 收敛到 36/36**：`RESULT: it_executed=36 passed=36 failed=0 requires_device=0`、`checked=323 passed=true`（`run.sh` 的 `RESULT: PASS=55 FAIL=0` 不变）；并逐条登记本轮执行器暴露、随后由 `973081a`（前 3 条）与 `1f9ca88`（后 2 条）修复的 **5 条 `app/` 生产缺陷**（徽章解锁不落库 / 下行 `goalRewards` 读取侧被整条丢弃 / `MemoryFiles.list()` 返回名违反端口契约 / 备份恢复 SQL 保留字列 `order` / 同分钟同名备份互相覆盖）；**hypium 在设备上仍未运行**，两证不可互相顶替；L0 `EXIT=0` | 本文 §R10（文件最前；本节由 `de0eac1` 插入） |
 | round 11 | t50（`verifier-oc`，**非作者独立验证轮，不新增门禁结论**） | `f1b66c1516d67a0e8b45b1282761f2e8ed2e30c8` | 2026-10-19 | **对 §R10.3 登记的 5 条 `app/` 生产缺陷修复做非作者独立验证**：离线真跑直证 + 变异退回自证（4 次授权变异，每次都在同一批命令内用 `git show HEAD:<path> > <path>` 还原并以 `cmp` + `sha256sum` 证同）⇒ **5 条全部成立且承重，`verdict = pass`**，并补上第 5 条（同分钟同名备份互相覆盖）原本标为**「未核」**的直证；本节**不改任何被测字节**、不新增门禁结论；**hypium 在设备上仍未运行**，两证不可互相顶替；L0 `EXIT=0` | 本文 §R11（文件最前；本节由 `68c5b71` 插入） |
+| round 12 | t55（`verifier-oc`，**浏览器级 E2E 新增证据轮**） | `585fca94008ce1cd7486d75f50875ac908758276` | 2026-10-19 | **`/admin` 浏览器级端到端验证（补上 §13 N5「无浏览器驱动」）**：Windows 侧**真实 Edge headless + CDP**（`Edg/155.0.4283.62`）驱动七项功能（登录 / 用户列表 / 操作日志 / 配置读写 / 商品图标真实上传 / 改密 / 登出）与**四条鉴权边界**（登出清 Cookie、未登录 `/admin/users` **浏览器侧 303**、旧 Cookie 重放仍 200 的无状态语义、客户端令牌 **403**）⇒ `checks: PASS=97 FAIL=0`、`RUN_EXIT=0`，**四次连跑检查名集合逐条一致**；落 **13 张 1440×900 截图 + `report.json`**，新增 `tests/tools/admin_e2e/`（**零新增依赖**、退出码 0/1/2）；实测发现 2 条（登录页 `.flash` 缺 `id` ⇒ `admin.js` 回退 `window.alert`；登出只清 Cookie、JWT 无状态）**如实记录、未修**；**被测字节零改动**、不新增其它门禁结论；**L1 设备执行 / L2 / `deploy` 实跑 / App 18 页视觉走查仍未运行**，一条不算通过；L0 `EXIT=0` | 本文 §R12（文件最前；由紧随本节后的同一次提交引入） |
 
 > **导航说明（t52 补记）**：§R10 首段「本文件首行轮次索引与顶部 blockquote **未重写**，仍停留在 round 9 的表述 —— 以本节为准」
 > 是 **t48 时点**的记录（当时受「只追加」约束、未维护导航）。**t52 已按「维护导航」补上 round 10 / round 11 两行并更新首行标题与顶部 blockquote，
@@ -2540,6 +2679,8 @@ t21 按验收要求把它们显式接入本页…业务路径上它们仍**不�
 | **N6** | t18 运行态（配置下发在真机生效） | 同 N1 | 用例存在且登记（未运行） |
 | **N7** | t13 运行态（真机备份往返） | 同 N1 | 服务端侧备份用例真实通过（`test_sync.py` 48 passed） |
 | **N8** | 前端视觉走查（18 页面截图 + 视觉模型判图） | 截图腿：`hdc` 未安装（`Command 'hdc' not found`，EXIT=127）、无真机无模拟器（`/dev/kvm` 不可写）、Previewer 崩于 glibc 2.43 ⇒ **18 个页面一张截图都产生不出来**（**结论未变**）。判图腿**（t41 更正）**：原写「`ARK_API_KEY` 在本会话不存在」并据此判「不可能有视觉结论」—— **失真**：key 在**凭据库** `.dsh/.credentials.yaml → refs.ARK_API_KEY`，实测识图 **HTTP=200** 判读正确（§R7） | **页面级视觉走查：无**（零截图，本轮结论不变）。**判图链路：有替代证据且强于「无」** —— `tests/tools/vision_check/`：从 `AppTheme.ets` 源码解析 17 个真实令牌色值 → 生色板 → 视觉模型判读 17/17、`RUN_EXIT=0`。**但它判的是设计令牌，不是任何页面渲染结果**，不能替代 18 页视觉走查（§R7.6） |
+
+> **（t55 补记）** 上表 **N5（`/admin` 浏览器交互）**「原因：无浏览器驱动」是 **t31 时点**的事实；**t55 已补上浏览器驱动**（Windows 侧真实 Edge headless + CDP，见 **§R12**），N5 的结论**由 §R12 覆盖**。**N1 / N2 / N3 / N4 / N8 五项一条都没变**（无真机、无模拟器、Previewer 与 GLIBC 2.43 冲突、无部署目标、App 侧零截图）——尤其 **N8**：§R12 的 13 张截图**全是 `/admin`**，**不能**替代 App 的 18 页视觉走查。
 
 > 另：**L3 全量本轮未执行** —— 本轮口径是「`server/` 零 diff，只跑子集」。我跑了 `test_sync.py`（48）+
 > `test_admin.py` 403 子集（19），是**真实结果**；其余 66+ 例未跑。全量 **237 passed** 是 **round 2 在 `971d042` 上的实测**，

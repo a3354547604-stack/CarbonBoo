@@ -1,0 +1,636 @@
+{
+  "checks": [
+    {
+      "step": "info",
+      "ok": true,
+      "detail": "① 诊断：location.href=http://127.0.0.1:8041/admin/login title=管理员登录 · 碳小布后台 readyState=complete hasLoginForm=True h1=管理员登录"
+    },
+    {
+      "step": "info",
+      "ok": true,
+      "detail": "① 诊断：本次导航抓到的响应 = GET http://127.0.0.1:8041/admin/login → 200；GET http://127.0.0.1:8041/admin/static/admin.css → 200；GET http://127.0.0.1:8041/admin/static/admin.js → 200；GET http://127.0.0.1:8041/favicon.ico → 404"
+    },
+    {
+      "step": "info",
+      "ok": true,
+      "detail": "① 诊断：DOM 前 240 字 = <html lang=\"zh-CN\"><head>   <meta charset=\"utf-8\">   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">   <meta name=\"robots\" content=\"noindex,nofollow\">   <title>管理员登录 · 碳小布后台</title>   <link rel=\"stylesheet\" href=\"/admin"
+    },
+    {
+      "step": "① GET /admin/login 状态码 200",
+      "ok": true,
+      "detail": "实测 HTTP 200 GET"
+    },
+    {
+      "step": "① 登录页关键文本命中",
+      "ok": true,
+      "detail": "innerText 含「管理员登录」=True、含「碳小布」=True"
+    },
+    {
+      "step": "① 登录页有 #login-form 表单（username/password）",
+      "ok": true,
+      "detail": "实测 has_user_input=True has_pass_input=True"
+    },
+    {
+      "step": "01_login_page 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，43580 字节"
+    },
+    {
+      "step": "01_login_page 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.8543"
+    },
+    {
+      "step": "01_login_page 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=1126"
+    },
+    {
+      "step": "01_login_page 品牌主色 #2E7D5B 像素 ≥ 200",
+      "ok": true,
+      "detail": "brand_pixels=14321"
+    },
+    {
+      "step": "01_login_page 不是别页截图的副本",
+      "ok": true,
+      "detail": "md5=c76e6600ddae…（首见）"
+    },
+    {
+      "step": "01_login_page 截图",
+      "ok": true,
+      "detail": "{\"file\": \"01_login_page.png\", \"size\": [1440, 900], \"bytes\": 43580, \"md5\": \"c76e6600ddae69bc9204d7e54e2b73fd\", \"nonwhite_ratio\": 0.8543, \"unique_colors\": 1126, \"brand_pixels\": 14321}"
+    },
+    {
+      "step": "① 提交后浏览器进入 /admin",
+      "ok": true,
+      "detail": "location.pathname=/admin"
+    },
+    {
+      "step": "① 登录后总览页关键文本命中",
+      "ok": true,
+      "detail": "含「数据总览」=True、含管理员名=True"
+    },
+    {
+      "step": "① 会话令牌是 HttpOnly（页面脚本读不到）",
+      "ok": true,
+      "detail": "document.cookie 不含 carbonboo_admin_token"
+    },
+    {
+      "step": "02_after_login 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，84289 字节"
+    },
+    {
+      "step": "02_after_login 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.3469"
+    },
+    {
+      "step": "02_after_login 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=1964"
+    },
+    {
+      "step": "02_after_login 不是别页截图的副本",
+      "ok": true,
+      "detail": "md5=040881c8e836…（首见）"
+    },
+    {
+      "step": "02_after_login 截图",
+      "ok": true,
+      "detail": "{\"file\": \"02_after_login.png\", \"size\": [1440, 900], \"bytes\": 84289, \"md5\": \"040881c8e8363cafaa3dc944d47ffc12\", \"nonwhite_ratio\": 0.3469, \"unique_colors\": 1964, \"brand_pixels\": 8219}"
+    },
+    {
+      "step": "① 登录后画面与登录页确实不同（截图 md5 不同）",
+      "ok": true,
+      "detail": "c76e6600ddae… vs 040881c8e836…"
+    },
+    {
+      "step": "info",
+      "ok": true,
+      "detail": "已注册客户端账号 e2e_client_1111287（POST /api/v1/auth/register → HTTP 201）"
+    },
+    {
+      "step": "② GET /admin/users 状态码 200",
+      "ok": true,
+      "detail": "实测 HTTP 200 GET"
+    },
+    {
+      "step": "② 用户页关键文本命中",
+      "ok": true,
+      "detail": "innerText 含「用户列表」与「账号与设备」（空库时另有「还没有账号…」）"
+    },
+    {
+      "step": "② 用户页表头渲染（账号/user_id/首次接入/设备）",
+      "ok": true,
+      "detail": "innerText 含表头「账号」「首次接入」「最后同步」「设备（按 device_id 去重）」"
+    },
+    {
+      "step": "② 用户列表里出现刚注册的客户端账号（库内真值）",
+      "ok": true,
+      "detail": "innerText 含 e2e_client_1111287（空库会显示「还没有账号…」，也可）"
+    },
+    {
+      "step": "② 该页确由服务端渲染（含侧栏导航与页脚口径）",
+      "ok": true,
+      "detail": "innerText 含侧栏文案「客户端只读取价，无权改价」"
+    },
+    {
+      "step": "03_users 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，49718 字节"
+    },
+    {
+      "step": "03_users 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.7351"
+    },
+    {
+      "step": "03_users 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=1382"
+    },
+    {
+      "step": "03_users 不是别页截图的副本",
+      "ok": true,
+      "detail": "md5=aac9503c8db0…（首见）"
+    },
+    {
+      "step": "03_users 截图",
+      "ok": true,
+      "detail": "{\"file\": \"03_users.png\", \"size\": [1440, 900], \"bytes\": 49718, \"md5\": \"aac9503c8db0889489c7629169076488\", \"nonwhite_ratio\": 0.7351, \"unique_colors\": 1382, \"brand_pixels\": 7941}"
+    },
+    {
+      "step": "③ GET /admin/logs 状态码 200",
+      "ok": true,
+      "detail": "实测 HTTP 200 GET"
+    },
+    {
+      "step": "③ 日志页关键文本命中",
+      "ok": true,
+      "detail": "innerText 含「操作日志」标题与「操作人」「改前 / 改后」表头"
+    },
+    {
+      "step": "③ 日志里已有本次管理员的登录记录（浏览器看到的库内真值）",
+      "ok": true,
+      "detail": "innerText 含管理员名 e2e_admin（登录时写 admin_op_log）"
+    },
+    {
+      "step": "04_logs 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，63776 字节"
+    },
+    {
+      "step": "04_logs 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.6433"
+    },
+    {
+      "step": "04_logs 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=1804"
+    },
+    {
+      "step": "04_logs 不是别页截图的副本",
+      "ok": true,
+      "detail": "md5=df2d22a45e52…（首见）"
+    },
+    {
+      "step": "04_logs 截图",
+      "ok": true,
+      "detail": "{\"file\": \"04_logs.png\", \"size\": [1440, 900], \"bytes\": 63776, \"md5\": \"df2d22a45e52b04be20257dd5810382f\", \"nonwhite_ratio\": 0.6433, \"unique_colors\": 1804, \"brand_pixels\": 9120}"
+    },
+    {
+      "step": "④ GET /admin/config 状态码 200",
+      "ok": true,
+      "detail": "实测 HTTP 200 GET"
+    },
+    {
+      "step": "④ 配置页关键文本命中",
+      "ok": true,
+      "detail": "innerText 含「系统配置」；dailyCap 输入框当前值=200"
+    },
+    {
+      "step": "05_config_read 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，84226 字节"
+    },
+    {
+      "step": "05_config_read 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.2207"
+    },
+    {
+      "step": "05_config_read 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=1251"
+    },
+    {
+      "step": "05_config_read 不是别页截图的副本",
+      "ok": true,
+      "detail": "md5=d593e4dc53c7…（首见）"
+    },
+    {
+      "step": "05_config_read 截图",
+      "ok": true,
+      "detail": "{\"file\": \"05_config_read.png\", \"size\": [1440, 900], \"bytes\": 84226, \"md5\": \"d593e4dc53c7d4c473419cccc03eb1d7\", \"nonwhite_ratio\": 0.2207, \"unique_colors\": 1251, \"brand_pixels\": 44060}"
+    },
+    {
+      "step": "④ 浏览器提交表单 → PUT /admin/config 状态码 200",
+      "ok": true,
+      "detail": "实测 HTTP 200 PUT"
+    },
+    {
+      "step": "info",
+      "ok": true,
+      "detail": "配置写入：dailyCap 200 → 240（表单提交，admin.js 同源 fetch）"
+    },
+    {
+      "step": "④ 重载后服务端回显新值（写入真落库）",
+      "ok": true,
+      "detail": "写前=200 → 写 240 → 重载后=240"
+    },
+    {
+      "step": "④ 重载 GET /admin/config 状态码 200",
+      "ok": true,
+      "detail": "实测 HTTP 200 GET"
+    },
+    {
+      "step": "06_config_write 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，84210 字节"
+    },
+    {
+      "step": "06_config_write 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.2207"
+    },
+    {
+      "step": "06_config_write 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=1251"
+    },
+    {
+      "step": "06_config_write 不是别页截图的副本",
+      "ok": true,
+      "detail": "md5=bf762593d1b8…（首见）"
+    },
+    {
+      "step": "06_config_write 截图",
+      "ok": true,
+      "detail": "{\"file\": \"06_config_write.png\", \"size\": [1440, 900], \"bytes\": 84210, \"md5\": \"bf762593d1b8380cce38d77ffe2242bc\", \"nonwhite_ratio\": 0.2207, \"unique_colors\": 1251, \"brand_pixels\": 44060}"
+    },
+    {
+      "step": "⑤ GET /admin/items 状态码 200",
+      "ok": true,
+      "detail": "实测 HTTP 200 GET"
+    },
+    {
+      "step": "⑤ 商品页关键文本命中",
+      "ok": true,
+      "detail": "innerText 含「商品管理」标题与「保存」「新增商品」按钮"
+    },
+    {
+      "step": "⑤ 页面上存在该商品的文件上传控件",
+      "ok": true,
+      "detail": "input[data-action=\"upload-icon\"][data-item-id=\"frame_01\"] 命中"
+    },
+    {
+      "step": "⑤ DOM.querySelector 拿到上传控件 nodeId",
+      "ok": true,
+      "detail": "nodeId=103"
+    },
+    {
+      "step": "info",
+      "ok": true,
+      "detail": "上传夹具（Windows 真实文件）：C:/Users/Administrator/AppData/Local/Temp/cb-admin-e2e-icon.png（96x96 PNG，品牌色）"
+    },
+    {
+      "step": "⑤ POST /admin/items/frame_01/icon 状态码 200",
+      "ok": true,
+      "detail": "实测 HTTP 200 POST"
+    },
+    {
+      "step": "⑤ 库内该商品的 icon 已指向 /admin/icons/*（页面内 fetch JSON 实读）",
+      "ok": true,
+      "detail": "GET /admin/items（Accept: application/json）→ status=200 icon=/admin/icons/frame_01-884d9eab9a.png"
+    },
+    {
+      "step": "⑤ GET /admin/icons/<file> 可取回且确实是 PNG 字节",
+      "ok": true,
+      "detail": "status=200 content-type=image/png magic=[137, 80, 78, 71, 13, 10, 26, 10] bytes=518"
+    },
+    {
+      "step": "⑤ 重载商品页后能看到新图标（<img> 指向 /admin/icons/）",
+      "ok": true,
+      "detail": "document.querySelector('img[src*=\"/admin/icons/\"]') 命中"
+    },
+    {
+      "step": "07_items_icon 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，114840 字节"
+    },
+    {
+      "step": "07_items_icon 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.2224"
+    },
+    {
+      "step": "07_items_icon 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=1713"
+    },
+    {
+      "step": "07_items_icon 不是别页截图的副本",
+      "ok": true,
+      "detail": "md5=0fcec507e8fe…（首见）"
+    },
+    {
+      "step": "07_items_icon 截图",
+      "ok": true,
+      "detail": "{\"file\": \"07_items_icon.png\", \"size\": [1440, 900], \"bytes\": 114840, \"md5\": \"0fcec507e8fe809a0f974ee8aa315886\", \"nonwhite_ratio\": 0.2224, \"unique_colors\": 1713, \"brand_pixels\": 26207}"
+    },
+    {
+      "step": "⑥ GET /admin/password 状态码 200",
+      "ok": true,
+      "detail": "实测 HTTP 200 GET"
+    },
+    {
+      "step": "⑥ 改密页关键文本命中",
+      "ok": true,
+      "detail": "innerText 含「修改密码」「口令」「≥12 位」策略说明"
+    },
+    {
+      "step": "08_password 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，63754 字节"
+    },
+    {
+      "step": "08_password 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.5632"
+    },
+    {
+      "step": "08_password 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=1559"
+    },
+    {
+      "step": "08_password 不是别页截图的副本",
+      "ok": true,
+      "detail": "md5=881fd7f69e34…（首见）"
+    },
+    {
+      "step": "08_password 截图",
+      "ok": true,
+      "detail": "{\"file\": \"08_password.png\", \"size\": [1440, 900], \"bytes\": 63754, \"md5\": \"881fd7f69e349409bad2d1723bdbf4df\", \"nonwhite_ratio\": 0.5632, \"unique_colors\": 1559, \"brand_pixels\": 24817}"
+    },
+    {
+      "step": "⑥ POST /admin/password 状态码 200",
+      "ok": true,
+      "detail": "实测 HTTP 200 POST"
+    },
+    {
+      "step": "⑥ 页面回显「口令已更新」",
+      "ok": true,
+      "detail": "innerText 含「口令已更新（旧口令即时失效）」"
+    },
+    {
+      "step": "⑦ 登出前浏览器持有会话 Cookie（HttpOnly，CDP 可见）",
+      "ok": true,
+      "detail": "carbonboo_admin_token 长度=361"
+    },
+    {
+      "step": "⑦ POST /admin/logout 状态码 200",
+      "ok": true,
+      "detail": "实测 HTTP 200 POST"
+    },
+    {
+      "step": "⑦ 登出后浏览器被带回登录页",
+      "ok": true,
+      "detail": "location.pathname=/admin/login"
+    },
+    {
+      "step": "⑦ 登出后浏览器已不持有会话 Cookie（正向对照）",
+      "ok": true,
+      "detail": "Network.getCookies 中 carbonboo_admin_token 条数=0"
+    },
+    {
+      "step": "09_after_logout 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，43580 字节"
+    },
+    {
+      "step": "09_after_logout 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.8543"
+    },
+    {
+      "step": "09_after_logout 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=1126"
+    },
+    {
+      "step": "09_after_logout 品牌主色 #2E7D5B 像素 ≥ 200",
+      "ok": true,
+      "detail": "brand_pixels=14321"
+    },
+    {
+      "step": "info",
+      "ok": true,
+      "detail": "09_after_logout 与 01_login_page 同画面（预期：同一登录页状态）md5=c76e6600ddae…"
+    },
+    {
+      "step": "09_after_logout 截图",
+      "ok": true,
+      "detail": "{\"file\": \"09_after_logout.png\", \"size\": [1440, 900], \"bytes\": 43580, \"md5\": \"c76e6600ddae69bc9204d7e54e2b73fd\", \"nonwhite_ratio\": 0.8543, \"unique_colors\": 1126, \"brand_pixels\": 14321}"
+    },
+    {
+      "step": "info",
+      "ok": true,
+      "detail": "⑦ 本次导航期间浏览器抓到的 /admin 相关响应：GET http://127.0.0.1:8041/admin/users → 303；GET http://127.0.0.1:8041/admin/login → 200；GET http://127.0.0.1:8041/admin/static/admin.css → 200；GET http://127.0.0.1:8041/admin/static/admin.js → 200"
+    },
+    {
+      "step": "⑦ 未登录访问 /admin/users → 303 跳登录页（浏览器实看）",
+      "ok": true,
+      "detail": "实测 HTTP 303 GET"
+    },
+    {
+      "step": "⑦ 未登录访问 /admin/users → 303（旁路 urllib 不跟随重定向，原始状态码）",
+      "ok": true,
+      "detail": "HTTP 303，Location=/admin/login?next=/admin/users"
+    },
+    {
+      "step": "⑦ 未登录访问 /admin/users 最终停在登录页",
+      "ok": true,
+      "detail": "location.pathname=/admin/login"
+    },
+    {
+      "step": "10_users_unauthenticated 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，43580 字节"
+    },
+    {
+      "step": "10_users_unauthenticated 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.8543"
+    },
+    {
+      "step": "10_users_unauthenticated 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=1126"
+    },
+    {
+      "step": "10_users_unauthenticated 品牌主色 #2E7D5B 像素 ≥ 200",
+      "ok": true,
+      "detail": "brand_pixels=14321"
+    },
+    {
+      "step": "info",
+      "ok": true,
+      "detail": "10_users_unauthenticated 与 09_after_logout 同画面（预期：同一登录页状态）md5=c76e6600ddae…"
+    },
+    {
+      "step": "10_users_unauthenticated 截图",
+      "ok": true,
+      "detail": "{\"file\": \"10_users_unauthenticated.png\", \"size\": [1440, 900], \"bytes\": 43580, \"md5\": \"c76e6600ddae69bc9204d7e54e2b73fd\", \"nonwhite_ratio\": 0.8543, \"unique_colors\": 1126, \"brand_pixels\": 14321}"
+    },
+    {
+      "step": "info",
+      "ok": true,
+      "detail": "旁路对照（非浏览器）：旧 Cookie 原样重放 → HTTP 200（312 字节）；管理端 JWT 无状态、服务端不吊销（`admin_web/api.py:214` 已写明「过期自然失效」）：浏览器侧 Cookie 已被清（正向对照通过），但把被清掉的令牌原样重放仍 200"
+    },
+    {
+      "step": "⑦ 客户端令牌（aud=carbonboo-client）由浏览器打 /admin/users 必须 403",
+      "ok": true,
+      "detail": "客户端账号 e2e_client_1111287 登录 HTTP 200 → 浏览器 fetch 实测 HTTP 403 code=FORBIDDEN"
+    },
+    {
+      "step": "11_client_token_probe 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，43580 字节"
+    },
+    {
+      "step": "11_client_token_probe 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.8543"
+    },
+    {
+      "step": "11_client_token_probe 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=1126"
+    },
+    {
+      "step": "info",
+      "ok": true,
+      "detail": "11_client_token_probe 与 10_users_unauthenticated 同画面（预期：同一登录页状态）md5=c76e6600ddae…"
+    },
+    {
+      "step": "11_client_token_probe 截图",
+      "ok": true,
+      "detail": "{\"file\": \"11_client_token_probe.png\", \"size\": [1440, 900], \"bytes\": 43580, \"md5\": \"c76e6600ddae69bc9204d7e54e2b73fd\", \"nonwhite_ratio\": 0.8543, \"unique_colors\": 1126, \"brand_pixels\": 14321}"
+    },
+    {
+      "step": "⑥ 负向对照前浏览器确实停在登录页",
+      "ok": true,
+      "detail": "location.pathname=/admin/login"
+    },
+    {
+      "step": "⑥ 负向对照：改密后旧口令登录被拒（POST /admin/login → 401）",
+      "ok": true,
+      "detail": "实测 HTTP 401 POST"
+    },
+    {
+      "step": "⑥ 失败提示以浏览器原生 alert 弹出（登录页 .flash 无 id=\"flash\" → admin.js:16 回退 window.alert）",
+      "ok": true,
+      "detail": "Page.javascriptDialogOpening type=alert message='管理员用户名或口令错误'（驱动已自动 accept，否则渲染进程会被卡死）"
+    },
+    {
+      "step": "⑥ 旧口令被拒后仍停在登录页",
+      "ok": true,
+      "detail": "location.pathname=/admin/login"
+    },
+    {
+      "step": "12_old_password_rejected 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，46049 字节"
+    },
+    {
+      "step": "12_old_password_rejected 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.856"
+    },
+    {
+      "step": "12_old_password_rejected 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=977"
+    },
+    {
+      "step": "12_old_password_rejected 品牌主色 #2E7D5B 像素 ≥ 200",
+      "ok": true,
+      "detail": "brand_pixels=15095"
+    },
+    {
+      "step": "12_old_password_rejected 截图",
+      "ok": true,
+      "detail": "{\"file\": \"12_old_password_rejected.png\", \"size\": [1440, 900], \"bytes\": 46049, \"md5\": \"8de001c7ba2e385214e4b01b01b5a5df\", \"nonwhite_ratio\": 0.856, \"unique_colors\": 977, \"brand_pixels\": 15095}"
+    },
+    {
+      "step": "⑥ 正向对照：新口令在浏览器里登录成功并进入总览页",
+      "ok": true,
+      "detail": "location.pathname=/admin"
+    },
+    {
+      "step": "13_relogin_new_password 截图尺寸 == 1440x900",
+      "ok": true,
+      "detail": "实测 1440x900，101651 字节"
+    },
+    {
+      "step": "13_relogin_new_password 非空白像素比例 ≥ 0.004",
+      "ok": true,
+      "detail": "nonwhite_ratio=0.2206"
+    },
+    {
+      "step": "13_relogin_new_password 颜色数 ≥ 16",
+      "ok": true,
+      "detail": "unique_colors=2065"
+    },
+    {
+      "step": "13_relogin_new_password 不是别页截图的副本",
+      "ok": true,
+      "detail": "md5=27fe1ba82315…（首见）"
+    },
+    {
+      "step": "13_relogin_new_password 截图",
+      "ok": true,
+      "detail": "{\"file\": \"13_relogin_new_password.png\", \"size\": [1440, 900], \"bytes\": 101651, \"md5\": \"27fe1ba82315d74ad8d0cb0a36724761\", \"nonwhite_ratio\": 0.2206, \"unique_colors\": 2065, \"brand_pixels\": 8214}"
+    }
+  ],
+  "failed": 0,
+  "shots": {
+    "c76e6600ddae69bc9204d7e54e2b73fd": "11_client_token_probe",
+    "040881c8e8363cafaa3dc944d47ffc12": "02_after_login",
+    "aac9503c8db0889489c7629169076488": "03_users",
+    "df2d22a45e52b04be20257dd5810382f": "04_logs",
+    "d593e4dc53c7d4c473419cccc03eb1d7": "05_config_read",
+    "bf762593d1b8380cce38d77ffe2242bc": "06_config_write",
+    "0fcec507e8fe809a0f974ee8aa315886": "07_items_icon",
+    "881fd7f69e349409bad2d1723bdbf4df": "08_password",
+    "8de001c7ba2e385214e4b01b01b5a5df": "12_old_password_rejected",
+    "27fe1ba82315d74ad8d0cb0a36724761": "13_relogin_new_password"
+  },
+  "dialogs": [
+    {
+      "type": "alert",
+      "message": "管理员用户名或口令错误"
+    }
+  ],
+  "base_url": "http://127.0.0.1:8041",
+  "browser": "Edg/155.0.4283.62",
+  "viewport": [
+    1440,
+    900
+  ],
+  "admin_username": "e2e_admin",
+  "item_id": "frame_01"
+}
