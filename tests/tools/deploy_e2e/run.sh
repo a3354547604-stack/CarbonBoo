@@ -201,6 +201,9 @@ note "S1 的完整 diff（仓库文件 vs 运行文件）保存在 ${WORK}/logs/
 diff -u "${CONF}" "${WORK}/carbonboo.conf" > "${WORK}/logs/conf.diff" || true
 print_conf_diff_lines="$(grep -c '^[-+][^-+]' "${WORK}/logs/conf.diff")"
 note "    该 diff 的变更行数 = ${print_conf_diff_lines}（应等于 ${S1_CNT} 的一倍：每处一行替换）"
+note "S6 应用容器挂载：仓库 server/ 只读（不改仓库一个字）+ 一个**可写**的上传目录"
+note "    ${WORK}/icons → /app/admin_web/static/uploads/icons（真机上 /opt/carbonboo/server 本身可写，" 
+note "    单元里 ReadWritePaths=/opt/carbonboo/server；不给可写挂载时 7.5b.7 图标上传会 500 Errno 30）"
 
 # ============================================================ 2. 网络与 MySQL ===
 log "2. 派生网络 + 任务专属库"
@@ -265,10 +268,15 @@ fi
 # ======================================================= 5. 起应用（仓库代码） ===
 log "5. 起应用容器（仓库 server/ 代码 + repo venv 的 site-packages）"
 docker rm -f "${APP_NAME}" >/dev/null 2>&1
+# S6：仓库挂载是只读的（不改仓库一个字），而后台图标上传要往 admin_web/static/uploads/icons 写盘；
+#     真机上 /opt/carbonboo/server 本身可写（单元里 ReadWritePaths=/opt/carbonboo/server），
+#     所以这里单独把上传目录挂成可写（语义等价，改动写进 §1 的派生清单）。
+mkdir -p "${WORK}/icons"
 docker run -d --name "${APP_NAME}" --network "${NET}" \
   -v "${SERVER}:/app:ro" \
   -v "${SERVER}/.venv/lib/python3.11/site-packages:/sitepkgs:ro" \
   -v "${WORK}/app.env:/app/.env:ro" \
+  -v "${WORK}/icons:/app/admin_web/static/uploads/icons" \
   -e PYTHONPATH=/sitepkgs -w /app "${PY_IMAGE}" \
   python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 \
     --proxy-headers --forwarded-allow-ips='*' > "${WORK}/logs/app_run.log" 2>&1 \
@@ -398,6 +406,166 @@ else
   note "    管理端未挂载或异常：GET /admin/login → ${ADMIN_LOGIN_CODE}（INFO，403 中间件仍已生效）"
 fi
 
+# 7.5b 管理端 /admin 经 nginx+TLS 的真往返（t75 补 t56 的未运行项①：登录→列表→总览→配置→图标→改密→登出）
+#     放在 7.6 之前：本节的 auth 请求量很小（用户名固定 cbadmin，远低于应用层 10 次/分），
+#     而 7.6 需要先「未超阈值」拿到 200（7.6c），不能被这里先耗尽 zone。
+log "7.5b 管理端 /admin 经 nginx 端到端（真 TLS + 真 Cookie 会话）"
+ADMIN_USER="$(grep -m1 '^ADMIN_BOOTSTRAP_USERNAME=' "${WORK}/app.env" | cut -d= -f2-)"
+ADMIN_PASS="$(grep -m1 '^ADMIN_BOOTSTRAP_PASSWORD=' "${WORK}/app.env" | cut -d= -f2-)"
+ADMIN_NEW_PASS='DeployE2E!2026y'
+JAR="${WORK}/admin_cookies.txt"; : > "${JAR}"
+admin_curl() { curl -sS -m 25 --cacert "${CERTS}/fullchain.pem" --resolve "${DOMAIN}:${HTTPS_PORT}:127.0.0.1" \
+  -b "${JAR}" -c "${JAR}" "$@"; }
+admin_code() { curl -sS -m 25 -o /dev/null -w '%{http_code}' --cacert "${CERTS}/fullchain.pem" \
+  --resolve "${DOMAIN}:${HTTPS_PORT}:127.0.0.1" -b "${JAR}" -c "${JAR}" "$@"; }
+ASPECT="https://${DOMAIN}:${HTTPS_PORT}"
+
+# 7.5b.1 登录页（Accept: text/html → HTML 渲染；无该头 → JSON 信封，见 security.wants_html）
+LOGIN_PAGE="$(admin_curl -H 'Accept: text/html' -w '\n__CODE__%{http_code}' "${ASPECT}/admin/login" 2>&1)"
+LP_CODE="${LOGIN_PAGE##*__CODE__}"; LP_BODY="${LOGIN_PAGE%$'\n'__CODE__*}"
+printf '%s' "${LP_BODY}" > "${WORK}/logs/admin_login_page.html"
+if [[ "${LP_CODE}" == "200" ]] && printf '%s' "${LP_BODY}" | grep -qiE '<form|<!doctype'; then
+  ok "7.5b.1 GET /admin/login（Accept: text/html）→ 200 且是 HTML 表单页（${#LP_BODY} 字节）"
+else
+  bad "7.5b.1 GET /admin/login → ${LP_CODE}（体：${LP_BODY:0:120}）"
+fi
+
+# 7.5b.2 错误口令 → 401（JSON 路径）
+BAD_BODY="$(admin_curl -w '\n__CODE__%{http_code}' -X POST -H 'Content-Type: application/json' \
+  -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"definitely-wrong-2026\"}" "${ASPECT}/admin/login" 2>&1)"
+BAD_CODE="${BAD_BODY##*__CODE__}"
+if [[ "${BAD_CODE}" == "401" ]]; then
+  ok "7.5b.2 错误口令 POST /admin/login（JSON）→ 401（$(printf '%s' "${BAD_BODY%$'\n'__CODE__*}" | head -c 90)）"
+else
+  bad "7.5b.2 错误口令 POST /admin/login → ${BAD_CODE}（期望 401）"
+fi
+
+# 7.5b.3 正确口令 → 200 + adminToken + Set-Cookie（管理侧独立 JWT）
+LOGIN_BODY="$(admin_curl -D "${WORK}/logs/admin_login_headers.txt" -w '\n__CODE__%{http_code}' \
+  -X POST -H 'Content-Type: application/json' \
+  -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"${ADMIN_PASS}\"}" "${ASPECT}/admin/login" 2>&1)"
+LOGIN_CODE="${LOGIN_BODY##*__CODE__}"; LOGIN_JSON="${LOGIN_BODY%$'\n'__CODE__*}"
+printf '%s' "${LOGIN_JSON}" > "${WORK}/logs/admin_login.json"
+ADMIN_TOKEN="$(printf '%s' "${LOGIN_JSON}" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("data",{}).get("adminToken",""))
+except Exception: print("")' 2>/dev/null)"
+COOKIE_SET="$(grep -ci 'set-cookie: carbonboo_admin_token=' "${WORK}/logs/admin_login_headers.txt" 2>/dev/null || true)"
+if [[ "${LOGIN_CODE}" == "200" && -n "${ADMIN_TOKEN}" && "${COOKIE_SET}" -ge 1 ]]; then
+  ok "7.5b.3 正确口令 → 200 + adminToken（长度 ${#ADMIN_TOKEN}）+ Set-Cookie: carbonboo_admin_token（HttpOnly 会话）"
+else
+  bad "7.5b.3 登录失败（code=${LOGIN_CODE} token 长度 ${#ADMIN_TOKEN} Set-Cookie 次数 ${COOKIE_SET}）"
+fi
+
+# 7.5b.4 用户列表（7.5 刚注册的客户端账号必须在里面）
+USERS_BODY="$(admin_curl -w '\n__CODE__%{http_code}' "${ASPECT}/admin/users" 2>&1)"
+USERS_CODE="${USERS_BODY##*__CODE__}"; USERS_JSON="${USERS_BODY%$'\n'__CODE__*}"
+printf '%s' "${USERS_JSON}" > "${WORK}/logs/admin_users.json"
+if [[ "${USERS_CODE}" == "200" ]] && printf '%s' "${USERS_JSON}" | grep -q "${APP_USER_NAME}"; then
+  ok "7.5b.4 GET /admin/users → 200 且含 7.5 注册的客户端账号 ${APP_USER_NAME}（会话 Cookie 生效）"
+else
+  bad "7.5b.4 GET /admin/users → ${USERS_CODE}，未找到 ${APP_USER_NAME}（体：${USERS_JSON:0:120}）"
+fi
+
+# 7.5b.5 数据总览
+OV_BODY="$(admin_curl -w '\n__CODE__%{http_code}' "${ASPECT}/admin/overview" 2>&1)"
+OV_CODE="${OV_BODY##*__CODE__}"; OV_JSON="${OV_BODY%$'\n'__CODE__*}"
+printf '%s' "${OV_JSON}" > "${WORK}/logs/admin_overview.json"
+if [[ "${OV_CODE}" == "200" ]] && printf '%s' "${OV_JSON}" | grep -q '"ok":true'; then
+  ok "7.5b.5 GET /admin/overview → 200（$(printf '%s' "${OV_JSON}" | head -c 100)…）"
+else
+  bad "7.5b.5 GET /admin/overview → ${OV_CODE}（体：${OV_JSON:0:120}）"
+fi
+
+# 7.5b.6 配置读 → 写 → 回显（PUT 只改传了的项，回 changed）
+CFG_BEFORE="$(admin_curl "${ASPECT}/admin/config" 2>&1)"
+CAP_BEFORE="$(printf '%s' "${CFG_BEFORE}" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("data",{}).get("dailyCap",""))
+except Exception: print("")' 2>/dev/null)"
+PUT_BODY="$(admin_curl -w '\n__CODE__%{http_code}' -X PUT -H 'Content-Type: application/json' \
+  -d '{"dailyCap":250}' "${ASPECT}/admin/config" 2>&1)"
+PUT_CODE="${PUT_BODY##*__CODE__}"; PUT_JSON="${PUT_BODY%$'\n'__CODE__*}"
+printf '%s' "${PUT_JSON}" > "${WORK}/logs/admin_config_put.json"
+CFG_AFTER="$(admin_curl "${ASPECT}/admin/config" 2>&1)"
+CAP_AFTER="$(printf '%s' "${CFG_AFTER}" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("data",{}).get("dailyCap",""))
+except Exception: print("")' 2>/dev/null)"
+if [[ "${PUT_CODE}" == "200" ]] && printf '%s' "${PUT_JSON}" | grep -q 'dailyCap' \
+  && [[ "${CAP_AFTER}" == "250" ]]; then
+  ok "7.5b.6 GET /admin/config dailyCap=${CAP_BEFORE} → PUT {\"dailyCap\":250} → 200 changed=$(printf '%s' "${PUT_JSON}" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("data",{}).get("changed"))
+except Exception: print("?")' 2>/dev/null) → 回显 dailyCap=${CAP_AFTER}"
+else
+  bad "7.5b.6 配置写入/回显异常（PUT=${PUT_CODE} 回显=${CAP_AFTER} 体：${PUT_JSON:0:120}）"
+fi
+
+# 7.5b.7 图标上传（image/png 原始字节）→ 7.5b.8 取回
+PNG_B64='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
+printf '%s' "${PNG_B64}" | base64 -d > "${WORK}/t75_icon.png"
+ICON_BODY="$(admin_curl -w '\n__CODE__%{http_code}' -X POST -H 'Content-Type: image/png' --data-binary "@${WORK}/t75_icon.png" \
+  "${ASPECT}/admin/items/frame_01/icon" 2>&1)"
+ICON_CODE="${ICON_BODY##*__CODE__}"; ICON_JSON="${ICON_BODY%$'\n'__CODE__*}"
+printf '%s' "${ICON_JSON}" > "${WORK}/logs/admin_icon_upload.json"
+ICON_NAME="$(printf '%s' "${ICON_JSON}" | grep -oE '/admin/icons/[A-Za-z0-9._-]+' | head -1 | sed 's|/admin/icons/||')"
+if [[ "${ICON_CODE}" == "200" && -n "${ICON_NAME}" ]]; then
+  ok "7.5b.7 POST /admin/items/frame_01/icon（Content-Type: image/png + $(stat -c%s "${WORK}/t75_icon.png") 字节）→ 200，落盘 ${ICON_NAME}"
+else
+  bad "7.5b.7 图标上传失败（code=${ICON_CODE} 体：${ICON_JSON:0:140}）"
+fi
+if [[ -n "${ICON_NAME}" ]]; then
+  ICON_DL="${WORK}/logs/icon_downloaded.bin"
+  ICON_HDRS="$(admin_curl -D - -o "${ICON_DL}" -w '\n__CODE__%{http_code}' "${ASPECT}/admin/icons/${ICON_NAME}" 2>&1)"
+  ICON_DL_CODE="${ICON_HDRS##*__CODE__}"
+  ICON_DL_BYTES="$(stat -c%s "${ICON_DL}" 2>/dev/null || echo 0)"
+  if [[ "${ICON_DL_CODE}" == "200" ]] && [[ "${ICON_DL_BYTES}" -gt 0 ]] \
+    && printf '%s' "${ICON_HDRS}" | grep -qi 'content-type: image/png'; then
+    ok "7.5b.8 GET /admin/icons/${ICON_NAME} → 200 + image/png（${ICON_DL_BYTES} 字节）"
+  else
+    bad "7.5b.8 取回调标失败（code=${ICON_DL_CODE} bytes=${ICON_DL_BYTES}）"
+  fi
+else
+  bad "7.5b.8 取回调标失败（上传未返回文件名）"
+fi
+
+# 7.5b.9 改密 → 旧口令失效 / 新口令可用
+PW_BODY="$(admin_curl -w '\n__CODE__%{http_code}' -X POST -H 'Content-Type: application/json' \
+  -d "{\"oldPassword\":\"${ADMIN_PASS}\",\"newPassword\":\"${ADMIN_NEW_PASS}\"}" "${ASPECT}/admin/password" 2>&1)"
+PW_CODE="${PW_BODY##*__CODE__}"
+OLD_AGAIN="$(admin_curl -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+  -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"${ADMIN_PASS}\"}" "${ASPECT}/admin/login" 2>/dev/null)"
+NEW_OK="$(admin_curl -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+  -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"${ADMIN_NEW_PASS}\"}" "${ASPECT}/admin/login" 2>/dev/null)"
+if [[ "${PW_CODE}" == "200" && "${OLD_AGAIN}" == "401" && "${NEW_OK}" == "200" ]]; then
+  ok "7.5b.9 POST /admin/password → 200；旧口令再登录 ${OLD_AGAIN}、新口令登录 ${NEW_OK}（改密真的生效）"
+else
+  bad "7.5b.9 改密链异常（改密=${PW_CODE} 旧口令=${OLD_AGAIN} 新口令=${NEW_OK}）"
+fi
+
+# 7.5b.10 登出 → 会话 Cookie 失效
+OUT_BODY="$(admin_curl -w '\n__CODE__%{http_code}' -X POST "${ASPECT}/admin/logout" 2>&1)"
+OUT_CODE="${OUT_BODY##*__CODE__}"; OUT_JSON="${OUT_BODY%$'\n'__CODE__*}"
+AFTER_OUT="$(admin_curl -o /dev/null -w '%{http_code}' -H 'Accept: text/html' "${ASPECT}/admin/users" 2>/dev/null)"
+if [[ "${OUT_CODE}" == "200" ]] && printf '%s' "${OUT_JSON}" | grep -q 'loggedOut' \
+  && [[ "${AFTER_OUT}" != "200" ]]; then
+  ok "7.5b.10 POST /admin/logout → 200 loggedOut；登出后再取 /admin/users → ${AFTER_OUT}（会话已失效）"
+else
+  bad "7.5b.10 登出链异常（logout=${OUT_CODE} 登出后取列表=${AFTER_OUT}）"
+fi
+
+# 7.5b.11 客户端令牌经 nginx 打 /admin/* 一律 403（管理端与客户端两套 JWT）
+C403_ALL=1
+for p in /admin/users /admin/overview /admin/config /admin/icons/none.png; do
+  c="$(curl -sS -m 20 -o /dev/null -w '%{http_code}' --cacert "${CERTS}/fullchain.pem" \
+      --resolve "${DOMAIN}:${HTTPS_PORT}:127.0.0.1" -H "Authorization: Bearer ${USER_TOKEN}" \
+      "${ASPECT}${p}" 2>/dev/null)"
+  note "    客户端令牌 → ${p}：${c}"
+  [[ "${c}" == "403" ]] || C403_ALL=0
+done
+if [[ -n "${USER_TOKEN}" && "${C403_ALL}" == "1" ]]; then
+  ok "7.5b.11 客户端令牌经 nginx 打 /admin/users、/admin/overview、/admin/config、/admin/icons/* → 全部 403"
+else
+  bad "7.5b.11 客户端令牌打 /admin/* 未全部 403（见上面逐条）"
+fi
+
 # 7.6 限流（放在最后：zone 是共享的，避免污染前面的正常请求）
 log "7.6 限流实测（zone=carbonboo_login，rate=20r/m）"
 LIMIT_429=0; LIMIT_OTHER=0
@@ -431,6 +599,22 @@ if [[ "${LIMIT_SHOP_OK}" -gt 0 ]]; then
   ok "7.6c 同接口未超阈值时仍正常 200（${LIMIT_SHOP_OK} 次）"
 else
   bad "7.6c 取价接口在阈值内也拿不到 200"
+fi
+# 7.6d 管理端登录路径也吃同一个 zone（证明 nginx 自己那层没被旁路；每次换 username 以排除应用层
+#      `admin|<IP>|<username>` 计数器的干扰，423/429 只能来自 nginx 的 limit_req）
+N429_ADMIN=0; OTHER_ADMIN=0
+for i in $(seq 1 12); do
+  c="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' --cacert "${CERTS}/fullchain.pem" \
+      --resolve "${DOMAIN}:${HTTPS_PORT}:127.0.0.1" -X POST -H 'Content-Type: application/json' \
+      -d "{\"username\":\"probe_${i}\",\"password\":\"wrong-${i}-pass\"}" \
+      "https://${DOMAIN}:${HTTPS_PORT}/admin/login" 2>/dev/null)"
+  if [[ "${c}" == "429" ]]; then N429_ADMIN=$((N429_ADMIN+1)); else OTHER_ADMIN=$((OTHER_ADMIN+1)); fi
+done
+note "    POST /admin/login × 12（每次不同 username）→ 429=${N429_ADMIN} 其它=${OTHER_ADMIN}"
+if [[ "${N429_ADMIN}" -gt 0 ]]; then
+  ok "7.6d 管理端登录路径共享 carbonboo_login zone：12 次里 ${N429_ADMIN} 次 429（nginx 层限流对 /admin/(login|password) 生效）"
+else
+  bad "7.6d 管理端登录路径未触发 nginx 限流（429 次数 0）"
 fi
 
 # ============================================================ 8. 备份与还原 ===
@@ -527,9 +711,12 @@ if [[ "${rc_g1}" == "2" ]] && grep -q 'STOP: 库名' "${WORK}/logs/migrate_guard
 else
   bad "9.4 安全阀①失效（rc=${rc_g1}）"
 fi
+# 安全阀② 要的是「有 bash、**没有 mysql 客户端**」的环境。原实现用 alpine + `apk add bash`，
+# 一旦拉不到 Alpine 镜像源就变成 rc=127（command not found）→ 门禁假红。改用本地已在的 ${PY_IMAGE}
+# （python:3.11-slim：自带 bash、无 mysql/mariadb 客户端），语义完全相同且不依赖网络。
 docker run --rm --network "${NET}" -v "${SERVER}/deploy:/opt/carbonboo/server/deploy:ro" \
   -v "${SERVER}/sql:/opt/carbonboo/server/sql:ro" \
-  alpine:3.20 sh -c 'command -v bash >/dev/null || apk add --no-cache bash >/dev/null 2>&1; bash /opt/carbonboo/server/deploy/migrate.sh carbonboo_deploy_e2e' \
+  "${PY_IMAGE}" bash /opt/carbonboo/server/deploy/migrate.sh carbonboo_deploy_e2e \
   > "${WORK}/logs/migrate_guard_noclient.log" 2>&1 && rc_g2=0 || rc_g2=$?
 if [[ "${rc_g2}" == "3" ]]; then
   ok "9.5 安全阀②：无 mysql 客户端 → 拒跑（exit 3，不静默跳过迁移）"
@@ -537,7 +724,7 @@ else
   bad "9.5 安全阀②失效（rc=${rc_g2}）"
 fi
 
-log "9.6 systemd 单元（静态校验；容器内无 PID1 systemd，单元**从未启动**）"
+log "9.6 systemd 单元（静态校验；真启动见 9.8）"
 if command -v systemd-analyze >/dev/null 2>&1; then
   # (a) 原样对仓库路径做 verify（/mnt/c 由 drvfs 挂载，权限位被放成 0777 + 生产安装路径 /opt/carbonboo 本机不存在）
   systemd-analyze verify "${SYSTEMD_DIR}"/*.service "${SYSTEMD_DIR}"/*.timer \
@@ -572,9 +759,9 @@ grep -q 'ExecStart=/opt/carbonboo/server/.venv/bin/uvicorn app.main:app' "${SYST
   && ok "9.7 单元 ExecStart 与本次实跑的应用启动形态一致（uvicorn app.main:app --workers 2）" \
   || bad "9.7 单元 ExecStart 与实跑形态不一致"
 if command -v systemctl >/dev/null 2>&1; then
-  note "    systemctl: $(command -v systemctl)（WSL 无 PID1 systemd，未运行）"
+  note "    systemctl: $(command -v systemctl)（宿主 PID1 = $(ps -p 1 -o comm= 2>/dev/null || echo '?')；单元的真启动由 9.8 在 PID1=systemd 的容器里做）"
 else
-  note "    systemctl 不存在 → 单元**未运行**（如实记录）"
+  note "    systemctl 不存在 → 静态校验到 9.6 为止（真启动见 9.8）"
 fi
 # 9.6c/9.6d 单元内容逐条核对（这部分与 systemd-analyze 无关，是纯文本事实）
 SVC="${SYSTEMD_DIR}/carbonboo-server.service"; PURGE="${SYSTEMD_DIR}/carbonboo-purge.service"; TMR="${SYSTEMD_DIR}/carbonboo-purge.timer"
@@ -592,6 +779,26 @@ if grep -qE 'JWT_SECRET|MYSQL_PASSWORD|ADMIN_JWT_SECRET|password=' "${SVC}" "${P
   bad "9.6e 单元文件里出现机密字样（密钥只应进 server/.env）"
 else
   ok "9.6e 三个单元文件内无机密（密钥只从 server/.env 600 读）"
+fi
+
+# ================================== 9.8 systemd 单元与 timer 的真启动（t75） ====
+# t56 的「未运行项②」在本轮被关掉：宿主 WSL 的 PID1 **就是 systemd**（实测 `ps -p 1 -o comm=` → systemd、
+# `systemctl is-system-running` → running），但没有 root（`sudo -n` 需交互认证），所以真启动放在
+# **PID1 = systemd 的容器**里做：真装 /opt/carbonboo 布局 → 装三个单元（逐字节）→ start → status/journalctl
+# → list-timers → 用容器内的临时副本（OnCalendar 每分钟 + RandomizedDelaySec=0）真触发一次 purge。
+log "9.8 systemd 真启动（PID1=systemd 容器：单元 + timer 真拉起，t75 补 t56 未运行项②）"
+SD_LOG="${WORK}/logs/run_systemd.log"
+L1_KEEP="${KEEP}" bash "${HERE}/run_systemd.sh" >"${SD_LOG}" 2>&1 && rc_sd3=0 || rc_sd3=$?
+grep -E '^(PASS|FAIL): ' "${SD_LOG}" | sed 's/^/  /' || true
+note "    子脚本退出码 = ${rc_sd3}（0=全过 1=有失败 2=环境不可达）；原始输出 ${SD_LOG}"
+if [[ "${rc_sd3}" == "0" ]]; then
+  ok "9.8 systemd 真启动：三个单元与 purge timer 在 PID1=systemd 的容器里真跑通（逐条 PASS 见上）"
+elif [[ "${rc_sd3}" == "1" ]]; then
+  sd_fails="$(grep -c '^FAIL: ' "${SD_LOG}")"
+  tail -8 "${SD_LOG}" | sed 's/^/      /'
+  bad "9.8 systemd 真启动有 ${sd_fails} 条断言未过（细节见 ${SD_LOG}）"
+else
+  bad "9.8 systemd 真启动**未运行**（环境不可达，子脚本退出码 ${rc_sd3}；原始输出 ${SD_LOG}）"
 fi
 
 # ================================================================ 10. 收尾 ====
@@ -625,8 +832,9 @@ else
   printf '提示：想保留现场请用 L1_KEEP=1 重跑（默认删除 %s）\n' "${WORK}"
 fi
 printf '\n未运行清单（明确**不算通过**，与上面 PASS 严格分开）：\n'
-printf '  - N1 systemd 单元与 timer 从未启动：WSL 内无 PID1 systemd（systemctl 存在但 systemd 未作为 init 运行），\n'
-printf '       容器内也不是 systemd init ⇒ 只有静态校验（9.6a/9.6b/9.6c/9.6d/9.6e/9.7），没有 enable/start/日志\n'
+printf '  - N1 systemd 真启动已由 9.8 关闭（PID1=systemd 容器内装单元→daemon-reload→start→status→journalctl→\n'
+printf '       list-timers→真触发一次 purge）；**仍未运行**的是真云 VM 上的开机自启持久化（跨重启的 enable 状态）\n'
+printf '       与 systemd-analyze security 评分 —— 容器不是云主机，这一条不冒充\n'
 printf '  - N2 certbot 真实签发与续期未跑：未接 ACME 服务器（不联网），证书用 openssl 自签替代\n'
 printf '  - N3 公网域名 api.example.com 的 DNS/防火墙/WAF 未验证：只有本机端口映射 + Host 头\n'
 printf '  - N4 mysqldump 的锁表与耗时未做规模测试：任务库只有种子级数据（解压后 KB 级）\n'
