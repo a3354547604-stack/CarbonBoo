@@ -47,6 +47,11 @@ const AGO = Date.now() - 3600000; // 发生时间：1 小时前，落在 30 天�
 
 /** 端侧同步游标列：服务端不建该列（server/sql/schema.sql:10 注释），不参与同步，故不纳入逐列比对。 */
 const BOOKKEEPING = new Set(['sync_state']);
+// 跨端比较时 **`updated_at` 也允许不同**：§5.3:1095/1097 规定「本机业务行的 `updated_at` = 客户端基准」，
+// 因此同一逻辑版本在两端的绝对值本来就相差两端时钟偏移（同机实测为往返抖动，几十 ms）。
+// 其余列仍必须逐列相同；`updated_at` 的差值必须落在该上界内（不是"忽略这一列"）。
+const CLOCK_SKEW_MAX_MS = 3000;
+const CROSS_END_SKIP = new Set([...BOOKKEEPING, 'updated_at']);
 const DEV = { A: 'l2-dev-A', B: 'l2-dev-B', C: 'l2-dev-C' };
 
 let FAILED = 0;
@@ -200,6 +205,50 @@ function dbCount(dev, table, where, args) {
   return rows === null || rows.length === 0 ? -1 : rows[0].n;
 }
 /** 逐列比对（跳过端侧游标列）；跨引擎比较故按字符串口径归一。 */
+function crossDiffs(a, b) {
+  return columnDiff(a, b, CROSS_END_SKIP);
+}
+
+/** 两端 `updated_at` 的绝对差（ms）；任一侧缺失/非数 → Infinity（判红）。 */
+function skewMs(a, b) {
+  if (a === null || b === null || a === undefined || b === undefined) {
+    return Infinity;
+  }
+  const x = Number(norm(a.updated_at));
+  const y = Number(norm(b.updated_at));
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return Infinity;
+  }
+  return Math.abs(x - y);
+}
+
+/** 单个时间戳是否落在目标值 ± `CLOCK_SKEW_MAX_MS` 内。 */
+function nearMs(v, target) {
+  const x = Number(norm(v));
+  return Number.isFinite(x) && Math.abs(x - target) <= CLOCK_SKEW_MAX_MS;
+}
+
+/** 两组行（同序、按 id 对齐）跨端等价：除游标列与 `updated_at` 外逐列相同，且差值在上界内。 */
+function crossRowsEq(rowsA, rowsB) {
+  if (rowsA.length !== rowsB.length) {
+    return false;
+  }
+  let i = 0;
+  while (i < rowsA.length) {
+    if (norm(rowsA[i].id) !== norm(rowsB[i].id)) {
+      return false;
+    }
+    if (crossDiffs(rowsA[i], rowsB[i]).length !== 0) {
+      return false;
+    }
+    if (skewMs(rowsA[i], rowsB[i]) > CLOCK_SKEW_MAX_MS) {
+      return false;
+    }
+    i = i + 1;
+  }
+  return true;
+}
+
 function columnDiff(a, b, skip) {
   const ignore = skip || BOOKKEEPING;
   if (a === null || b === null) {
@@ -492,17 +541,19 @@ function scenario1() {
   const sb = run('B', 'sync', { userId: ctx.userId });
   const pb = pushOut(sb);
   const b1 = dbRow('B', 'carbon_record', id1);
-  const diffs = columnDiff(a1, b1);
+  const diffs = crossDiffs(a1, b1);
   check(
     '1.2',
-    'push → pull 后，B 库中同一行与 A **逐列相同**（含四字段快照；排除端侧游标列 sync_state）',
-    b1 !== null && diffs.length === 0,
+    'push → pull 后，B 库中同一行与 A **除 `updated_at` 外逐列相同**（含四字段快照；排除端侧游标列 sync_state）'
+      + '——`updated_at` 按 §5.3:1095/1097 是各自**客户端基准**，差值 = 两端时钟偏移（本机上界 3s）',
+    b1 !== null && diffs.length === 0 && skewMs(a1, b1) <= CLOCK_SKEW_MAX_MS,
     [
       `A push（原始响应）: ${wireLine(pushWire(sa))}`,
       `B pull（原始响应，仅列该行所在表）: ${j((pullRes(sb) || { data: {} }).data.tables === undefined ? null : (pullRes(sb).data.tables.carbon_record || []).filter((r) => r.id === id1))}`,
       `A 库: ${rowBrief(a1)}`,
       `B 库: ${rowBrief(b1)}`,
-      `差异列: ${diffs.length === 0 ? '无' : diffs.join(' ; ')}`,
+      `差异列（跳过 sync_state / updated_at）: ${diffs.length === 0 ? '无' : diffs.join(' ; ')}`,
+      `updated_at 两端差 = ${skewMs(a1, b1)} ms（A=${norm(a1 && a1.updated_at)} B=${norm(b1 && b1.updated_at)}；允许上界 ${CLOCK_SKEW_MAX_MS} ms）`,
       `B 侧 sync_state=${norm(b1 && b1.sync_state)}（A 侧 ${norm(a1 && a1.sync_state)}）——端侧游标列，服务端不建该列，不参与同步`,
     ],
   );
@@ -527,13 +578,14 @@ function scenario1() {
   });
   check(
     '1.4',
-    '另外的真实业务表（point_record 积分流水）也随同一次同步往返且两端逐列一致',
-    pa2.length > 0 && pa2.length === pb2.length && j(strip(pa2)) === j(strip(pb2)),
+    '另外的真实业务表（point_record 积分流水）也随同一次同步往返：行数相同、除 `updated_at`（各自客户端基准）外逐列一致',
+    pa2.length > 0 && pa2.length === pb2.length && crossRowsEq(strip(pa2), strip(pb2)),
     [
       `A 侧 point_record 行数=${pa2.length}，B 侧=${pb2.length}`,
       `A 侧首行: ${rowBrief(pa2[0])}`,
       `B 侧首行: ${rowBrief(pb2[0])}`,
-      `两端去游标列后全等: ${j(strip(pa2)) === j(strip(pb2))}`,
+      `两端去游标列+updated_at 后全等: ${crossRowsEq(strip(pa2), strip(pb2))}`,
+      `两端 updated_at 逐行差（ms，上界 ${CLOCK_SKEW_MAX_MS}）: ${pa2.map((r, i) => skewMs(r, pb2[i])).join(', ')}`,
     ],
   );
 }
@@ -587,23 +639,24 @@ function scenario2() {
       `B push 的 conflicts=${pB.data.conflicts}（两端自上次同步后都改过这一行 → 真冲突）`,
     ],
   );
-  const diffs = columnDiff(a, b);
+  const diffs = crossDiffs(a, b);
   check(
     '2.2',
-    '两端最终行**逐列完全相同**（不是只断言服务端返回 accepted）',
-    diffs.length === 0,
+    '两端最终行**除 `updated_at` 外逐列完全相同**（不是只断言服务端返回 accepted；`updated_at` 是各自客户端基准，差值 = 两端时钟偏移）',
+    diffs.length === 0 && skewMs(a, b) <= CLOCK_SKEW_MAX_MS,
     [
       `A push#2（旧版本，被服务端拒绝）: ${wireLine(pushWire(syncA2))}`,
       `A 库: ${rowBrief(a)}`,
       `B 库: ${rowBrief(b)}`,
-      `差异列: ${diffs.length === 0 ? '无' : diffs.join(' ; ')}`,
+      `差异列（跳过 sync_state / updated_at）: ${diffs.length === 0 ? '无' : diffs.join(' ; ')}`,
+      `updated_at 两端差 = ${skewMs(a, b)} ms（A=${norm(a && a.updated_at)} B=${norm(b && b.updated_at)}；上界 ${CLOCK_SKEW_MAX_MS} ms）`,
     ],
   );
   check(
     '2.3',
     '胜者确为 updatedAt 更大的一版（B 版内容），且服务端与两端同一份',
-    a !== null && b !== null && norm(a.updated_at) === String(T2) && a.note === 'LWW-B版' && norm(a.amount) === '9'
-      && norm(b.updated_at) === String(T2) && norm(srv.updated_at) === String(T2) && srv.note === 'LWW-B版',
+    a !== null && b !== null && nearMs(a.updated_at, T2) && a.note === 'LWW-B版' && norm(a.amount) === '9'
+      && nearMs(b.updated_at, T2) && nearMs(srv.updated_at, T2) && srv.note === 'LWW-B版',
     [
       `T2=${T2}（B 版） > T1=${T1}（A 版）`,
       `A 库: updated_at=${norm(a && a.updated_at)} note=${norm(a && a.note)} amount=${norm(a && a.amount)}`,
@@ -614,7 +667,7 @@ function scenario2() {
   check(
     '2.4',
     '旧版本上行被服务端**拒绝**（不做降级覆盖），A 靠随后的 pull 收敛到胜者版本',
-    pA2 !== null && pA2.data.rejected >= 1 && norm(a.updated_at) === String(T2),
+    pA2 !== null && pA2.data.rejected >= 1 && nearMs(a.updated_at, T2),
     [
       `A push#2 响应: ${j(pA2.data)}`,
       `A 库最终: ${rowBrief(a)}`,
@@ -989,15 +1042,16 @@ function scenario6() {
       `B 侧该行: ${rowBrief(b)}`,
     ],
   );
-  const diffs = columnDiff(a, b);
+  const diffs = crossDiffs(a, b);
   check(
     '6.3',
-    '软删行两端逐列一致，且服务端也持软删行（不物理删）',
-    diffs.length === 0 && srv !== null && norm(srv.is_deleted) === '1',
+    '软删行两端除 `updated_at`（各自客户端基准）外逐列一致，且服务端也持软删行（不物理删）',
+    diffs.length === 0 && skewMs(a, b) <= CLOCK_SKEW_MAX_MS && srv !== null && norm(srv.is_deleted) === '1',
     [
       `A 库: ${rowBrief(a)}`,
       `B 库: ${rowBrief(b)}`,
-      `差异列: ${diffs.length === 0 ? '无' : diffs.join(' ; ')}`,
+      `差异列（跳过 sync_state / updated_at）: ${diffs.length === 0 ? '无' : diffs.join(' ; ')}`,
+      `updated_at 两端差 = ${skewMs(a, b)} ms（上界 ${CLOCK_SKEW_MAX_MS} ms）`,
       `服务端: ${rowBrief(srv)}`,
     ],
   );
@@ -1208,6 +1262,112 @@ async function scenario4() {
         + '要求客户端拿到 `offsetMs`；`SyncPullData` 里没有该字段，因此客户端必须从 push 握手腿取（t62 已实现：响应有字段优先、缺省回落握手腿）。',
     ],
   );
+  // ── 4.8 客户端**落库基准**（附录 B §5.3:1097「本机业务行的 `updated_at` = 客户端基准」） ──
+  // 构造与 4.5 同形，但把 A 的时钟摆成**超前** 5 分钟（`clientOffsetMs = -offsetMs ≈ +300000`）⇒
+  // 对端那一版换算后比本机更新 ⇒ A 采纳它。此时写进 A 库的 `updated_at` 必须是**换算到本机基准后**
+  // 的值（`raw + clientOffsetMs`），而不是服务端返回的裸值 —— 否则本机库里就混了两种基准，
+  // 下一轮再把它当"对端值"比较时整体偏 `|offsetMs|`（慢性漂移，t68 判据）。
+  const T8 = Date.now() + 300000;
+  run('A', 'save_record', {
+    userId: ctx.userId, category: 'travel', subType: 'bus', amount: 7,
+    occurredAt: AGO, note: '基准-本机版', at: T8,
+  });
+  const R8 = recordIdByNote('A', '基准-本机版');
+  run('A', 'sync', { userId: ctx.userId });
+  const raw8 = T8 + 120000;
+  serverUpdate('carbon_record', R8, {
+    updated_at: raw8, device_id: DEV.B, note: '基准-对端版', amount: 12,
+  });
+  const anchor48 = run('A', 'set_config', { set: { last_sync_at: T8 + 1 }, get: ['last_sync_at'] });
+  const ahead = run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: 300000 });
+  const aheadPush = pushOut(ahead) || {};
+  const off8 = (aheadPush.data || {}).offsetMs;
+  const row8 = dbRow('A', 'carbon_record', R8);
+  const stored8 = row8 === null ? NaN : Number(norm(row8.updated_at));
+  const expect8 = raw8 + (-off8);
+  check(
+    '4.8',
+    '客户端落库基准（§5.3:1097）：A 时钟超前 5 分钟（`clientOffsetMs = -offsetMs ≈ +300000`）采纳对端版本时，写进本机库的 `updated_at` 必须是**本机基准**值 `raw + clientOffsetMs`，不能是服务端裸值',
+    ahead.ok === true && row8 !== null && row8.note === '基准-对端版'
+      && Math.abs(stored8 - raw8) > 1000
+      && Math.abs(stored8 - expect8) <= 3000,
+    [
+      `A 锚点（本机行不进上行）: ${j(anchor48.config)}`,
+      `服务端那一版（夹具摆）: updated_at=${raw8} device_id=${DEV.B} note=基准-对端版`,
+      `A push 握手腿 offsetMs=${off8} ⇒ clientOffsetMs=${-off8}`,
+      `A 库最终: ${rowBrief(row8)}`,
+      `判定：库内 updated_at=${stored8}；服务端裸值=${raw8}（差 ${stored8 - raw8}）；本机基准期望=${expect8}（差 ${stored8 - expect8}）`,
+      '改前（t68 修复前）库内 = 服务端裸值（差=0）⇒ 本机库里混两种基准；改后 = 本机基准值。',
+    ],
+  );
+
+  // ── 4.9 时钟往返**不得漂移**（N=3 轮、同一行、偏移恒定：钟慢 60 秒） ──
+  // 同一行连续「push → pull」三轮，每轮都把本机行重推一次（`updated_at > since` 恒成立）：
+  // 本机库与服务端库的 `updated_at` 都不得逐轮被再加一次偏移，内容也不得被反复改写。
+  const T9 = Date.now() + 180000;
+  run('A', 'save_record', {
+    userId: ctx.userId, category: 'travel', subType: 'bus', amount: 9,
+    occurredAt: AGO, note: '不漂移', at: T9,
+  });
+  const R9 = recordIdByNote('A', '不漂移');
+  const round9 = [];
+  let i9 = 0;
+  while (i9 < 3) {
+    const r9 = run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: -60000 });
+    const p9 = pushOut(r9) || {};
+    const l9 = dbRow('A', 'carbon_record', R9);
+    const s9 = serverRow('carbon_record', R9);
+    round9.push({
+      round: i9 + 1,
+      ok: r9.ok === true,
+      offsetMs: (p9.data || {}).offsetMs,
+      local: l9 === null ? NaN : Number(norm(l9.updated_at)),
+      server: s9 === null ? NaN : Number(norm(s9.updated_at)),
+      note: l9 === null ? null : l9.note,
+    });
+    i9 = i9 + 1;
+  }
+  const near3 = (a, b) => Math.abs(a - b) <= 3000;
+  const localStable = round9.every((r) => r.ok && r.note === '不漂移' && near3(r.local, T9));
+  const serverStable = round9.every((r) => near3(r.server, T9 + 60000));
+  check(
+    '4.9',
+    '时钟往返不漂移：偏移恒定（钟慢 60 秒）时同一行连推 3 轮，本机库 `updated_at` 每轮都回到本机基准 T9、服务端库每轮都是服务端基准 `T9+offset`；不得每轮再累加一次偏移（差 ≤3s，噪声为往返抖动几十 ms）',
+    localStable && serverStable && near3(round9[2].local, round9[0].local) && near3(round9[2].server, round9[0].server),
+    round9.map((r) => `第 ${r.round} 轮：push offsetMs=${r.offsetMs}；本机库 updated_at=${r.local}（目标 ${T9}，差 ${r.local - T9}）`
+      + `；服务端库 updated_at=${r.server}（目标 ${T9 + 60000}，差 ${r.server - (T9 + 60000)}）；本机 note=${r.note}`),
+  );
+  note(`4.9 补充：同一行三轮直查值 —— 本机 [${round9.map((r) => r.local).join(', ')}]，服务端 [${round9.map((r) => r.server).join(', ')}]`
+    + `（若换算不幂等，每轮会各累加一次 |offsetMs|=60000 的偏差）。`);
+
+  // ── 4.10 服务端**落库基准**（附录 B §5.3:1095「服务端与云端行的 `updated_at` = 服务端基准」） ──
+  // 真推一行（客户端钟慢 60 秒 ⇒ 服务端 `offsetMs ≈ +60000`）：服务端库内必须存**换算后**的值
+  //（`raw + offset_ms`），不能原样存客户端时间戳（改前即如此，实测见 t68 定事实）。
+  const T10 = Date.now() + 240000;
+  run('A', 'save_record', {
+    userId: ctx.userId, category: 'utility', subType: 'water', amount: 30,
+    occurredAt: AGO, note: '基准-服务端', at: T10,
+  });
+  const R10 = recordIdByNote('A', '基准-服务端');
+  const pushed10 = run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: -60000 });
+  const push10 = pushOut(pushed10) || {};
+  const off10 = (push10.data || {}).offsetMs;
+  const srv10 = serverRow('carbon_record', R10);
+  const stored10 = srv10 === null ? NaN : Number(norm(srv10.updated_at));
+  check(
+    '4.10',
+    '服务端落库基准（§5.3:1095）：客户端钟慢 60 秒推上一行（raw = 客户端基准）时，服务端库内 `updated_at` 必须是**服务端基准**值 `raw + offset_ms`，不能原样存客户端时间戳',
+    pushed10.ok === true && srv10 !== null && Math.abs(stored10 - T10) > 1000
+      && Math.abs(stored10 - (T10 + off10)) <= 3000,
+    [
+      `A 本机行: at=${T10} note=基准-服务端`,
+      `A push 握手腿 offsetMs=${off10}（≈ +60000）`,
+      `直查服务端: ${rowBrief(srv10)}`,
+      `判定：服务端 updated_at=${stored10}；客户端 raw=${T10}（差 ${stored10 - T10}）；服务端基准期望=${T10 + off10}（差 ${stored10 - (T10 + off10)}）`,
+      '改前（t68 修复前）服务端 = 客户端 raw（差=0）⇒ 增量 `since` 与库内值跨基准，实测会漏行/重复拉（见 REPORT §7 与 VERIFICATION 追加节）。',
+    ],
+  );
+
   OBS.offset = {
     backPullKeys: backHasOffset ? 'has-offsetMs' : 'no-offsetMs',
     realKeys: realKeys,

@@ -781,6 +781,11 @@ export class SyncService {
     const remoteRaw: number = numOf(row, 'updated_at');
     // 对端时间戳 → 本机基准（§6.4-6）。offsetMs 已由 applyPull 取反，这里用加号与 §6.3 伪码一致。
     const remoteUpdated: number = remoteRaw + offsetMs;
+    // 落库基准（§5.3:1097「本机业务行的 `updated_at` = 客户端基准」）：写进本机库**之前**就把对端
+    // 时间戳换算到本机基准。否则本机库里会混两种基准——自己写的行是客户端基准、拉回来的行是服务端
+    // 基准——下一次比较就变成「服务端基准的 `localUpdated`」对「换算后的 `remoteUpdated`」，
+    // 偏差 = |offsetMs|（t68：客户端落库基准一致性）。
+    const stored: RowShape = SyncService.rowOnClientBasis(row, remoteUpdated);
     if (local.length > 0) {
       // 只增表（`point_record` / `carbon_include`）：本机已有同 id / 同业务键的行即**去重丢弃**，
       // 永不 UPDATE（铁律 4；与服务端 `_merge_append_only` 同规则）。计 skipped，不计 conflicts
@@ -789,9 +794,12 @@ export class SyncService {
         return new LwwDecision('skipped', false);
       }
       const localUpdated: number = numOf(local[0], 'updated_at');
-      // 「真冲突」= 两端自上次同步后**都改过这一行**（§6.3:959/966）。
-      // ⚠️ 用**原始** remoteRaw 与 since 比较（协议里落库的就是原始对端时间戳）。
-      const trueConflict: boolean = localUpdated > since && remoteRaw > since;
+      // 「真冲突」= 两端自上次同步后**都改过这一行**（§6.3:959/966；§5.3:1095 客户端行）。
+      // 本机行是**客户端**基准，而锚点 `since`（= `lastSyncAt` / 响应 `serverTime`）是**服务端**基准
+      //（§5.3:1089：`lastSyncAt` 单一口径选服务端基准），所以锚点也要换算到本机一侧：
+      // `lastSyncAtLocal = since + clientOffsetMs`（= `since − respOffsetMs`）。对端行保持原值比较。
+      const sinceLocal: number = since + offsetMs;
+      const trueConflict: boolean = localUpdated > sinceLocal && remoteRaw > since;
       if (localUpdated > remoteUpdated) {
         return new LwwDecision('kept', trueConflict);
       }
@@ -802,17 +810,17 @@ export class SyncService {
         if (remoteDevice > localDevice) {
           // 远端胜出 → 走下面的写回
           await this.deleteLocal(table, local[0]);
-          return this.insertRow(table, row, trueConflict);
+          return this.insertRow(table, stored, trueConflict);
         }
         // 远端 deviceId 更小、或两端相同（同一版本）→ 保留本机
         return new LwwDecision('kept', trueConflict);
       }
       // 对端更新 → 覆盖本机
       await this.deleteLocal(table, local[0]);
-      return this.insertRow(table, row, trueConflict);
+      return this.insertRow(table, stored, trueConflict);
     }
     // 本机没有该行 → 直接接纳（本机没有的行走不到"真冲突"条件，恒为 false）
-    return this.insertRow(table, row, false);
+    return this.insertRow(table, stored, false);
   }
 
   /**
@@ -994,6 +1002,24 @@ export class SyncService {
       out.push(SyncService.quoted(names[i]));
       i = i + 1;
     }
+    return out;
+  }
+
+  /**
+   * 把对端行复制一份，并把 `updated_at` 换成**本机（客户端）基准**的值（§5.3:1097）。
+   *
+   * 只改这一列：其余列逐列原样拷贝（含 `device_id` —— 平局/归属判断依赖它保持对端的值）。
+   * 不在这里做任何业务计算，只为「本机库里只有一种时间基准」这一条不变量服务。
+   */
+  private static rowOnClientBasis(row: RowShape, updatedAt: number): RowShape {
+    const out: RowShape = {};
+    const keys: string[] = Object.keys(row);
+    let i: number = 0;
+    while (i < keys.length) {
+      out[keys[i]] = row[keys[i]];
+      i = i + 1;
+    }
+    out['updated_at'] = updatedAt;
     return out;
   }
 
