@@ -1,6 +1,8 @@
-# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；round 7 = t41 判图腿真相更正 + 首次实跑见 §R7；round 8 = t42 全量干净构建 + 离线 L1 门禁自证见 §R8；round 9 = t43 hypium 36 个 it() 首次离线真执行（PASS=18/FAIL=18 + 缺口清单）见 §R9；round 10 = t48 离线 L1 从 18/18 收敛到 36/36 + 5 条 app 生产缺陷登记见 §R10；round 11 = t50 5 条缺陷修复的非作者独立验证（`verdict = pass`）见 §R11；**最新 round 12 = t55 `/admin` 浏览器级端到端验证（真实 Edge headless + CDP，七项功能 + 四条鉴权边界 97 项全过）见 §R12**）
+# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；round 7 = t41 判图腿真相更正 + 首次实跑见 §R7；round 8 = t42 全量干净构建 + 离线 L1 门禁自证见 §R8；round 9 = t43 hypium 36 个 it() 首次离线真执行（PASS=18/FAIL=18 + 缺口清单）见 §R9；round 10 = t48 离线 L1 从 18/18 收敛到 36/36 + 5 条 app 生产缺陷登记见 §R10；round 11 = t50 5 条缺陷修复的非作者独立验证（`verdict = pass`）见 §R11；round 13 = t59 登录页 `#flash` 修复 + `admin_e2e` 清理时机 + 登出语义留档见 §R13；round 14 = t60 交付验收总表（17 行 + U1–U8）见 §R14；round 15 = t69 可复现性独立验证（干净副本内五条门禁逐条真跑）见 §R15；**最新 round 16 = t74 文档一致性收口（页面数定真值 18 + `it()` 计数统一 41 + F1/F2 状态更正指针）见 §R16**（更早 round 12 = t55 `/admin` 浏览器级端到端验证见 §R12））
 
 > **最新一轮是 §R12（round 12 / t55，绑定 HEAD `585fca9`；`server/**` 自 `1f9ca88` 起未变）**：用**真实浏览器**（Windows 侧 Edge headless + CDP）驱动 `/admin` 的**七项功能与四条鉴权边界**，补上 §13 里一直写着「**无浏览器驱动**」的 **N5** —— 新增 `tests/tools/admin_e2e/`（`run.sh` 退出码 **0/1/2**、纯标准库 CDP 驱动、**零新增依赖**）、**13 张 1440×900 截图 + `artifacts/report.json`**（97 条判定 + 13 条截图指标 + 11 条 INFO，**四次连跑全绿且检查名集合逐条一致**）；**被测字节零改动**，本节**不新增其它门禁结论**；L1 在设备上 / L2 / `server/deploy/` / App 18 页视觉走查 **仍未运行**（一条不算通过）。下面那段「最新一轮是 §R11」是**本节插入前的时点**，效力不变。
+>
+> **后续轮次指针（本节插入后新增，本节结论未被推翻）**：§R13 = t59 登录页 `#flash` + `admin_e2e` 清理时机；§R14 = t60 交付验收总表；§R15 = t69 可复现性独立验证；**§R16 = t74 文档一致性收口（本文件最前）**。本节（§R12）的 97 项判定与 13 张截图证据不受影响。
 >
 > **最新一轮是 §R11（round 11 / t50，绑定 HEAD `f1b66c1`）**：对 §R10.3 登记、由 `973081a`（前 3 条）与 `1f9ca88`（后 2 条）修复的 5 条 `app/` 生产缺陷做**非作者独立验证**（离线真跑直证 + 变异退回自证；4 次授权变异每次都在同一批命令内用 `git show HEAD:<path> > <path>` 还原，并以 `cmp` + `sha256sum` 证同）—— **5 条全部成立且承重，`verdict = pass`**，并补上第 5 条（同分钟同名备份互相覆盖）原本标为**「未核」**的直证；本节所有「真跑」都在 `node` + `tests/tools/l1_offline/platform/` 垫片上，**不是设备上的 `ohosTest`**，**§R11 不新增门禁结论、不改任何被测字节**。上一轮 §R10（round 10 / t48，绑定 HEAD `e83d3c1`）：用同一套离线执行器把离线 L1 从 **`PASS=18 / FAIL=18` 收敛到 36/36**（`RESULT: it_executed=36 passed=36 failed=0 requires_device=0`、`checked=323 passed=true`），并逐条登记本轮执行器暴露、随后由 `973081a` / `1f9ca88` 修复的 **5 条 `app/` 生产缺陷**（徽章解锁不落库 / 下行 `goalRewards` 读取侧被整条丢弃 / `MemoryFiles.list()` 返回名违反端口契约 / 备份恢复 SQL 保留字列 `order` / 同分钟同名备份互相覆盖）—— **§R10 同样不新增未验证结论、不改任何被测字节**。更早的 §R9（round 9 / t43，绑定 HEAD `804ad92`）：`tests/tools/l1_offline/run_tests.sh` 把 `ohosTest` 的 **36 个 `it()`** 用 `node:sqlite` 垫片在离线环境**逐条真执行**（`RESULT: it_executed=36 passed=18 failed=18 requires_device=0`、`checked=323 passed=true`），18 条失败的逐条 `文件:行` 归因见 §R9.3（3 条真实实现缺陷 + 11 条用例缺陷 + 4 条用例顺序耦合）；**hypium 在设备上仍未运行**，两证不可互相顶替。上一轮 §R8（round 8 / t42 证据登记，绑定 HEAD `6a0404e`）：队长清空 `build/` 与 `.hvigor/` 后跑出**全量干净构建**（`CompileArkTS` 真实重编 `35 s 423 ms`、`BUILD SUCCESSFUL`、`EXIT=0`、产物 2,445,614 B、工作树零污染），并在 `git archive` 干净副本里给离线 L1 执行器做了**注入→翻转→从 git 还原**的门禁自证（`POINTS_PER_KG` 100→101 ⇒ 16 处 FAIL / `EXIT=1`；还原后全绿 / `EXIT=0`）——**§R8 不新增门禁结论、不改任何被测字节**。上一轮 §R7（round 7 / t41，绑定 HEAD `46d2fcf`）：视觉模型通道**已验证可用**、判图链路**已实跑**（`tests/tools/vision_check/`，`RUN_EXIT=0`），但**页面级视觉走查仍不可做**（18 页零截图）；§R7 **不新增任何门禁结论**，**门禁结论仍以 §R6（绑定 `a8b78ef`）为准**。下面这段说的是 round 5 与更早的轮次：
 > **round 5 / t38 只做 L1 表述修正，不新增门禁结论。** 起因：t37 把「用 esbuild 转译仓库
@@ -8,6 +10,98 @@
 > 「**替代证据为零**」一类断言从「当时的真话」变成了「**漏报已完成的工作**」。§R5 把这类断言逐处改为准确陈述，
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
+
+## §R16 round 16（t74 · **文档一致性收口**：页面数定真值 18 + `it()` 计数统一 41 + F1/F2 状态更正指针）
+
+> **绑定字节**：`git rev-parse HEAD` = `6690ac241d024923031801f906bb1ca63445cf89`，与 `git ls-remote origin main` 同值；开工时 `git status --short` 0 行。
+> **本节不新增任何门禁结论、不改任何被测字节**：只动文档层（`AGENTS.md` / `README.md` / `docs/**` / `tests/tools/*/README.md`）。
+> **口径纪律**：本文件是**轮次累积的历史记录** —— §R1–§R15 里的「36 个 `it()`」「19 个页面」等数字是**当时**的实测值或当时的原文，**一律原样保留**（历史结论效力不变）；本节是**追加**的现行口径说明 + 三处指针。
+
+### §R16.1 页面数：真值 = **18**（`pages/` 19 个 `.ets` = 18 个页面 + `Index.ets` 导航壳）
+
+```
+$ ls app/entry/src/main/ets/pages/*.ets | wc -l
+19
+$ grep -l '@Entry' app/entry/src/main/ets/pages/*.ets
+app/entry/src/main/ets/pages/Index.ets
+$ grep -n '页面清单' docs/APPENDIX-C-ui-screens.md
+9:## 1. 页面清单（18 个）
+$ grep -n '18 个页面' docs/APPENDIX-C-ui-screens.md | head -1
+4:> **版本**：v4.1（**18 个页面**＝5 Tab ＋ 13 二级页；另有 7 个半模态）
+$ grep -n '19 个页面文件' docs/REVIEW.md
+305:| **① 鸿蒙 app**（ArkTS + API 12） | `app/`：19 个页面文件（`Index` + 18 页）、23 个组件…
+```
+
+判定（三条互相独立）：
+1. **代码层**：`pages/` 下 **19** 个 `.ets`，但只有 `Index.ets` 带 `@Entry` —— 它是导航壳（`NavigationStack` + 5 个 Tab，附录 C §2），其余 18 个是 `@Component` 页面。⇒ **文件数 19 ≠ 页面数 18**。
+2. **契约层**：`docs/APPENDIX-C-ui-screens.md:9`「## 1. 页面清单（18 个）」并在 `:11-33` 逐行列出 #1–#18；`:4` 版本行同写「18 个页面＝5 Tab ＋ 13 二级页」。
+3. **第三方佐证**：`docs/REVIEW.md:305`「19 个页面文件（`Index` + 18 页）」。
+⇒ 「19」是**文件数**，「18」是**页面数**；两者都对，但**表述必须带判据**。`README.md:7` 的「19 个页面」是 t71 收口时把文件数当页面数写下的**误写**（t71 那次改动本身是对的：把「尚未开始编码」改成现状陈述）。
+本轮改法：`README.md:7` 与 `AGENTS.md:7` 一律写「**18 个页面**（`pages/` 19 个 `.ets` = 18 个页面 + `Index.ets` 导航壳，判据见 `docs/DECISION-0004-doc-consistency-errata.md`）」。
+
+### §R16.2 `it()` 计数：真值 = **41**（10 个有效套件；`List.test.ets` 有 0 条 `it()`）
+
+逐文件普查（`for f in app/entry/src/ohosTest/ets/test/*.test.ets; do grep -cE '^\s*it\(' "$f"; done`）：
+
+| 文件 | `it(` 条数 |
+|---|---:|
+| `BackupRoundTrip.test.ets` | 1 |
+| `BadgeIdempotent.test.ets` | 1 |
+| `CalcSamples.test.ets` | 6 |
+| `CsvExport.test.ets` | 1 |
+| `GoalIdempotent.test.ets` | 1 |
+| `List.test.ets` | **0** |
+| `LwwMerge.test.ets` | 15 |
+| `NotLoggedIn.test.ets` | 1 |
+| `ServerConfigFallback.test.ets` | 8 |
+| `ShopPriceFallback.test.ets` | 6 |
+| `ShopPurchase.test.ets` | 1 |
+| **合计（11 个 `.test.ets` / 10 个有效套件）** | **41** |
+
+现行读数的直接证据：`bash tests/tools/l1_offline/run_tests.sh` → `hypium 用例：41 条，PASS=41 FAIL=0`、`RESULT: it_executed=41 passed=41 failed=0 requires_device=0`。
+「36」的来历：t43（round 9）当时 10 个套件合计 **36** 条；t45/t57/t64 陆续新增用例（+5）后为 **41** —— 二者都是真实数字，只是**轮次不同**。
+
+全仓「36 个 `it()`」口径出现位置与判定：
+
+| 文件 | 命中数 | 判定 | 处置 |
+|---|---:|---|---|
+| `docs/VERIFICATION.md` | 52 | **历史留痕**（§R1–§R15 各轮快照与原始输出） | **不改**；现行值见本节 |
+| `docs/REVIEW.md` | 14 | 历史评审原文（**out of scope**） | **不改**，只登记 |
+| `AGENTS.md` | 1 | 历史留痕（B45 条目自述 v4.1 时点） | **不改** |
+| `docs/CHANGELOG.md` | 1 | 历史留痕（版本条目） | **不改** |
+| `tests/README.md` | 2 | 已在 t71 改为 41（**out of scope**） | **不改** |
+| `tests/tools/l1_offline/README.md` | 3 | **当前口径** | **改为 41**（:86 / :130 / :196；:161 是历史原始输出 ⇒ 保留 + 指针） |
+| `tests/tools/admin_e2e/README.md` | 1 | 当前口径 | **改为 41**（:81） |
+| `tests/tools/concurrency_e2e/README.md` | 1 | 当前口径 | **改为 41**（:74） |
+| `tests/tools/offline_first/README.md` | 1 | 当前口径 | **改为 41**（:18） |
+| `tests/tools/offline_first/REPORT.md` | 1 | 报告原文（**out of scope**） | **不改**，只登记 |
+
+### §R16.3 F1/F2 状态更正（§R14.4 的两条「未修」已过期 ⇒ 追加指针，不删原文）
+
+| 编号 | §R14.4 当时的结论 | **现状** | 修复提交 | 现在的证据 |
+|---|---|---|---|---|
+| **F1** | `l2_sync` 报出 blocker：全新设备首同步撞 `uq_ua` / `uq_uprofile`（客户端 pull 只按 `id` 认领本机行） | **已修** | t62（`RowClaim.of` 三级认领：单例表按 `user_id` → 业务键 → 兜底 `id`；配合 `INSERT OR IGNORE`） | `bash tests/tools/l2_sync/run.sh` 主用例 `#0.2`「新设备首同步（since=0）不再撞唯一索引」PASS、`checks=38 passed=38 failed=0`（t73 三连跑）；把认领退回「只按 id」的变异 ⇒ 只红 ⑪⑫⑮（t64 变异 A） |
+| **F2** | `l2_sync` 报出 high：`SyncPullData` 无 `offsetMs` ⇒ `clientOffsetMs = −respOffsetMs` 真实链路不可达 | **已修** | t62（客户端由 **push 握手腿**取 `offsetMs`）+ t68（服务端把落库值换算到服务端基准） | l2 严格基准组 `#4.5/#4.6/#4.8/#4.10` PASS；`#4.9` 逐轮严格等式（本机+offset === 服务端、上行原文+offset === 服务端）三轮全真；服务端 `server/tests/test_sync.py` 16 并发 8 轮收敛到最大 `updated_at`（t63/t66） |
+
+⇒ §R14.4 两条**原文保留**，本轮在其末尾各追加一行「**现状更正**」指针（指向本 §R16.3 与 §R14 之后的轮次）。
+
+### §R16.4 门禁（本轮实跑，绑定 HEAD `6690ac24`）
+
+```
+$ python3 tests/tools/check_l0.py --strict; echo L0_EXIT=$?
+检查项：28 错误：0 / 扫描文件：89 命中：0 / L0-3 …0 条 / 结论：PASS
+L0_EXIT=0
+$ grep -rn "36 个 \`it()\`" tests/tools/ docs/ README.md AGENTS.md | wc -l      # 收工复查
+（见 §R16.2 表；out-of-scope 文件按上表保留）
+$ git status --short
+（只含本轮 inScope 文件）
+```
+
+### §R16.5 边界与未运行（本节不改变任何未运行结论）
+
+- 本节**不重跑**任何门禁结论、**不新增**「未运行项」条目；§13 与 §R14.2 的 U1–U8 / N1–N5 一律有效。
+- 仍未运行（不变）：真机 hypium **41** 条 `it()`、真机飞行模式、App **18** 页视觉走查（截图腿）、`server/deploy/` 在真实云 VM、`/admin` 在非 Edge 浏览器、多机分布式并发。
+- 「41 条离线执行」仍**只是纯逻辑层的离线转译执行**，不等于「设备上跑过」—— 两证不可互相顶替（本文件历轮同口径）。
 
 ## §R15 round 15（t69 · **可复现性独立验证**：干净副本里五条门禁逐条真跑 + 一键复现脚本 + 变异反证）
 
@@ -254,8 +348,8 @@ PYTEST_HEAD2_EXIT=0
 
 ### §R14.4 未决问题（本节不修，只登记）
 
-1. **`l2_sync` 报出的 F1（blocker）**：全新设备首同步撞 `uq_ua` / `uq_uprofile` 等唯一索引（客户端 pull 侧只按 `id` 认领本机行）⇒ 「两台设备首次协同」在当前客户端实现下**不可完成**（`tests/tools/l2_sync/REPORT.md §4 F1`）。**未修**（`app/**` 不在本任务写入范围）。
-2. **`l2_sync` 报出的 F2（high）**：`SyncPullData` 无 `offsetMs`、客户端只解析 pull 响应体 ⇒ 附录 B §6.4-6 的 `clientOffsetMs = −respOffsetMs` 在真实链路上**不可达**（同上 §4 F2）。**未修**（`server/**` 不在本任务写入范围）。
+1. **`l2_sync` 报出的 F1（blocker）**：全新设备首同步撞 `uq_ua` / `uq_uprofile` 等唯一索引（客户端 pull 侧只按 `id` 认领本机行）⇒ 「两台设备首次协同」在当前客户端实现下**不可完成**（`tests/tools/l2_sync/REPORT.md §4 F1`）。**未修**（`app/**` 不在本任务写入范围）。 **【现状更正（t74 / round 16）】F1 已由 t62 修复**：`RowClaim.of` 改为三级认领（单例表按 `user_id` → 业务键 → 兜底 `id`）+ `INSERT OR IGNORE`；现行证据 = `l2_sync` 主用例 `#0.2` PASS（`checks=38 passed=38 failed=0`）。详见 §R16.3。
+2. **`l2_sync` 报出的 F2（high）**：`SyncPullData` 无 `offsetMs`、客户端只解析 pull 响应体 ⇒ 附录 B §6.4-6 的 `clientOffsetMs = −respOffsetMs` 在真实链路上**不可达**（同上 §4 F2）。**未修**（`server/**` 不在本任务写入范围）。 **【现状更正（t74 / round 16）】F2 已由 t62 + t68 修复**：客户端由 push 握手腿取 `offsetMs`，服务端把落库值换算到服务端基准；现行证据 = l2 严格基准组 `#4.5/#4.6/#4.8/#4.10` PASS + `#4.9` 三轮严格等式全真。详见 §R16.3。
 3. **U1–U8 八项**：见 §R14.2，环境未变，本轮不重跑、不折算。
 
 ### §R14.5 边界句
@@ -2011,6 +2105,7 @@ ohosTest 副本 app/entry/src/ohosTest/resources/rawfile/carbon-calc.json md5 �
 | round 13 | t59（`verifier-oc`，**修复 + 留档轮**） | `4a295698bdfbf259db9863a57631dc3d416b5b03`（修复提交 `dac2eb8` / 文档提交 `24fa9e9`） | 2026-10-19 | **收 §R12.6 的两条实测项 + 工具自身一条瑕疵**：① 登录页 `.flash` 补 `id="flash"` ⇒ 错误口令不再弹原生 `window.alert`（e2e **97 → 98 项**，`dialogs=0`、`#flash found=True hidden=False text=…`）；② `admin_e2e` 的 `rm -rf artifacts` 从 env 检查前移到之后（`ENV_EXIT=2` 且 artifacts md5/mtime 未变）；③ 管理端「登出清 Cookie ≠ 吊销令牌」写进 `server/README.md`（**未实现**，产品决策）；`admin.js` 字节未动、L0 `EXIT=0`、pytest `237 passed`、`git diff --stat -- app/ tests/cases/` 空 | 本文 §R13（文件最前；`24fa9e9` 引入） |
 | round 14 | t60（`verifier-oc`，**交付级文档收口轮，不新增门禁结论**） | `1df70c10dfa333d9d6cf299240220f6e4fc7e098`（本节自身的 `docs:` 提交再前进一格） | 2026-10-19 | **新增 §R14「交付验收总表」**：把 17 条验收口径逐条映射到「实跑命令 / 报告章节 / 仍未运行 + 结论」，并重写 §13 未运行清单 —— **8 行 → 6 行**（N5 `/admin` 浏览器交互 → **已运行**（§R12/§R13）、N4 部署实跑 → **已运行（容器化）**（§R14.1 第 14 行）；**未删除任何行**），另列 **U1–U8 八项仍未运行**（真机 hypium 36 `it()` / 真机飞行模式 / 18 页视觉走查 / systemd 真启动 / certbot ACME / 公网域名防火墙 / 非 Edge 浏览器 / 并发性能）；`tests/README.md` 新增 §5.3 登记 6 个证据工具 + 五条边界；L0 `EXIT=0`、`tests/README.md` 纯插入 25 行 | 本文 §R14（文件最前；本节由紧随其后的 `docs:` 提交引入） |
 | round 15 | t69（`verifier-oc`，**可复现性独立验证轮**） | `1b85147e5f6be22a6129ee2b233e41e580bf0679`（收工时 HEAD 已推进到 `d484de64`；五个关键文件在 HEAD 上 sha256 逐个相同，④ 已在 HEAD 字节上重跑） | 2026-10-19 | **干净副本（`git archive`，352 文件 = `git ls-files`）里五条门禁逐条真跑**：L0 `EXIT=0`（28 项 0 错误 / 89 文件 0 命中）、离线 L1 `PASS=55 FAIL=0` + `checked=323 passed=true`、离线 hypium `it_executed=41 passed=41 failed=0`、服务端 `241 passed`（副本@`1b85147`）/ `243 passed`（HEAD 字节复跑；首次需**联网建 venv** + MySQL 8 容器 13307）、`assembleHap` `BUILD SUCCESSFUL in 11 s 500 ms`（副本内首次真实重编）；新增 `tests/tools/repro/`（退出码 0/1/2，`ENV-SKIP` 三支实测；**反证**：改一个 `expectedReductionKg` ⇒ `PASS=3 FAIL=2` / `EXIT=1` ⇒ 副本内 `git` 还原 ⇒ `5/5 PASS` / `EXIT=0`）；隐性依赖专项：**无**未跟踪文件 / `/tmp` 历史产物 / 仓库外脚本依赖，机器锁定项只有 `app/hvigor/hvigor-config.json5:14-15` 的 `/home/qinyixiang/…`（`docs/` 未写「换机器要改」⇒ §R15.8-F2）；`server/tests/` 有用例依赖 `.git` 元数据（副本必须 `git init`）；真机 hypium 41 `it()` / 真机 L2 / 云 VM / 18 页截图**仍未运行** | 本文 §R15（文件最前） |
+| round 16 | t74（`verifier-oc`，**文档一致性收口轮，不新增门禁结论**） | `6690ac241d024923031801f906bb1ca63445cf89` | 2026-10-19 | **页面数定真值 18**（`pages/` 19 个 `.ets` = 18 页 + `Index.ets` 导航壳；`APPENDIX-C:9/:11-33` 页面清单 18 行 + `REVIEW.md:305` 独立佐证；`README.md:7` 的「19 个页面」为 t71 误写已回正）；**`it()` 计数统一 41**（逐文件表 1/1/6/1/1/0/15/1/8/6/1；`run_tests.sh` → `it_executed=41 passed=41 failed=0`；§R1–§R15 的「36」是 t43 时点，原样保留）；**F1/F2 状态更正指针**（已由 t62/t68 修复，§R14.4 原文保留 + 追加指针）；门禁 `L0_EXIT=0`（28/0、89/0、0 条） | 本文 §R16（文件最前） |
 
 > **导航说明（t52 补记）**：§R10 首段「本文件首行轮次索引与顶部 blockquote **未重写**，仍停留在 round 9 的表述 —— 以本节为准」
 > 是 **t48 时点**的记录（当时受「只追加」约束、未维护导航）。**t52 已按「维护导航」补上 round 10 / round 11 两行并更新首行标题与顶部 blockquote，

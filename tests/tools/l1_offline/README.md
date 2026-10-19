@@ -83,7 +83,7 @@ RUN.SH: 全部 PASS（离线纯逻辑部分）
   这些只能靠 `ohosTest` + hypium 在真机/模拟器上跑。
 - **只覆盖**：不 import 任何 ArkTS 运行时 API 的纯逻辑模块（计算、定点舍入、封顶、换算、基准与因子表的交叉校验），
   且证明的是「**这些模块的真实实现与基准一致**」，不是「App 行为正确」。
-- **hypium 的 36 个 `it()` 仍然未运行。** 本工具跑完**不改变**这一事实：`tests/README.md` §5 里 L1 的
+- **hypium 的 41 个 `it()` 仍然未运行。**（t74 更正：本工具于 t37 入库时 `ohosTest` 为 36 个 `it()`，t62 增补后为 41） 本工具跑完**不改变**这一事实：`tests/README.md` §5 里 L1 的
   执行状态仍然是「未真正跑过 hypium」，两条证据**不可互相顶替**、必须分开陈述。
   （`CalcBaselineValidator` 确实被 hypium 的 `CalcSamples.test.ets` 调用，本工具让**同一个校验器**在离线环境
   被真实执行——这是它唯一能替代的部分，也仅限这一部分。）
@@ -127,7 +127,7 @@ const A = c.countsTowardCap === false ? C : CarbonCalc.actualPointOf(C, D);
 - 若某个 `app/` 下的纯逻辑文件开始 import ArkTS 运行时 API（如 `@ohos.*`），它会在这里直接转译失败——
   那是**信号**，说明它已不适合离线复算，别把 `@ohos` 塞进 tests/tools/ 的桩里假装能跑。
 
-## 7. `run_tests.sh` —— 把 `ohosTest` 里的 36 个 `it()` 也在离线环境真跑一遍
+## 7. `run_tests.sh` —— 把 `ohosTest` 里的 41 个 `it()` 也在离线环境真跑一遍
 
 `run.sh` 只跑「基准复算」（纯逻辑、无平台依赖）。`run_tests.sh` 更进一步：它把
 `app/entry/src/ohosTest/ets/test/*.test.ets` 与它们依赖的 `main/ets/**` 一起转译，
@@ -158,7 +158,7 @@ L1_KEEP=1 bash tests/tools/l1_offline/run_tests.sh        # 保留转译产物�
 转译完成：78 个 .ets → CJS（.js）
 启动地基：goals=11 badges=8 shop=9 science=12 factors=CF-2026.2
 ...
-hypium 用例：36 条，PASS=18 FAIL=18
+hypium 用例：36 条，PASS=18 FAIL=18（**历史留痕，不改写**：这是 t43 首次离线真执行时的原始输出，当时仓库确为 36 条；**t74 更正：现为 41 条**，见 `docs/VERIFICATION.md §R16.2`）
 CalcBaselineValidator：checked=323 passed=true
 基准复算结论：全部一致：共复算 323 个断言点
 
@@ -193,7 +193,7 @@ L1_ONLY=ServerConfigFallback L1_CASE=⑥ bash tests/tools/l1_offline/run_tests.s
 
 ### 7.4 这一节**不改变** hypium 的状态
 
-`run_tests.sh` 把 36 个 `it()` 在**离线环境**跑了一遍，用的仓库真实实现；但它跑的是
+`run_tests.sh` 把 41 个 `it()` 在**离线环境**跑了一遍（t74 更正：它实现时是 36 个，现为 41），用的仓库真实实现；但它跑的是
 `node` + 垫片，**不是** `ohosTest` 在设备上的执行。因此：
 
 - 「`hvigorw test` / hypium 在真机或模拟器上的 L1 执行」**仍然是未运行**（无真机、无模拟器、

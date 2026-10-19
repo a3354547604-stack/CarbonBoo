@@ -71,7 +71,7 @@ CONC_STRICT_CONTRACT=0 bash tests/tools/concurrency_e2e/run.sh  # 显式关掉�
 1. **服务端单机多 worker ≠ 分布式**：只验证了同一台机器上 2 个 uvicorn worker + 1 个 MySQL 容器。
    **没有**验证多机部署、主从、连接池跨进程争抢、MySQL 行锁在高并发下的退化。
 2. **≠ 真机端侧并发**：ArkTS 端（`relationalStore` + 多进程/多线程、`PointService` 的封顶读-改-写）
-   **完全没跑**。`docs/VERIFICATION.md` 里「真机 hypium 36 个 `it()`」仍是未运行项。
+   **完全没跑**。`docs/VERIFICATION.md` 里「真机 hypium 41 个 `it()`」仍是未运行项（t74 更正：t61 当时为 36，现为 41）。
 3. **≠ 近场协同并发**：鸿蒙分布式协同（近场）不在本工具范围。
 4. **≠ 真双设备**：本工具的「多设备」是同一批 HTTP 请求里换 `deviceId` 字段，
    与「两条真机各自离线改同一行再同步」不是一回事。
