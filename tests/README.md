@@ -10,7 +10,7 @@
 | 层 | 范围 | 现在能否跑 | 位置 |
 |:--:|---|:--:|---|
 | **L0** | 数值与文档一致性：碳计算 18 组样例、封顶 5 组、边界样例、文档已知冲突扫描 | ✅ **现在就能跑**（只依赖 Python 3） | `tests/tools/check_l0.py` + `tests/cases/` |
-| **L1** | 纯逻辑单测（ArkTS / hypium）：计算、封顶、目标与徽章幂等、备份往返、CSV 编码、LWW 合并、系统配置下发 | ✅ **套件已建**（**10 个** `.test.ets` 用例文件 + `List.test.ets` 汇总入口）；执行需 SDK Previewer / 真机 / 模拟器，本机无 → **hypium 侧尚未真正跑过**（见 §5）。纯逻辑部分另有**离线执行器** `tests/tools/l1_offline/`（见 §5.1，跑的是仓库真实实现，**但不是 hypium 的替代品**） | `app/entry/src/ohosTest/ets/test/` + `tests/tools/l1_offline/` |
+| **L1** | 纯逻辑单测（ArkTS / hypium）：计算、封顶、目标与徽章幂等、备份往返、CSV 编码、LWW 合并、系统配置下发 | ✅ **套件已建**（**10 个** `.test.ets` 用例文件 + `List.test.ets` 汇总入口）；执行需 SDK Previewer / 真机 / 模拟器，本机无 → **设备上尚未真正跑过**（见 §5）。离线执行器 `tests/tools/l1_offline/` 已把 **36 个 `it()` 全部离线真跑一遍**（t45 后 `PASS=36 / FAIL=0`，见 §5.1；跑的是仓库真实实现 + 真 SQL 垫片，**但不是 hypium 的替代品**，也**不**改变「设备上未跑过」这一事实） | `app/entry/src/ohosTest/ets/test/` + `tests/tools/l1_offline/` |
 | **L2** | 端侧集成：两条真机协同脚本、飞行模式全功能、性能打点 | ⏳ **需两条真机（或真机 + 模拟器）**；当前无执行记录（不阻塞 L1/L3） | 手工脚本 + 录屏，结果记入 `docs/APPENDIX-D` |
 | **L3** | 服务端（pytest）：账号、鉴权隔离、取价、同步幂等与冲突、后台管理端、配置下发 | ✅ **已建并可跑**（**6 个**用例文件 + `conftest.py` 夹具，跑在真实 MySQL 8 上：`pytest server/tests`） | `server/tests/` |
 
@@ -79,28 +79,36 @@ python3 tests/tools/check_l0.py --strict
 > `ls app/entry/src/ohosTest/ets/test/*.test.ets | wc -l` 实测 **11 条** = 上表 10 个 + `List.test.ets`（套件汇总入口，
 > 不是用例文件）；同目录的 `CalcBaselineValidator.ets` / `CalcTestTypes.ets` 是辅助文件，不匹配 `*.test.ets`。
 > 新增用例文件必须同时在 `List.test.ets` 里 `import` 并调用，否则不会被收集。
-> ⚠️ **执行状态**：本机无真机/模拟器（hypium 需 SDK Previewer 驱动，且该二进制与本机 glibc 不兼容），
-> 故 L1 的现有证据只有「随 `ohosTest` 目标 `assembleHap` 编译通过 + 人工审查」，**尚未真正跑过**——
-> 不得据此声称任何 L1 用例"通过"。
+> ⚠️ **执行状态（设备侧）**：本机无真机/模拟器（hypium 需 SDK Previewer 驱动，且该二进制与本机 glibc 不兼容），
+> 故 L1 的**设备侧**证据仍为 **0**：36 个 `it()` 一条都没在设备上跑过，不得据此声称任何 L1 用例在设备上"通过"。
+> **离线侧**另有可复现证据 —— `tests/tools/l1_offline/run_tests.sh` 已把这 36 条逐条真跑（见 §5.1）；
+> 两条证据**不可混同**，报告里必须分开陈述「离线 = 已执行」与「设备上 hypium = 未运行」。
 
 ### 5.1 L1 · 离线执行器 — `tests/tools/l1_offline/`（**不是 hypium 的替代品**）
 
-一条命令 `bash tests/tools/l1_offline/run.sh`（只依赖 esbuild + node，**无 npm 依赖、不生成 `node_modules`**，
-转译中间产物写临时目录、退出即删）：把 `app/` 下 **9 份真实 `.ets`**（`CarbonCalc` / `DecimalUtil` /
-`AppConstants` / `CarbonTypes` / `CarbonService` / `JsonUtil` / `StringUtil` / `CalcTestTypes` /
-`CalcBaselineValidator`）**原样复制 + 仅改写 import 前缀**，用 esbuild 转成 CJS 后在 Node 里跑**真实实现** ——
-本轮实测 `RESULT: PASS=55 FAIL=0`（`CarbonCalc` 逐样例）与 `checked = 323 / passed = true`
-（仓库自己的 `CalcBaselineValidator.run()`）；任一 FAIL 时脚本**非零退出**。用途、可复现性论证与完整实测输出见
-`tests/tools/l1_offline/README.md`。
+两条命令、验两件事（都只依赖 esbuild + node，**无 npm 依赖、不生成 `node_modules`**，转译中间产物写 `mktemp -d`
+临时目录、退出即删）：
+
+| 命令 | 它验什么 | 实测（绑定 `HEAD e83d3c1`） |
+|---|---|---|
+| `bash tests/tools/l1_offline/run.sh` | 把 `app/` 下 **9 份真实 `.ets`**（`CarbonCalc` / `DecimalUtil` / `AppConstants` / `CarbonTypes` / `CarbonService` / `JsonUtil` / `StringUtil` / `CalcTestTypes` / `CalcBaselineValidator`）**原样复制 + 仅改写 import 前缀** → esbuild 转 CJS → 在 Node 里跑**真实实现**，复算 `tests/cases/carbon-calc.json` 的基准（函数级 + 基准级两层） | `RESULT: PASS=55 FAIL=0`；`checked = 323` / `passed = true` / `mismatches=0`；`RUN_EXIT=0` |
+| `bash tests/tools/l1_offline/run_tests.sh`（t43 新增） | 把 `app/entry/src/ohosTest/ets/test/` 下的 **10 个套件、36 个 `it()`** 在离线环境**逐条真执行**：`platform/` 垫片用 Node 内置 `node:sqlite` 提供**真 SQL** 的 `relationalStore` 语义（唯一索引 / `ON CONFLICT ... DO UPDATE` / `MAX()` / 事务），`runners/offline_run.mjs` 转译 **78 个 `.ets`** 并重放 App 启动地基（`RdbHelper.open` → `SeedRepository.seedStatic` → `FactorRepository.load`，调的都是仓库真实函数）；内联 sourcemap 让失败堆栈指回 `.ets:行` | `RESULT: it_executed=36 passed=36 failed=0 requires_device=0`；`CalcBaselineValidator：checked=323 passed=true`；`RESULT: PASS`；`TESTS_EXIT=0`（t43 首次执行时是 `passed=18 failed=18`，逐条差距与归因见 `docs/VERIFICATION.md` §R9/§R10） |
+
+退出码：`run.sh` 0 = 全 PASS / 非 0 = 任一 FAIL；`run_tests.sh` 0 = 全过 / 1 = 有失败或基准不一致 / 2 = 环境问题。
+用途、可复现性论证与完整实测输出见 `tests/tools/l1_offline/README.md`。
 
 **边界（必须连这条一起读）**
 
-- 它**不覆盖** UI（ArkUI 组件树 / 交互）、数据库（`relationalStore` 19 张表与事务）、网络（HTTP 与超时降级）、
-  生命周期（`UIAbility` / 页面栈 / 冷启动）、权限与端侧能力（相册保存、识图 stub、近场协同）—— 这些只能靠
-  hypium 在真机/模拟器上跑；
-- 它**只证明**「纯逻辑模块的**真实实现**与 `tests/cases/carbon-calc.json` 基准一致」，不证明 App 行为正确；
-- **hypium 的 36 个 `it()` 仍然未运行**（见上方 ⚠️ 执行状态），上表 L1 的执行状态**不因本工具而改变**；
-  两条证据**不可互相顶替**，报告里必须分开陈述：「离线纯逻辑 = 55 项 + 323 个断言点」与「hypium = 未运行」。
+- 它**不覆盖** UI（ArkUI 组件树 / 交互）、网络（HTTP 与超时降级）、生命周期（`UIAbility` / 页面栈 / 冷启动）、
+  权限与端侧能力（相册保存、识图 stub、近场协同）—— 这些只能靠 hypium 在真机/模拟器上跑；
+  （数据库一项自 `run_tests.sh` 起由 `node:sqlite` **部分**覆盖：真 SQL 语义成立，但**不是设备 RDB**）
+- 它**只证明**「纯逻辑模块的**真实实现**与 `tests/cases/carbon-calc.json` 基准一致」以及「36 条用例在**真 SQL**
+  垫片上跑出的行为」，**不证明 App 在设备上的行为正确**；
+- **`run_tests.sh` 是离线执行（esbuild 转译 + `node:sqlite` 垫片），不等于真机 hypium**：真机侧 **10 个套件、
+  36 个 `it()` 仍未在设备上执行过**（`hdc` 未安装、`/dev/kvm` 不可写、SDK Previewer 与 glibc 2.43 冲突）。
+  输出里的 `requires_device=0` 是「因必须真机而被**跳过**的用例数」，**不是**「设备侧跑过的用例数」；
+- 上表 L1 的执行状态**不因本工具而改变**；两条证据**不可互相顶替**，报告里必须分开陈述：
+  「离线 = 36 条 `it()` + 55 项 + 323 个断言点」与「设备上 hypium = 未运行」。
 
 ### 5.2 判图腿 · 视觉模型一致性检查 — `tests/tools/vision_check/`（**不是截图腿，也不是 hypium 的替代品**）
 
@@ -175,10 +183,12 @@ tests/
 │  └─ carbon-calc.json    # 数值唯一真相源（L0 与 L1 共用）
 └─ tools/
    ├─ check_l0.py         # L0 检查器（现在即可运行）
-   ├─ l1_offline/         # L1 纯逻辑离线执行器（见 §5.1；跑仓库真实实现，不是 hypium 的替代品）
-      ├─ run.sh           # 一条命令：复制 → 校验 → 只改 import 前缀 → esbuild → Node 执行
-      ├─ runners/         # calc_samples.mjs（55 项）、baseline_validator.mjs（323 个断言点）
-      └─ README.md        # 用途、边界、capSamples 口径
+   ├─ l1_offline/         # L1 离线执行器（见 §5.1；跑仓库真实实现，不是 hypium 的替代品）
+      ├─ run.sh           # 一条命令：复制 → 校验 → 只改 import 前缀 → esbuild → Node 执行（55 项 + 323 个断言点）
+      ├─ run_tests.sh     # 一条命令：转译 78 个 .ets → node:sqlite 垫片重放启动地基 → 逐条跑 36 个 it()（+ sourcemap 指回 .ets:行）
+      ├─ platform/        # @ohos/* 垫片：arkdata.cjs（relationalStore → node:sqlite）、hypium.cjs、unavailable.cjs（未覆盖模块显式抛错）等
+      ├─ runners/         # calc_samples.mjs（55 项）、baseline_validator.mjs（323 个断言点）、offline_run.mjs（36 个 it() 的收集与执行）
+      └─ README.md        # 用途、边界、capSamples 口径、逐条失败归因与单跑复现命令
    └─ vision_check/       # 判图腿：设计令牌色板 → 视觉模型判读（见 §5.2；不产生页面截图）
       ├─ run.sh           # 一条命令：挑带 Pillow 的解释器 → 解析 AppTheme → 画色板 → 判读 → PASS/FAIL
       ├─ vision_check.py  # 解析令牌 / 渲染色板 / 像素自检 / 调视觉模型 / 判定

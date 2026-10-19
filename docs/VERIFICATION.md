@@ -7,6 +7,142 @@
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
 
+## §R10 round 10（t48 · **离线 L1 从 18/18 收敛到 36/36** + 本轮执行器暴露并修复的 5 条 app 生产缺陷）
+
+> 本节是**新增证据轮 + 缺陷登记轮**，绑定 `HEAD = e83d3c17ae2150feabadb857dbca5561d60bf033`。
+> 本轮只做一件事：把 §R9 留下的「18 条失败」从**数字**变成**修复**——用同一套离线执行器跑到 36 条全绿，
+> 并把每条修复的 `文件:行` / 性质 / 修复提交 / 证据逐条登记。
+> **它不新增任何未验证的结论**：hypium 在设备上仍未运行；L2 两台设备协同、18 页截图视觉走查、
+> `/admin` 浏览器交互、`server/deploy/` 实跑一律**未运行**（见 R10.5），**一条都不算通过**。
+> 为使既有记录零改动（t48 约束「只追加」），本文件首行轮次索引与顶部 blockquote **未重写**，仍停留在
+> round 9 的表述 —— **以本节为准**。
+
+### R10.1 基准与开工事实（原始输出）
+
+```
+$ git rev-parse HEAD
+e83d3c17ae2150feabadb857dbca5561d60bf033
+$ git ls-remote origin main
+e83d3c17ae2150feabadb857dbca5561d60bf033	refs/heads/main
+$ git status --short
+（无输出：工作树干净）
+```
+
+`git rev-parse HEAD` 与 `git ls-remote origin main` **同值**（见 R10 首段），本节结论绑定的是已推送的字节。
+
+### R10.2 离线 L1 实跑（原始输出，逐字照抄）
+
+```
+$ bash tests/tools/l1_offline/run_tests.sh
+离线 L1 执行器：node v22.22.1，esbuild 0.28.2
+仓库根：/mnt/c/Users/Administrator/Desktop/CarbonBoo
+中间产物：/tmp/cbl1-out-V0NAdW（临时目录，不入库）
+转译完成：78 个 .ets → CJS（.js）
+启动地基：goals=11 badges=8 shop=9 science=12 factors=CF-2026.2
+PASS  [CalcSamples] 基准逐条复算：18 组正向 + 5 组封顶 + 边界 21/22/23 + 2 条换算 + 31 项因子  (27 ms)
+…（36 条逐条 PASS，此处省略中间 34 行）
+PASS  [ServerConfigFallback] ⑧ goalRewards 缺省 / 空数组 → 字段缺省回落：用内置种子，不覆盖也不新增目标  (5 ms)
+
+hypium 用例：36 条，PASS=36 FAIL=0
+RESULT: it_executed=36 passed=36 failed=0 requires_device=0
+CalcBaselineValidator：checked=323 passed=true
+基准复算结论：全部一致：共复算 323 个断言点
+
+RESULT: PASS
+$ echo $?
+0
+```
+
+```
+$ bash tests/tools/l1_offline/run.sh
+== l1_offline：离线执行仓库真实 ArkTS 实现 ==
+仓库 HEAD   : e83d3c17ae2150feabadb857dbca5561d60bf033
+…
+RESULT: PASS=55 FAIL=0
+checked = 323
+passed  = true
+summary = 全部一致：共复算 323 个断言点
+RESULT: checked=323 passed=true mismatches=0
+RUN.SH: 全部 PASS（离线纯逻辑部分）
+$ echo $?
+0
+```
+
+```
+$ python3 tests/tools/check_l0.py --strict
+L0-1 数值基准自检（tests/cases/carbon-calc.json）
+检查项：28    错误：0
+  OK：18 组正向样例 / 5 组封顶 / 边界样例全部自洽
+L0-2 文档已知冲突扫描（docs/）
+扫描文件：89    命中：0
+L0-3 人工待修清单（tests/cases/carbon-calc.json → docConflicts）：0 条
+结论：PASS —— 基准自洽，文档无已知冲突
+$ echo $?
+0
+```
+
+**与 §R9 的对照**：`it_executed=36 passed=18 failed=18`（round 9 / `804ad92`）→ `it_executed=36 passed=36 failed=0`
+（round 10 / `e83d3c1`）。**没有任何原先 PASS 的用例转 FAIL**；`checked=323 passed=true` 两轮相同。
+
+### R10.3 本轮由该执行器暴露并修复的 5 条 app 生产真缺陷
+
+5 条全部由 `run_tests.sh`（离线执行真实实现 + 真 SQL 垫片）在 round 9→10 之间暴露；修复提交两笔，
+均为 `app/` 生产代码：
+
+| # | 缺陷（一句话） | 位置（`文件:行`，HEAD） | 性质 | 修复提交 | 证据 |
+|:--:|---|---|---|---|---|
+| 1 | `RewardService.unlockBadges` 的徽章解锁**永不落库**：写入判据用的是**写入前**读出的 `unlockedIds`，刚达标的徽章算出 `unlocked=false` ⇒ UPSERT 的 `unlocked = MAX(user_badge.unlocked, excluded.unlocked)` 恒取 0；`newly` 只被 `return` 不落盘，于是每次调用都**重复报同一枚「新解锁」** | `app/entry/src/main/ets/viewmodel/RewardService.ets:275-291`（`unlockBadges`） | 功能失效级 | `973081a` | 直查库：save 后 `user_badge` 行 `B_FIRST unlocked=1, unlocked_at=now`；再调 `unlockBadges` 两次均返回 `[]`；`BadgeIdempotent` 用例由 FAIL 转 PASS |
+| 2 | `ServerConfigFetcher.effectiveFrom` 的**读侧**把空数组当 `knownGoalIds` 传入 ⇒ 每条下行 `goalRewards` 都被当成「未登记目标」**整条丢弃** ⇒ 附录 D10-5「后台改目标奖励 → App 侧能读到」**只对 `pointsDailyCap` / `badgesEnabled` 成立** | `app/entry/src/main/ets/viewmodel/net/ServerConfigFetcher.ets:167-186`（`effectiveFrom`，改后为 `:180` 现读 `knownGoalIds`） | 功能失效级 | `973081a` | `ServerConfigFallback ④` FAIL→PASS（`rewardOfCard(cards,'S1')` 由 20 → 7777） |
+| 3 | `MemoryFiles.list()` 违反 `FilesPort` 契约：`name` 带目录前缀（`backup/x.json`，真实端口返回裸文件名）、结果不按 `modifiedAt` 倒序、双前缀拼路径读不到（`<filesDir>/<filesDir>/backup/x.json`） | `app/entry/src/main/ets/viewmodel/store/FilesPort.ets:168-176`（契约注释）、`:221-252`（`list`/`writeText` 实现） | 契约违规 | `973081a` | `BackupRoundTrip`：由 `JSON.parse('')`（读到空串）转为读回真实的 19939 字节备份文件 |
+| 4 | `BackupService.insertRows` 拼 INSERT 时**列名不加引号**，撞上 `ClientSchema` 4 张表的保留字列 `"order"` ⇒ `near "order": syntax error` ⇒ **任何备份都无法恢复**（真机走同一条代码路径，同错；恢复是换机/重装后唯一的数据通道） | `app/entry/src/main/ets/viewmodel/BackupService.ets:247-256`（`insertRows`）、`:307-317`（`quoted` / `quotedAll`）；保留字列出处 `app/entry/src/main/ets/data/schema/ClientSchema.ets:171` / `:202` / `:230` / `:276` | 功能失效级 | `1f9ca88` | `BackupRoundTrip` FAIL→PASS；独立 SQL 直证（node:sqlite + 修复后的 `insertRows`）：`written = 3`、三行 `"order"` 10/20/30 读回一致；**反证**：同数据用修复前拼法报 `near "order": syntax error` |
+| 5 | `BackupService.create()` 同分钟**同名覆盖**：恢复前的安全快照与刚生成的手动备份文件名相同（`carbonboo-backup-YYYYMMDD-HHmm.json`）且端口是覆盖写 ⇒「自保一份」反而**毁掉被恢复的那份** | `app/entry/src/main/ets/viewmodel/BackupService.ets:64-104`（`create` → `uniqueName`） | 功能失效级 | `1f9ca88` | 修复新增 `uniqueName()`：撞名追加 `-2` / `-3` 后缀，首个文件仍严格符合附录 C §21 / D5-1 命名口径；**无独立用例**（该分支未单独覆盖，未核） |
+
+- 修复提交 `973081a`（3 条：`app/` 3 个文件，+114/−12）与 `1f9ca88`（2 条：`app/entry/src/main/ets/viewmodel/BackupService.ets`，+53/−3）**都只改 `app/` 生产代码**，没有为了让用例变绿而动基准或测试。
+- 缺陷 1–3 的原始失败记录见 §R9.3 的同名行（那一轮只登记、不修复，inScope 不含 `app/`）。
+
+### R10.4 测试侧修复（同一执行器暴露，提交 `e83d3c1`）
+
+`e83d3c1`（`test:` 前缀，5 个文件，+121/−20，只改 `app/entry/src/ohosTest/ets/test/**`）：
+
+1. `LwwMerge.test.ets`：夹具用户名 `t-lww-${now}` 含连字符，被 `AuthService` 入参校验拒绝 ⇒ 10 条用例全部
+   「夹具登录失败」（§R9.3 第 2 行）；改为合法名并做**用例级库隔离**（清 9 张同步表 + `sync_log`、复位
+   `LAST_SYNC_AT`）；另修 4 处与契约相悖的用例假设（整体 `SyncOutcome` 当计数、远端 deviceId 与断言互斥、
+   开库净额假设为 0、快照 JSON 少一个右花括号、`sync_log` 方向筛 `pull` 而成功路径写 `both`）。
+2. `CalcSamples.test.ets`：样例 9 把「应得 C = 570」当成「实入 A」，按基准
+   （`samples` id=9 `expectedPointC=570`、`meta.dailyRecordCap=200`、`A = max(0, min(C, 200 − D))`、`D = 0`）
+   修正为 `A = 200`；**基准 JSON 零改动**。
+3. `ShopPriceFallback.test.ets` ②⑤⑥ / `ServerConfigFallback.test.ets` ⑥：用例开头把相关 `app_config`
+   键复位到「未拉取态」，消除同进程共享库的顺序耦合（4 条）。
+4. `BadgeIdempotent.test.ets`：按真实实现模型（解锁发生在 `RecordService.save` 内部、经
+   `SaveOutcome.newBadges` 返回）重写，**未删断言、未放宽为恒真**，并直查 `user_badge` 的
+   `unlocked` / `unlocked_at`。
+
+**判据**：`run_tests.sh` 的 `passed` 19 → 36、`failed` 17 → 0，且单跑与套件内连跑结果一致。
+
+### R10.5 未运行（**一条都不算通过**）
+
+| 未运行项 | 具体原因（本机可复现） |
+|---|---|
+| **hypium 在设备上执行（L1 设备侧）** | 设备侧执行数 **0**：36 个 `it()` 一条都没在真机/模拟器上跑过。离线执行器输出的 `requires_device=0` 是「因必须真机而被**跳过**的用例数」，**不是**「设备侧跑过的用例数」（`tests/tools/l1_offline/runners/offline_run.mjs:279-282`）。原因：`hdc` 未安装（`hdc` 命令不存在，`EXIT=127`）、`/dev/kvm` 不可写（`crw-rw---- root:kvm`）、SDK Previewer 崩于 glibc 2.43（`pthread_mutex_lock`）。 |
+| **L2 端侧集成（两台设备协同 / 飞行模式全功能）** | 无真机、无模拟器、无第二台设备；`hdc` 不存在。 |
+| **18 页截图视觉走查** | 截图腿不可用（同 `hdc` / 模拟器 / Previewer 原因），**一张页面截图都产生不出来**。`tests/tools/vision_check/` 验的是从 `AppTheme.ets` 解析出的 **17 个设计令牌色板**，**不能**替代页面级视觉走查。 |
+| **`/admin` 浏览器交互** | 本轮未跑：未启动服务端、无浏览器自动化。L3 的 `test_admin.py` 走 `TestClient`（HTTP 层），**不是**浏览器交互。 |
+| **`server/deploy/` 实跑** | 未在真实主机上执行容器 / systemd 部署（无公网主机、无 TLS 证书、未开 80/443）。 |
+
+> **注（口径核对）**：任务书写「hypium 真机 **35 条**不具备件」，该数字在仓库内**查无出处**
+> （`grep -rn "35 条\|不具备件" docs/ tests/ AGENTS.md` 零命中）；本节按可核实的口径记录为
+> **36 个 `it()` 全部未在设备上执行**（设备侧执行数 0），不沿用未经核实的「35」。
+
+### R10.6 边界（本轮改变了什么、没改变什么）
+
+- 本轮把「**离线 L1 执行数**」从 `PASS=18 / FAIL=18` 变成 `PASS=36 / FAIL=0`，并把执行器暴露的
+  5 条 `app/` 生产缺陷修掉（`973081a` / `1f9ca88`）——这是**可复现的离线证据**。
+- 但**设备侧证据依旧为零**：R10.2 的三条命令跑的是 `node` + `tests/tools/l1_offline/platform/` 垫片
+  （`relationalStore` → `node:sqlite`、`fileIo` → Node `fs`、HTTP 一律不出网），**不是**设备上的 `ohosTest`。
+  「36 条真跑」与「设备上跑过」**不可混同**；本节的通过数**不**用于改写任何一条历史「未运行」声明。
+- 因此本节**不改变** round 6 的门禁结论（L0 / L3 / 编译门禁 / 铁律静态核查），只新增
+  「离线 L1 = 36/36」与「5 条生产缺陷已修」两项证据。
+
 ## §R9 round 9（t43 · **hypium 36 个 `it()` 首次离线真执行**：真实数字 + 缺口清单）
 
 > 本节是**新增证据轮**，绑定 `HEAD = 804ad92`（执行器所在提交）。它把一个持续 8 轮的状态从
