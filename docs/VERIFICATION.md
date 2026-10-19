@@ -145,6 +145,24 @@ bash tests/tools/admin_e2e/run.sh; echo "RUN_EXIT=$?"     # 0=全过 / 1=有断�
 > 它**不等于** L1 在设备上跑过、**不等于** L2、**不等于** `server/deploy/` 能部署、**不等于** App 18 页视觉走查通过。
 > **「浏览器里点通了」与「设备上用例通过」是两件事，两证不可互相顶替。**
 
+### §R12.12 环境不可达路径的实测（**追加证据**，由紧随 §R12 之后的 `docs:` 提交补记）
+
+契约要求「**Edge 崩溃或 CDP 不可达时如实记未运行，不得用 httpx 结果冒充浏览器证据**」—— 这一条不能只靠读代码，故实跑一次失败路径。
+
+* 命令：`CB_ADMIN_E2E_CONTAINER=cb-mysql-definitely-absent bash tests/tools/admin_e2e/run.sh; echo "ENV2_RUN_EXIT=$?"`（日志 `/tmp/t55/run_env2.txt`）
+* 原始输出（逐字）：
+
+  ```
+  [ENV-FAIL] MySQL 容器 cb-mysql-definitely-absent 不可用（docker inspect 失败）
+  RESULT: ENV-UNREACHABLE —— 未运行（退出码 2）
+  ENV2_RUN_EXIT=2
+  ```
+
+  即 **退出码 `2` + 明确写「未运行」**，且**没有任何断言被报成 `PASS`**（对照正向：全过时输出 `RESULT: PASS —— /admin 七项功能与鉴权边界均由真实浏览器驱动通过`、`RUN_EXIT=0`）。
+  `run.sh` 里同类「环境不可达即 `exit 2`」的早退分支共 **8 处**（`:79` / `:86` / `:113` / `:130` / `:176` / `:193` / `:212` / `:258`）。
+* **附带实测到一条工具自身的瑕疵（如实登记，本轮未修）**：`tests/tools/admin_e2e/run.sh:57` 的 `rm -rf "$ARTIFACTS"` 在 env 检查（`:76` 起）**之前**执行 ⇒ **环境不可达的那一跑会先清掉上一轮 artifacts**（本轮工作树因此一度出现 14 个 `D` 状态；已用 `git restore -- tests/tools/admin_e2e/artifacts` 复原，**提交内的字节未受影响**，`git diff` 为空）。修法很小（把该行移到 env 检查之后），属本工具 inScope，留给需要时处理。
+* **绑定关系**：本小节由**只改 `docs/VERIFICATION.md`** 的 `docs:` 提交引入，`tests/tools/admin_e2e/**` 的字节与产生 §R12 那 97 项全过证据的提交**完全一致** ⇒ §R12 的证据仍绑定当前 HEAD 的工具字节（工具字节零漂移）。
+
 ## §R11 round 11（t50 · **5 条 app 生产缺陷修复的非作者独立验证**：离线真跑直证 + 变异自证）
 
 > 本节是**独立验证轮**（verifier-oc 执行，非缺陷修复作者）：对 §R10.3 登记、由 `973081a`（前 3 条）与
