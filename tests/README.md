@@ -129,6 +129,27 @@ python3 tests/tools/check_l0.py --strict
 - 报告里必须把 **「视觉模型通道 = 已跑通」** 与 **「页面级视觉走查 = 仍不可做」** 分开写，
   不能合并成「视觉走查完成」；它同样不改变 hypium / L3 / 验收的任何判定。
 
+### 5.3 验收证据工具一览（L0–L3 的**补充证据**，不替代任何一层）
+
+L0–L3 之外还有一批**可复现的验收证据工具**：它们补的是「某一层在本机测不了」的证据缺口，**不是新的测试层**。
+每行给一条**可复现命令**、**退出码含义**、**覆盖了什么**、**明确边界**。
+
+| 工具 | 一条命令 | 退出码 | 覆盖了什么（实测） | 明确边界 |
+|---|---|---|---|---|
+| `tests/tools/l1_offline/`（§5.1） | `bash tests/tools/l1_offline/run.sh`<br>`bash tests/tools/l1_offline/run_tests.sh` | 前者 `0`=全 PASS / 非 0=任一 FAIL；后者 `0`=全过 / `1`=有失败或基准不一致 / `2`=环境不可达 | 9 份真实 `.ets` 复算基准：`PASS=55 FAIL=0`、`checked=323 passed=true`；**36 个 `it()` 离线逐条执行**：`RESULT: it_executed=36 passed=36 failed=0 requires_device=0` | **离线执行 ≠ 真机 hypium**：esbuild 转译 + `node:sqlite` 垫片，不是 ArkTS 运行时、不是设备 RDB；UI / 网络 / 生命周期 / 权限 / 端侧能力全不覆盖；`requires_device=0` 是「因必须真机被**跳过**」的数，**不是**「设备上跑过」的数 |
+| `tests/tools/vision_check/`（§5.2） | `bash tests/tools/vision_check/run.sh` | `0`=判读通过 / `1`=判读失败 / `2`=像素自检失败 / `3`=无网络 / `4`=取不到 key | 从 `util/AppTheme.ets` 解析 17 个真实设计令牌 → 渲染色板 → 视觉模型判读（实测 17/17 命中，`RUN_EXIT=0`） | **设计令牌色板判读 ≠ 18 页视觉走查**：不渲染任何页面、不产生页面截图；**截图腿仍不可用**（`hdc` 未安装 / 无模拟器 / Previewer 崩于 glibc 2.43） |
+| `tests/tools/admin_e2e/`（t55） | `bash tests/tools/admin_e2e/run.sh` | `0`=全过 / `1`=有断言失败 / `2`=环境不可达（MySQL 容器 / Edge / CDP / 服务端 任一不可用） | 真实 Edge headless + CDP 驱动 `/admin` 七项功能 + 四条鉴权边界；**97 项断言**（t59 后 **98 项**：`PASS=98 FAIL=0`）、13 张 1440×900 截图 + `artifacts/report.json` | 只覆盖 **Edge**（`Edg/155.0`）、明文 `http://127.0.0.1:8041`、单一 1440×900 视口；**≠ 跨浏览器 / 移动端 / HTTPS**；它与 App 侧证据**互不替代** |
+| `tests/tools/deploy_e2e/`（t56） | `bash tests/tools/deploy_e2e/run.sh`（`L1_KEEP=1` 保留现场） | `0`=探针全过 / `1`=有探针失败 / `2`=环境不可达（无 docker / 缺镜像 / 端口被占 / deploy 文件缺失） | 容器化实跑 `server/deploy/` 四件实物：仓库 nginx 配置**字节不改**过 `nginx -t` 并真终止 TLS、限流真限住（40 连击→32×429、30 连击→20×503）、`backup-mysql.sh` 的 dump 导入**独立容器** 21/21 表一致、`migrate.sh` 两个安全阀真以 `EXIT=2/3` 拒跑；**49 探针**、三次连跑 `EXIT=0` | **容器化实跑 ≠ 云 VM 真实部署**：`systemd` 单元**从未真启动**（无 PID1 systemd）、`certbot` **未接 ACME**（用自签证书）、公网域名 / DNS / 防火墙**未验**、大库 dump 耗时未测；`/opt/carbonboo` 在本机不存在，被验的是**脚本与配置内容** |
+| `tests/tools/offline_first/`（t58） | `bash tests/tools/offline_first/run.sh`（`OFFLINE_FIRST_ONLY=1/2` 只跑一段） | `0`=全过 / `1`=有断言失败 / `2`=环境不可达（node < 22.5 / 找不到 esbuild / 不在仓库根） | 「未登录 = 纯单机」**两段方向相反**的证据：断网陷阱下跑完本地主流程（录入含四字段快照 / 积分封顶与余额恒等式 / 本地购买幂等 / 科普离线读 / 本地备份往返）**零出网**；五类例外**确实出网**并打印 URL；**32 断言**；变异反证 `PASS=20 FAIL=3` | **逻辑层零出网 ≠ 真机飞行模式**：只转译 `service/ util/ data/ model/ viewmodel/` 五个目录，`pages/` 与 `components/` **一个文件都不进** ⇒ 不覆盖系统权限 / Ability 生命周期 / 端侧能力 / 界面层；断网是**陷阱**（端口层 + 平台层双记录），不是设备飞行模式开关 |
+| `tests/tools/l2_sync/`（t57） | `bash tests/tools/l2_sync/run.sh` | `0`=全过 / `1`=有失败 / `2`=环境不可达 | 两个独立 `node:sqlite` 真库（各自 `deviceId`）+ 真 FastAPI + 真 HTTP：LWW 两端收敛、平局按 `deviceId`、时钟偏移取反、幂等、软删除、冲突计数 —— 八项 **35 条断言**全过 + 两条反证 | **两个进程实例 ≠ 真双设备**：不是两条真机，不含 Ability 生命周期 / 后台恢复 / 端侧权限 / 近场协同；且**协议级全绿不等于产品可用** —— 它报出 **F1（blocker：全新设备首同步撞 `uq_ua`）** 与 **F2（high：pull 响应无 `offsetMs`）**，两条**均未修**（见 `tests/tools/l2_sync/REPORT.md §4`） |
+
+> **它们与 L0/L1/L2/L3 的层级关系（写死，别混读）**
+>
+> - 它们是**各层的补充证据**，**不替代任何一层**：L0（`check_l0.py`）、L1（真机 hypium）、L2（端侧集成）、L3（`server/tests/` pytest）的判定口径**一条都没有变**；
+> - **真机 hypium（10 套件 / 36 个 `it()`）与真机 L2 仍是空缺**：`l1_offline/run_tests.sh` 的 36/36 是**离线执行**、`l2_sync` 的 35 条是**协议级**，两者都**不能**写成「L1 / L2 通过」；
+> - 报告里必须分三态写：**「离线 / 协议级 = 已执行」**、**「设备上 = 未运行」**、**「未运行不算通过」**（口径与 `docs/VERIFICATION.md` §R14、§13 一致）；
+> - 任一工具退出码 `2` = **环境不可达**，只能记「未运行」，**不许**折算成通过。
+
 ### L3 · pytest — `server/tests/`
 | 文件 | 用例 |
 |---|---|
@@ -183,6 +204,10 @@ tests/
 │  └─ carbon-calc.json    # 数值唯一真相源（L0 与 L1 共用）
 └─ tools/
    ├─ check_l0.py         # L0 检查器（现在即可运行）
+   ├─ admin_e2e/          # /admin 浏览器级 E2E（Edge headless + CDP；见 §5.3）
+   ├─ deploy_e2e/         # server/deploy/ 容器化实跑（nginx/TLS/限流/备份还原/migrate；见 §5.3）
+   ├─ l2_sync/            # L2 协议级双端收敛（两个真库 + 真服务端；见 §5.3）
+   ├─ offline_first/      # 「未登录=纯单机」两段证据（断网陷阱 + 五类例外；见 §5.3）
    ├─ l1_offline/         # L1 离线执行器（见 §5.1；跑仓库真实实现，不是 hypium 的替代品）
       ├─ run.sh           # 一条命令：复制 → 校验 → 只改 import 前缀 → esbuild → Node 执行（55 项 + 323 个断言点）
       ├─ run_tests.sh     # 一条命令：转译 78 个 .ets → node:sqlite 垫片重放启动地基 → 逐条跑 36 个 it()（+ sourcemap 指回 .ets:行）
