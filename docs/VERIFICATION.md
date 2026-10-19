@@ -1,8 +1,8 @@
-# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；round 7 = t41 判图腿真相更正 + 首次实跑见 §R7；round 8 = t42 全量干净构建 + 离线 L1 门禁自证见 §R8；round 9 = t43 hypium 36 个 it() 首次离线真执行（PASS=18/FAIL=18 + 缺口清单）见 §R9；round 10 = t48 离线 L1 从 18/18 收敛到 36/36 + 5 条 app 生产缺陷登记见 §R10；round 11 = t50 5 条缺陷修复的非作者独立验证（`verdict = pass`）见 §R11；round 13 = t59 登录页 `#flash` 修复 + `admin_e2e` 清理时机 + 登出语义留档见 §R13；round 14 = t60 交付验收总表（17 行 + U1–U8）见 §R14；round 15 = t69 可复现性独立验证（干净副本内五条门禁逐条真跑）见 §R15；**最新 round 16 = t74 文档一致性收口（页面数定真值 18 + `it()` 计数统一 41 + F1/F2 状态更正指针）见 §R16**（更早 round 12 = t55 `/admin` 浏览器级端到端验证见 §R12））
+# CarbonBoo 独立验证报告（轮次累积 · round 4 = t31 终验见 §R4；round 5 = t38 L1 表述修正见 §R5；round 6 = t40 最终独立验证见 §R6，结论绑定 HEAD `a8b78ef`；round 7 = t41 判图腿真相更正 + 首次实跑见 §R7；round 8 = t42 全量干净构建 + 离线 L1 门禁自证见 §R8；round 9 = t43 hypium 36 个 it() 首次离线真执行（PASS=18/FAIL=18 + 缺口清单）见 §R9；round 10 = t48 离线 L1 从 18/18 收敛到 36/36 + 5 条 app 生产缺陷登记见 §R10；round 11 = t50 5 条缺陷修复的非作者独立验证（`verdict = pass`）见 §R11；round 13 = t59 登录页 `#flash` 修复 + `admin_e2e` 清理时机 + 登出语义留档见 §R13；round 14 = t60 交付验收总表（17 行 + U1–U8）见 §R14；round 15 = t69 可复现性独立验证（干净副本内五条门禁逐条真跑）见 §R15；**最新 round 17 = t77 t75/t76 交付级证据登记（`/admin` 经真 nginx TLS + systemd 真启动 + 真浏览器图层）见 §R17**（round 16 = t74 文档一致性收口见 §R16）（更早 round 12 = t55 `/admin` 浏览器级端到端验证见 §R12））
 
 > **最新一轮是 §R12（round 12 / t55，绑定 HEAD `585fca9`；`server/**` 自 `1f9ca88` 起未变）**：用**真实浏览器**（Windows 侧 Edge headless + CDP）驱动 `/admin` 的**七项功能与四条鉴权边界**，补上 §13 里一直写着「**无浏览器驱动**」的 **N5** —— 新增 `tests/tools/admin_e2e/`（`run.sh` 退出码 **0/1/2**、纯标准库 CDP 驱动、**零新增依赖**）、**13 张 1440×900 截图 + `artifacts/report.json`**（97 条判定 + 13 条截图指标 + 11 条 INFO，**四次连跑全绿且检查名集合逐条一致**）；**被测字节零改动**，本节**不新增其它门禁结论**；L1 在设备上 / L2 / `server/deploy/` / App 18 页视觉走查 **仍未运行**（一条不算通过）。下面那段「最新一轮是 §R11」是**本节插入前的时点**，效力不变。
 >
-> **后续轮次指针（本节插入后新增，本节结论未被推翻）**：§R13 = t59 登录页 `#flash` + `admin_e2e` 清理时机；§R14 = t60 交付验收总表；§R15 = t69 可复现性独立验证；**§R16 = t74 文档一致性收口（本文件最前）**。本节（§R12）的 97 项判定与 13 张截图证据不受影响。
+> **后续轮次指针（本节插入后新增，本节结论未被推翻）**：§R13 = t59 登录页 `#flash` + `admin_e2e` 清理时机；§R14 = t60 交付验收总表；§R15 = t69 可复现性独立验证；§R16 = t74 文档一致性收口；**§R17 = t77 交付级证据登记（本文件最前）**。本节（§R12）的 97 项判定与 13 张截图证据不受影响。
 >
 > **最新一轮是 §R11（round 11 / t50，绑定 HEAD `f1b66c1`）**：对 §R10.3 登记、由 `973081a`（前 3 条）与 `1f9ca88`（后 2 条）修复的 5 条 `app/` 生产缺陷做**非作者独立验证**（离线真跑直证 + 变异退回自证；4 次授权变异每次都在同一批命令内用 `git show HEAD:<path> > <path>` 还原，并以 `cmp` + `sha256sum` 证同）—— **5 条全部成立且承重，`verdict = pass`**，并补上第 5 条（同分钟同名备份互相覆盖）原本标为**「未核」**的直证；本节所有「真跑」都在 `node` + `tests/tools/l1_offline/platform/` 垫片上，**不是设备上的 `ohosTest`**，**§R11 不新增门禁结论、不改任何被测字节**。上一轮 §R10（round 10 / t48，绑定 HEAD `e83d3c1`）：用同一套离线执行器把离线 L1 从 **`PASS=18 / FAIL=18` 收敛到 36/36**（`RESULT: it_executed=36 passed=36 failed=0 requires_device=0`、`checked=323 passed=true`），并逐条登记本轮执行器暴露、随后由 `973081a` / `1f9ca88` 修复的 **5 条 `app/` 生产缺陷**（徽章解锁不落库 / 下行 `goalRewards` 读取侧被整条丢弃 / `MemoryFiles.list()` 返回名违反端口契约 / 备份恢复 SQL 保留字列 `order` / 同分钟同名备份互相覆盖）—— **§R10 同样不新增未验证结论、不改任何被测字节**。更早的 §R9（round 9 / t43，绑定 HEAD `804ad92`）：`tests/tools/l1_offline/run_tests.sh` 把 `ohosTest` 的 **36 个 `it()`** 用 `node:sqlite` 垫片在离线环境**逐条真执行**（`RESULT: it_executed=36 passed=18 failed=18 requires_device=0`、`checked=323 passed=true`），18 条失败的逐条 `文件:行` 归因见 §R9.3（3 条真实实现缺陷 + 11 条用例缺陷 + 4 条用例顺序耦合）；**hypium 在设备上仍未运行**，两证不可互相顶替。上一轮 §R8（round 8 / t42 证据登记，绑定 HEAD `6a0404e`）：队长清空 `build/` 与 `.hvigor/` 后跑出**全量干净构建**（`CompileArkTS` 真实重编 `35 s 423 ms`、`BUILD SUCCESSFUL`、`EXIT=0`、产物 2,445,614 B、工作树零污染），并在 `git archive` 干净副本里给离线 L1 执行器做了**注入→翻转→从 git 还原**的门禁自证（`POINTS_PER_KG` 100→101 ⇒ 16 处 FAIL / `EXIT=1`；还原后全绿 / `EXIT=0`）——**§R8 不新增门禁结论、不改任何被测字节**。上一轮 §R7（round 7 / t41，绑定 HEAD `46d2fcf`）：视觉模型通道**已验证可用**、判图链路**已实跑**（`tests/tools/vision_check/`，`RUN_EXIT=0`），但**页面级视觉走查仍不可做**（18 页零截图）；§R7 **不新增任何门禁结论**，**门禁结论仍以 §R6（绑定 `a8b78ef`）为准**。下面这段说的是 round 5 与更早的轮次：
 > **round 5 / t38 只做 L1 表述修正，不新增门禁结论。** 起因：t37 把「用 esbuild 转译仓库
@@ -10,6 +10,119 @@
 > 「**替代证据为零**」一类断言从「当时的真话」变成了「**漏报已完成的工作**」。§R5 把这类断言逐处改为准确陈述，
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
+
+## §R17 round 17（t77 · **t75/t76 交付级证据登记**：`/admin` 经真 nginx(TLS) 反代 + systemd 真启动 + 真浏览器图层；数字为本轮**复跑实测**）
+
+> **绑定字节**：`git rev-parse HEAD` = `5ca1b4721f235765b464321b7ce6a89b4e1423a5` = `git ls-remote origin main`；开工时 `git status --short` **0 行**、`docker ps -a | grep carbonboo` = **1**（只有共享 `carbonboo-mysql`）。
+> **本节的性质**：把 t75（`tests/tools/deploy_e2e/`）与 t76（`tests/tools/admin_e2e/`）两条交付级证据**登记进中央账本**。三套工具**本轮亲自复跑**，下面每个数字都来自本次原始输出（日志 `/tmp/t77/repro.txt`），**不是转抄工具 README**；与工具 README 不一致处已显式标注。§R1–§R16 一字未动。
+
+### §R17.1 t75 · `deploy_e2e`：`/admin` 经真 nginx(TLS) + systemd 真启动（复跑实测）
+
+```
+$ bash tests/tools/deploy_e2e/run_systemd.sh; echo "SD_EXIT=$?"
+PASS: 1.1 容器内 PID1 systemd 可用（is-system-running=running）
+PASS: 1.2 /proc/1/comm = systemd（PID 1 就是 systemd，不是 shim）
+PASS: 2.1 容器内 python3 = Python 3.11.2（与仓库 requirements.txt 的 3.11+ 口径一致）
+PASS: 2.2 建出 carbonboo 用户/组（uid=996(carbonboo) gid=996(carbonboo)）
+PASS: 3.1 三个单元装进容器后与仓库文件 sha256 逐字节一致（未改一个字）
+PASS: 4.2 systemctl is-active carbonboo-server = active（单元真的拉起并常驻）
+PASS: 4.2b 主进程真实存在且未反复重启（MainPID=276 NRestarts=0）
+PASS: 4.3 单元拉起的 uvicorn 真答业务：容器内 GET http://127.0.0.1:8000/api/v1/health → 200 {"ok":true,"version":"1.0.0","time":1792402200419}
+PASS: 5.1 systemctl start carbonboo-purge.timer rc=0 且 is-active=active
+PASS: 5.2 timer 被 list-timers 列出（下一触发时刻见上表：OnCalendar=*-*-* 04:23:00）
+    Oct 19 09:31:52 docker-desktop carbonboo-purge[777]: [2026-10-19T09:31:52.182215+00:00] purge_expired_accounts: 物理清除 0 个超期账号
+PASS: 5.3 timer 真触发了一次 carbonboo-purge.service（journal 里有 purge_expired_accounts 输出）
+PASS: 5.5 carbonboo-purge.service 真的被触发过且成功（ExecMainStartTimestamp=Mon 2026-10-19 09:35:51 UTC Result=success ExecMainStatus=0）
+PASS: 5.6 容器内 carbonboo-purge.timer 副本与仓库文件仍逐字节一致（改的只是 e2e 临时副本）
+PASS=24 FAIL=0
+RESULT: PASS
+SD_EXIT=0
+```
+
+```
+$ bash tests/tools/deploy_e2e/run.sh; echo "DEPLOY_EXIT=$?"
+  PASS 3.2 证书 SAN 含 DNS:api.example.com（+localhost/127.0.0.1）
+  PASS 3.3 证书当前有效（notAfter=Nov 18 09:32:00 2026 GMT）
+  PASS 4.1 仓库原文件 nginx -t 通过（证书路径/上游 127.0.0.1:8000 均在原地）
+  PASS 6.1 nginx 容器启动（-p 127.0.0.1:10080→80、:10443→443）
+  PASS 7.1 TLS 终止 + 反代上游：GET /api/v1/health → 200 {"ok":true,"version":"1.0.0","time":1792402329163}
+  PASS 7.5b.1 GET /admin/login（Accept: text/html）→ 200 且是 HTML 表单页（1690 字节）
+  PASS 7.5b.2 错误口令 POST /admin/login（JSON）→ 401（{"ok":false,"code":"CREDENTIAL_INVALID",…}）
+  PASS 7.5b.3 正确口令 → 200 + adminToken（长度 359）+ Set-Cookie: carbonboo_admin_token（HttpOnly 会话）
+  PASS 7.5b.4 GET /admin/users → 200 且含 7.5 注册的客户端账号 deploy_e2e_1（会话 Cookie 生效）
+  PASS 7.5b.5 GET /admin/overview → 200（{"ok":true,"data":{"accountCount":1,…}}）
+  PASS 7.5b.6 GET /admin/config dailyCap=200 → PUT {"dailyCap":250} → 200 changed=['dailyCap'] → 回显 dailyCap=250
+  PASS 9.8 systemd 真启动：三个单元与 purge timer 在 PID1=systemd 的容器里真跑通（逐条 PASS 见上）
+  PASS 10.1 本工具的三个容器已全部删除
+  PASS 10.2 两个临时库已删除
+  PASS 10.3 派生网络已删除
+  PASS 10.4 被测路径 git status 干净（app/ server/ docs/ tests/cases/）
+探针：PASS=62 FAIL=0
+RESULT: PASS —— server/deploy/ 四件实物容器化实跑全部通过
+DEPLOY_EXIT=0
+```
+
+- **与工具 README 的比对**：README §"复跑" 记 `PASS=62 FAIL=0`/`DEPLOY_EXIT=0`、systemd 侧 **24 条** —— 与本次实测 `PASS=24 FAIL=0` / `PASS=62 FAIL=0` / 两个 `EXIT=0` **逐项一致，无差异**。
+- **`server/deploy/**` 零改动**：`git diff --name-only 22a3fbf~1..HEAD -- server/deploy/` → **0 行**；工作树 sha256 与历轮留档一致（`nginx/carbonboo.conf` = `f1edf4f8…`、`systemd/carbonboo-server.service` = `156714a9…`、`carbonboo-purge.service` = `8262d547…`、`carbonboo-purge.timer` = `f0f5465b…`），容器内安装副本由 3.1/5.6 断言逐字节相同。
+
+### §R17.2 t76 · `admin_e2e`：真浏览器图层经真 nginx(TLS) 反代（复跑实测）
+
+```
+$ bash tests/tools/admin_e2e/run.sh; echo "ADMIN_E2E_EXIT=$?"
+直连 checks: PASS=98 FAIL=0 driver_exit=0
+nginx checks: PASS=103 FAIL=0 driver_exit=0 compare_exit=0
+RESULT: PASS —— 直连与真 nginx(TLS) 反代两条路径均由真实 Edge headless + CDP 驱动通过
+ADMIN_E2E_EXIT=0
+[INFO] 一致性校验：PASS=16 FAIL=0 exit=0
+```
+
+两条路径都跑完整套（七项功能 + 四条鉴权边界），关键读数：
+- 驱动：真实 **Edge headless + CDP**；ngin 侧 `--host-resolver-rules="MAP api.example.com 127.0.0.1"` + `--ignore-certificate-errors`（自签）指向 `https://api.example.com:10443`（**非直连 uvicorn**）。
+- 直连侧（`http://127.0.0.1:8041`）：`07_items_icon` 截图 114840 B；配置写入 `dailyCap 200 → 240`；登出前 `carbonboo_admin_token` 长度 **361** → 登出后 `Network.getCookies` 条数 **0**；未登录访问 `/admin/users` 浏览器侧抓到 **303** → `/admin/login`。
+- nginx 侧：14 张 `tests/tools/admin_e2e/artifacts/nginx_*.png`（`nginx_01_login_page` 14321 品牌像素 … `nginx_13_relogin_new_password` 101907 B）；配置写入 `dailyCap 240 → 260`；`⑧` 资源探针命中 `["/admin/static/admin.css", "/admin/static/admin.js"]`。
+- **逐字节一致性（16 项比较全过）**：`nginx 对端证书 sha256 == 挂载证书文件`（`d15b9a6efdf4c0cd…`）；`登录页 HTML 逐字节一致`（两侧 `15b6976687bf8dc4…`）；`/admin/static/admin.css` 两侧 `200/8633B sha=ec9aad5341ee…`；`/admin/static/admin.js` 两侧 `200/8538B sha=5ac4bfb2e870…`；`两条路径的检查项集合一致（直连 111 项 / nginx 111 项 / 仅直连 []）`。
+- **与工具 README 的比对**：README 正文（`:164-167`）记 `直连 98 / nginx 103 / compare 16 / EXIT=0` —— 与本次实测**逐项一致**。⚠️ **唯一不一致处**：README 顶部「退出码」表 `:26` 仍写「当前 **97 项**」（t55 时点计数），同文件 `:246` 已自注「以正文为准，直连 98 / nginx 103」——按实测 **98** 为准；该表属工具 README（out of scope），本节只登记、不改。
+
+### §R17.3 「退出码 0/1/2」三条路径的实测覆盖
+
+- `0`（全过）：本轮三套工具各一次，均为 0 —— 见上两节的 `SD_EXIT=0` / `DEPLOY_EXIT=0` / `ADMIN_E2E_EXIT=0`。
+- `2`（环境不可达 = **未运行、不算通过**）：工具 README 记有实测路径（`deploy_e2e` 无 docker / 缺镜像；`admin_e2e` 以 `CB_ADMIN_E2E_NGINX_IMAGE=carbonboo-definitely-not-an-image:1` 触发 `[ENV-FAIL] … ENV-UNREACHABLE`）。**本轮未重跑这两条**（属历史实测，原文见各自 README；本节不折算成通过）。
+- `1`（有断言失败）：`admin_e2e` README 记的 `1` 是 t76 比对脚本修好**前**的中间态；**本轮未重跑**。
+
+### §R17.4 收尾清理与不变量（本轮实测）
+
+| 不变量 | 实测 |
+|---|---|
+| `docker ps -a \| grep -c carbonboo` | **1**（只有共享 `carbonboo-mysql`，未停未删） |
+| 本工具容器 / 派生网络残留 | `0` / `0`（`deploy_e2e` 10.1–10.3 与 `admin_e2e` 各自自清） |
+| Windows 侧遗留 Edge（`cb-admin-e2e-*` profile） | **0** |
+| 生产库 `carbonboo` 逐表 `COUNT(*)` | **跑前 == 跑后**（21 表、总 102 行，`diff` 空） |
+| `server/deploy/**` 改动 | 0 行（见 §R17.1） |
+| `git status --short` | 收工 **0 行** |
+
+> **`artifacts/` 的处置（写清原因，防后人误会）**：`bash tests/tools/admin_e2e/run.sh` 每次运行都会**重新生成** `tests/tools/admin_e2e/artifacts/report.json` 与 `report_nginx.json`（内含时间戳/临时路径）以及 10 张截图，它们在仓库里是**被跟踪的文件**（t76 连同 14 张 `nginx_*.png` 提交为证据）。复跑后它们显示为 ` M`，而 `artifacts/` 属本任务 **outOfScope**。处置：复跑结束后执行 `git restore -- tests/tools/admin_e2e/artifacts/`，把工作树恢复到 HEAD 字节（`cmp` 与 `git show HEAD:<path>` 逐字节相同），**本轮的真证据是上面贴出的原始输出**，不是这些每次都会变的产物。（本条依据队长 t77 补充指令；`git status --short` 收工 0 行。）
+
+### §R17.5 仍未运行项（**明确不算通过**，与上面的 PASS 严格分开）
+
+| # | 项 | 原因 |
+|---|---|---|
+| N1 | **真云 VM 的开机自启持久化**（跨重启的 `enable` 状态）与 `systemd-analyze security` 评分 | 本轮是 `PID1=systemd` 的 privileged **容器**，不是云主机 |
+| N2 | `certbot` 真实签发 / 续期（ACME） | 未接 ACME 服务器（不联网），用 `openssl` 自签替代 |
+| N3 | 公网域名 `api.example.com` 的 DNS / 防火墙 / WAF / **HSTS / HTTP/2** | 只有本机端口映射 + `--host-resolver-rules`；**不是公网部署** |
+| N4 | 真机端侧 **L2** 与真机 **hypium（10 套件 / 41 个 `it()`）** | 本机无真机/模拟器（`hdc` 缺失、`/dev/kvm` 不可写）——与 §13 N1/N3 同口径 |
+| N5 | 多机分布式并发 | 本轮全部在本机单机内 |
+| N6 | 跨浏览器内核（Firefox/Safari/移动端） | 只有 **Edge（Chromium）一个内核** |
+| N7 | 管理端 JWT 无状态带来的「登出/改密后旧令牌仍可重放」 | `server/admin_web/api.py:214` 已写明「过期自然失效」；本轮旁路实测旧 Cookie 重放 → **HTTP 200**（既有事实，**只报告不修**） |
+
+### §R17.6 口径订正（来自 t72 非作者复核；**只订措辞，不改任何既有 §R 正文**）
+
+「增量拉取不重复拉」这种说法**不准确**：慢钟客户端（`offsetMs > 0`）的行换算到服务端基准后可能**晚于该次 pull 的 `serverTime`**，于是下一轮 `since = 上次 serverTime` 会把它**幂等重投**（被 LWW 去重，**不丢更新**）。准确表述是：**「`since ≥ 该行库内值` 即不再返回」**。
+
+### §R17.7 本节边界（别把容器当生产验收）
+
+- **容器 ≠ 云 VM**：`/opt/carbonboo` 在本机不存在，被验的是**脚本与配置内容**与容器内的真启动行为；开机自启持久化、`systemd-analyze security` 未验（N1）。
+- **本机 TLS 终止 ≠ 公网 HTTPS**：自签证书 + `--host-resolver-rules`；HSTS / HTTP/2 / DNS / 防火墙未验（N3）。
+- **单一浏览器内核 ≠ 跨内核**（N6）；**离线/协议级证据 ≠ 真机证据**；**未运行 = 不算通过**（与 §13、§R14 同口径）。
 
 ## §R16 round 16（t74 · **文档一致性收口**：页面数定真值 18 + `it()` 计数统一 41 + F1/F2 状态更正指针）
 
@@ -2106,6 +2219,7 @@ ohosTest 副本 app/entry/src/ohosTest/resources/rawfile/carbon-calc.json md5 �
 | round 14 | t60（`verifier-oc`，**交付级文档收口轮，不新增门禁结论**） | `1df70c10dfa333d9d6cf299240220f6e4fc7e098`（本节自身的 `docs:` 提交再前进一格） | 2026-10-19 | **新增 §R14「交付验收总表」**：把 17 条验收口径逐条映射到「实跑命令 / 报告章节 / 仍未运行 + 结论」，并重写 §13 未运行清单 —— **8 行 → 6 行**（N5 `/admin` 浏览器交互 → **已运行**（§R12/§R13）、N4 部署实跑 → **已运行（容器化）**（§R14.1 第 14 行）；**未删除任何行**），另列 **U1–U8 八项仍未运行**（真机 hypium 36 `it()` / 真机飞行模式 / 18 页视觉走查 / systemd 真启动 / certbot ACME / 公网域名防火墙 / 非 Edge 浏览器 / 并发性能）；`tests/README.md` 新增 §5.3 登记 6 个证据工具 + 五条边界；L0 `EXIT=0`、`tests/README.md` 纯插入 25 行 | 本文 §R14（文件最前；本节由紧随其后的 `docs:` 提交引入） |
 | round 15 | t69（`verifier-oc`，**可复现性独立验证轮**） | `1b85147e5f6be22a6129ee2b233e41e580bf0679`（收工时 HEAD 已推进到 `d484de64`；五个关键文件在 HEAD 上 sha256 逐个相同，④ 已在 HEAD 字节上重跑） | 2026-10-19 | **干净副本（`git archive`，352 文件 = `git ls-files`）里五条门禁逐条真跑**：L0 `EXIT=0`（28 项 0 错误 / 89 文件 0 命中）、离线 L1 `PASS=55 FAIL=0` + `checked=323 passed=true`、离线 hypium `it_executed=41 passed=41 failed=0`、服务端 `241 passed`（副本@`1b85147`）/ `243 passed`（HEAD 字节复跑；首次需**联网建 venv** + MySQL 8 容器 13307）、`assembleHap` `BUILD SUCCESSFUL in 11 s 500 ms`（副本内首次真实重编）；新增 `tests/tools/repro/`（退出码 0/1/2，`ENV-SKIP` 三支实测；**反证**：改一个 `expectedReductionKg` ⇒ `PASS=3 FAIL=2` / `EXIT=1` ⇒ 副本内 `git` 还原 ⇒ `5/5 PASS` / `EXIT=0`）；隐性依赖专项：**无**未跟踪文件 / `/tmp` 历史产物 / 仓库外脚本依赖，机器锁定项只有 `app/hvigor/hvigor-config.json5:14-15` 的 `/home/qinyixiang/…`（`docs/` 未写「换机器要改」⇒ §R15.8-F2）；`server/tests/` 有用例依赖 `.git` 元数据（副本必须 `git init`）；真机 hypium 41 `it()` / 真机 L2 / 云 VM / 18 页截图**仍未运行** | 本文 §R15（文件最前） |
 | round 16 | t74（`verifier-oc`，**文档一致性收口轮，不新增门禁结论**） | `6690ac241d024923031801f906bb1ca63445cf89` | 2026-10-19 | **页面数定真值 18**（`pages/` 19 个 `.ets` = 18 页 + `Index.ets` 导航壳；`APPENDIX-C:9/:11-33` 页面清单 18 行 + `REVIEW.md:305` 独立佐证；`README.md:7` 的「19 个页面」为 t71 误写已回正）；**`it()` 计数统一 41**（逐文件表 1/1/6/1/1/0/15/1/8/6/1；`run_tests.sh` → `it_executed=41 passed=41 failed=0`；§R1–§R15 的「36」是 t43 时点，原样保留）；**F1/F2 状态更正指针**（已由 t62/t68 修复，§R14.4 原文保留 + 追加指针）；门禁 `L0_EXIT=0`（28/0、89/0、0 条） | 本文 §R16（文件最前） |
+| round 17 | t77（`verifier-oc`，**交付级证据登记轮**） | `5ca1b4721f235765b464321b7ce6a89b4e1423a5` | 2026-10-19 | **三套工具本轮亲自复跑**（数字非转抄）：`run_systemd.sh` → `PASS=24 FAIL=0` / `SD_EXIT=0`（PID1=systemd 容器内真装单元→`is-active=active`、`MainPID=276`、`NRestarts=0`、容器内 `/api/v1/health` 200、`list-timers` 列出 purge、timer 真触发一次 purge（journal `purge_expired_accounts`））；`deploy_e2e/run.sh` → `探针：PASS=62 FAIL=0` / `DEPLOY_EXIT=0`（含 `/admin` 经真 nginx(TLS) 的 7.5b.1–7.5b.6）；`admin_e2e/run.sh` → 直连 `PASS=98`、nginx(TLS) `PASS=103`、逐字节比对 `PASS=16`、`ADMIN_E2E_EXIT=0`（登录页 HTML / `admin.css` / `admin.js` 两侧 sha256 相同、TLS 对端证书 == 挂载证书、14 张 `nginx_*.png`）；`server/deploy/**` 零改动；清理后 `docker ps -a \| grep carbonboo` = 1、生产库逐表 `COUNT(*)` 跑前==跑后；仍未运行 N1–N7（真云 VM 持久化/`systemd-analyze security`、certbot、公网 DNS/HSTS/H2、真机 L2/hypium、多机分布式、跨内核、管理端 JWT 无状态） | 本文 §R17（文件最前） |
 
 > **导航说明（t52 补记）**：§R10 首段「本文件首行轮次索引与顶部 blockquote **未重写**，仍停留在 round 9 的表述 —— 以本节为准」
 > 是 **t48 时点**的记录（当时受「只追加」约束、未维护导航）。**t52 已按「维护导航」补上 round 10 / round 11 两行并更新首行标题与顶部 blockquote，
