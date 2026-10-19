@@ -7,6 +7,331 @@
 > 并把离线执行证据与 hypium 的边界写死（**只证明纯逻辑真实实现与基准一致；36 个 `it()` 仍未运行；两证不可互相顶替**）。
 > §R4 的门禁结论、§0–§15 的历史记录**一条都不动**（只在失真的断言旁加「t38 补记/更正」指针）。
 
+## §R11 round 11（t50 · **5 条 app 生产缺陷修复的非作者独立验证**：离线真跑直证 + 变异自证）
+
+> 本节是**独立验证轮**（verifier-oc 执行，非缺陷修复作者）：对 §R10.3 登记、由 `973081a`（前 3 条）与
+> `1f9ca88`（后 2 条）修复的 5 条 `app/` 生产缺陷，用「离线真跑真实实现 + 变异退回自证」逐条复核
+> 「修复是否成立、是否承重」，并补上 §R10 老实标为**「未核」**的第 5 条（同分钟同名覆盖）的直证。
+> **结论：5 条全部成立且承重 —— `verdict = pass`。**
+> 本节**不改任何被测字节**：唯一动过被测文件的是 4 次**授权变异**，每次都在同一批命令内用
+> `git show HEAD:<path> > <path>` 还原，并以 `cmp` + `sha256sum` 证同（见 R11.2 与各条）。
+> 与 §R10 一样，本节只**整段插入**、不改既有任何一行（`git diff --numstat` 将显示本节为纯新增）。
+>
+> **为什么追加在本文件而不是新建 `docs/VERIFICATION-R11.md`**：本文件的既有约定是「一轮一节、
+> 新轮插在最前」（§R10 就是这样插在 §R9 之前的），独立验证结论留在同一条轮次链上比拆成两份文件
+> 更好追溯；节数增长没有带来检索困难（每节都有 `R11.x` 锚点与固定小标题）。
+
+### R11.0 本次未覆盖（**一条都不算通过**，不得把静态读源码当成运行态验证）
+
+| 未覆盖项 | 为什么没做（本机可复现的原因） |
+|---|---|
+| **设备侧 hypium（真机 / 模拟器）** | `hdc` 不存在（`EXIT=127`）、`/dev/kvm` 不可写（`crw-rw---- root:kvm`）、SDK Previewer 崩于 glibc 2.43（`pthread_mutex_lock`）。本节所有「真跑」都跑在 `node` + `tests/tools/l1_offline/platform/` 垫片上。 |
+| **设备上的 `relationalStore`（真 SQLite 引擎集成）** | 离线垫片走 `node:sqlite`（真 SQLite，但**不是** OpenHarmony 的 `relationalStore`）。缺陷 4 的 `near "order": syntax error` 是 **SQL 解析层**错误、与宿主进程无关，但「设备上同样复现」是**推断**（同一条 SQL、同一个 SQLite 方言），不是设备实测。 |
+| **L2 端侧集成（两台设备协同 / 飞行模式）** | 无真机、无模拟器、无第二台设备。 |
+| **18 页截图视觉走查** | 无设备即无截图；`tests/tools/vision_check/` 验的是设计令牌色板，不能替代页面走查。 |
+| **`/admin` 浏览器交互、`server/deploy/` 实跑** | 本节完全没启动服务端，没碰浏览器与部署脚本。 |
+| **§R10.3 之外的 app 代码路径** | 本节只复核那 5 条缺陷的修复；其余生产代码未纳入本次范围。 |
+
+### R11.1 基准绑定（开工 / 收工原始输出）
+
+开工（2026-10-19，t50 attempt 2）：
+
+```
+$ git rev-parse HEAD
+de0eac1c4c7a0e0723ed23bb92069bd0b634a1d2
+$ git ls-remote origin main
+de0eac1c4c7a0e0723ed23bb92069bd0b634a1d2	refs/heads/main
+$ git status --short
+（无输出）
+$ sha256sum app/entry/src/main/ets/viewmodel/RewardService.ets \
+    app/entry/src/main/ets/viewmodel/net/ServerConfigFetcher.ets \
+    app/entry/src/main/ets/viewmodel/store/FilesPort.ets \
+    app/entry/src/main/ets/viewmodel/BackupService.ets
+395fb4469a9c26c75ead4e5b5d3c78bc11b46bf54fbc092ecb0d4cf0d12d1d6b  app/entry/src/main/ets/viewmodel/RewardService.ets
+0be6d15e696cbc123d04ec7d948ccfc507c9590e59689773c30764008242480d  app/entry/src/main/ets/viewmodel/net/ServerConfigFetcher.ets
+3803fe346abf2db8cede6c9a422f60236bf6fa84e0e2d612f4291783dea87d3e  app/entry/src/main/ets/viewmodel/store/FilesPort.ets
+6a43497e788e01f0d60bd3e0e84ed06b42b9f5ada2f12900f004880f40825d0c  app/entry/src/main/ets/viewmodel/BackupService.ets
+```
+
+收工：
+
+```
+$ git rev-parse HEAD
+f1b66c1516d67a0e8b45b1282761f2e8ed2e30c8
+$ git ls-remote origin main
+de0eac1c4c7a0e0723ed23bb92069bd0b634a1d2	refs/heads/main
+$ git status --short
+（无输出）
+$ sha256sum <同上 4 个文件>
+395fb4469a9c26c75ead4e5b5d3c78bc11b46bf54fbc092ecb0d4cf0d12d1d6b  app/entry/src/main/ets/viewmodel/RewardService.ets
+0be6d15e696cbc123d04ec7d948ccfc507c9590e59689773c30764008242480d  app/entry/src/main/ets/viewmodel/net/ServerConfigFetcher.ets
+3803fe346abf2db8cede6c9a422f60236bf6fa84e0e2d612f4291783dea87d3e  app/entry/src/main/ets/viewmodel/store/FilesPort.ets
+6a43497e788e01f0d60bd3e0e84ed06b42b9f5ada2f12900f004880f40825d0c  app/entry/src/main/ets/viewmodel/BackupService.ets
+```
+
+> **本报告绑定这 4 个文件的这 4 个 sha256**（开工与收工逐字节相同）。
+> **HEAD 在本轮期间移动过一次**：并行任务 t49 提交了 `f1b66c1516d67a0e8b45b1282761f2e8ed2e30c8`
+> （`fix: t49 同步写回 INSERT/UPDATE 列名统一加引号 + LwwMerge 陈旧注释订正`）。它对 4 个被核文件
+> **零改动**，可核验：
+> ```
+> $ git diff --name-only de0eac1 f1b66c1
+> app/entry/src/main/ets/viewmodel/net/SyncService.ets
+> app/entry/src/ohosTest/ets/test/LwwMerge.test.ets
+> ```
+> 因此本轮结论对 4 个 sha256 有效，跨 `de0eac1` 与 `f1b66c1` 两个 HEAD 都成立。
+> `ls-remote` 收工仍为 `de0eac1` ⇒ **`f1b66c1` 还没有被推送**（按 §5.1-4，这一点以 `ls-remote` 原始输出为准）。
+
+### R11.2 方法与工具（怎么做到的：真跑，不是读代码）
+
+- 临时探针 `/tmp/t50/probe.mjs`（**仓库外、不入库、不提交**；inScope 不含 `tests/tools/`）：
+  复用 `tests/tools/l1_offline/` 的能力而不改动它任何一个文件 —— ① 用同一个 esbuild 把
+  `app/entry/src/main/ets` 的 5 个逻辑目录 + `ohosTest/ets/test` 共 **78 个 `.ets` 转译成 CJS**；
+  ② 把 `@ohos/*`、`@kit.*` 说明符指向同一套 `platform/` 垫片；③ 重放启动地基
+  （`RdbHelper.open` → `SeedRepository.seedStatic` → `FactorRepository.load`，日志
+  `goals=11 badges=8 shop=9 science=12`）；④ 跑 P1–P5 五组直证，**打印原始观测值**而不只打印 pass/fail。
+- 每次运行现场转译 ⇒ 变异立刻生效，无需构建缓存。
+- 变异法（**同一条命令内完成"退→跑→还→证同"**）：
+  `git show <修复提交>^:<path> > <path>` → 跑探针 → `git show HEAD:<path> > <path>` → `cmp` 证同。
+  退化版本的 sha256 也记录在案（证明"确实退到了修复前那一版"，不是改了个别字符）。
+- 修复前的版本：`973081a^ = 92ac2c5`（缺陷 1/2/3）、`1f9ca88^ = 973081a`（缺陷 4/5）。
+
+### R11.3 缺陷 1 —— `RewardService.ets:275-291` 徽章解锁永不落库（**成立且承重**）
+
+**修后直证（我跑出来的）**，HEAD 字节：
+
+```
+[P1] records.save ok=true newBadges=["初次碳迹"]
+[P1] user_badge 行数=1 原文=[{"unlocked":1,"unlocked_at":1792369251397,"progress":1}]
+PASS  P1.a user_badge 存在 B_FIRST 行  rows.length=1
+PASS  P1.b unlocked=1（真的落库）  unlocked=1
+PASS  P1.c unlocked_at>0  unlocked_at=1792369251397
+PASS  P1.d 再次显式解锁返回空集（不重复报新解锁）  again=0 third=0
+PASS  P1.e unlocked_at 未被后续调用刷新  before=1792369251397 after=1792369251397
+```
+
+一次**达标保存**（`recycle/paper 2 kg`）之后，直接对 `user_badge` 查表：行存在、`unlocked=1`、
+`unlocked_at=1792369251397 > 0`；随后两次显式 `unlockBadges`（`now` 与 `now+1000`）都返回空集，
+且 `unlocked_at` 未被刷新 —— 「不落库 + 每次重复报新解锁」两个症状同时消失。
+
+**变异退回自证（我跑出来的）**：`RewardService.ets` 退回 `92ac2c5` 版本
+（变异后 sha256 `33aeca74fdc7f17f5ef5f80b50627a534ce02f3ddffe6abd23736e17dd9001fa`，
+与 `git show 973081a^:<path> | sha256sum` 一致）：
+
+```
+[P1] records.save ok=true newBadges=["初次碳迹"]
+[P1] user_badge 行数=1 原文=[{"unlocked":0,"unlocked_at":null,"progress":1}]
+FAIL  P1.b unlocked=1（真的落库）  unlocked=0
+FAIL  P1.c unlocked_at>0  unlocked_at=0
+FAIL  P1.d 再次显式解锁返回空集（不重复报新解锁）  again=1 third=1
+```
+
+⇒ 修复前：行写过但 `unlocked=0`、`unlocked_at=null`，且**每一次**调用都再报一次"新解锁"。
+还原后 `sha256sum` = `395fb446…d1d6b`，`cmp` 与 `git show HEAD:<path>` **逐字节一致**。
+
+**源码边界（我从源码读出来的）**：`RewardService.ets:279-290` 现在是
+`const newly = BadgeEngine.evaluate(defs, stats, unlockedIds)` →
+`const nowUnlocked = unlockedIds.slice()` → 把 `newly` 逐个 `push` 进 `nowUnlocked` 并补 `atMap` →
+`BadgeEngine.progressRows(defs, stats, nowUnlocked, atMap)`；修复前是
+`progressRows(defs, stats, unlockedIds, atMap)`（见 `973081a^` 同位行），而 UPSERT 的
+`unlocked = MAX(user_badge.unlocked, excluded.unlocked)`（现 `:299`）在 `excluded.unlocked=0` 时恒取 0。
+
+### R11.4 缺陷 2 —— `ServerConfigFetcher.ets:167-186` 读取侧传空 `knownGoalIds`（**成立且承重**）
+
+**修后直证（我跑出来的）**：
+
+```
+[P2] fetchServerConfig ok=true applied=true goalRewardCount=1 cap=120
+[P2] app_config['server_config'] 原文={"version":"t50-v1","pointsDailyCap":120,"badgesEnabled":true,"goalRewards":[{"goalId":"S1","reward":7777}],"serverTime":1762396800000}
+[P2] effectiveFrom(store) → goalRewards=[{"goalId":"S1","reward":7777}]
+PASS  P2.a 读取侧 goalRewards 非空（已知 goalId 保留）
+PASS  P2.b 未知 goalId 被整条剔除
+[P2] goalCards S1.reward=[7777] S2.reward=[20] 卡片数=11 effectiveDailyCap=120
+PASS  P2.c 下行目标奖励真实生效（S1 20 → 7777）
+PASS  P2.d 未下发目标保持内置（S2=20）
+PASS  P2.e 封顶下行值真实生效（120）
+```
+
+**变异退回自证（我跑出来的）**：`ServerConfigFetcher.ets` 退回 `92ac2c5`
+（sha256 `06308b8ef024436a515f16705f57d76db13e8bc1de05667806feab2a0297fe73`）：
+
+```
+[P2] fetchServerConfig ok=true applied=true goalRewardCount=1 cap=120
+[P2] effectiveFrom(store) → goalRewards=[]
+FAIL  P2.a 读取侧 goalRewards 非空（已知 goalId 保留）  goalRewards=[]
+[P2] goalCards S1.reward=[20] S2.reward=[20] 卡片数=11 effectiveDailyCap=120
+FAIL  P2.c 下行目标奖励真实生效（S1 20 → 7777）  S1.reward=[20]
+PASS  P2.e 封顶下行值真实生效（120）
+```
+
+还原后 sha256 = `0be6d15e…480d`，`cmp` 逐字节一致。
+
+**修前/修后的分界（这是本条最关键的事实）**：
+- **写侧**（`ServerConfigFetcher.ets:122`）一直读的是真清单 `knownGoalIds(this.store)`，所以
+  `app_config['server_config']` 里**一直存着** `{"goalId":"S1","reward":7777}` —— 变异运行里那句
+  「原文=…"goalRewards":[{"goalId":"S1","reward":7777}]」在修复前后都成立。
+- **读侧**（修复前 `:156` 的 `ServerConfigFetcher.parse(raw, false, [])`）把**空数组**当已知清单传入，
+  `rewardsOf`（`:271`）在 `:290` 的 `knownGoalIds.indexOf(goalId) >= 0` 判不过 ⇒ **每一条**下行
+  `goalRewards` 都被当"未登记目标"整条丢弃 ⇒ `effectiveFrom` 返回 `goalRewards=[]`
+  ⇒ `RewardService` 拿不到下行奖励，界面与结算都退回内置 20。
+- 因此 **D10-5 的两半此前只有一半能过**：
+  ①「后台改**每日封顶值 / 徽章开关** → App 侧能读到」——**能过**（`pointsDailyCap` 走
+  `CarbonCalc.installDailyCap`，与 `knownGoalIds` 无关；变异运行里 `effectiveDailyCap=120` 仍 PASS）；
+  ②「后台改**目标奖励分值** → App 侧能读到」——**此前不可能通过**（读侧恒丢；用例 ④ 断言
+  `rewardOfCard(cards,'S1') === 7777`，在变异运行里实得 20）。
+- 修复把读侧换成同一个 helper（`:180` `known = await ServerConfigFetcher.knownGoalIds(store)`、
+  `:185` `parse(raw, false, known)`），读写两侧判据同源 ⇒ 两半同时成立。
+
+### R11.5 缺陷 3 —— `store/FilesPort.ets:168-175`（契约注释）/`:186-252`（`MemoryFiles` 实现）（**成立且承重**）
+
+契约要求三条（取自该文件 `:168-175` 的注释原文口径）：① `list()` 的 `name` 是**不带目录前缀的 basename**；
+② 只列直接子项、结果按 `modifiedAt` **倒序**；③ 消费方按 `backup/${name}` 拼路径要读得到
+（`BackupService.list()` 给出的 `path` 带 `baseDir` 前缀，`restore(path)` 原样传回）。
+
+| 契约 | **修后（我跑出来的）** `MemoryFiles` sha256 `3803fe34…7d3e` | **修前（我跑出来的）** 退回 `92ac2c5`（sha256 `acae49a0b172b691cdcad099590e87e1d4cfaab4c6f0a70b699a6b70a613738e`） |
+|---|---|---|
+| ① `name` 不带目录前缀 | `writeText('backup/a.json') → name="a.json"`；`list → names=["b.json","a.json"]` ⇒ **PASS** | `name="backup/a.json"`；`names=["backup/a.json","backup/b.json"]` ⇒ **FAIL** |
+| ② 按 `modifiedAt` 倒序 | `[{b.json,1792369251435},{a.json,1792369251419}]`（后写的在前）⇒ **PASS** | 两个 `modifiedAt` 都是 `1792369289149`，顺序 `[a.json,b.json]`（写入顺序）⇒ **FAIL** |
+| ③ 双前缀/带前缀路径可读 | `readText('/mem/files/backup/b.json')="{\"k\":\"B\"}"`、`readText('backup/backup/a.json')` 也可读 ⇒ **PASS**（P3.c/P3.e） | `readText('/mem/files/backup/a.json')=""`、`readText('backup/backup/a.json')=""` ⇒ **FAIL** |
+
+**连带伤害（我跑出来的）**：修前版本下，同一支 P4 备份往返探针里
+`restore` 直接失败：`{"ok":false,"code":"BACKUP_INVALID","message":"备份文件不合法：Unexpected end of JSON input"}`
+—— 因为 `BackupService.list()` 拿到的是带前缀的 `name`，`backup/backup/x.json` 读回空串。
+修后同一探针 `restore ok=true`（见 R11.6）。还原后 sha256 = `3803fe34…7d3e`，`cmp` 逐字节一致。
+
+**源码边界（读出来的）**：`FilesPort.ets:186 nameOf` / `:199 prefixOf` / `:210 rel` / `:215 writeText`
+（返回 `name: MemoryFiles.nameOf(rel)`）/ `:232 list`（只取直接子项 + `:252` 按 `modifiedAt` 倒序）。
+
+### R11.6 缺陷 4 —— `BackupService.ets:247-256` + `:307-317` 保留字列 `"order"` 不加引号（**成立且承重**）
+
+**修后完整往返直证（我跑出来的）**：备份 → 改动（删一条记录 + 加一条）→ 恢复 → 逐表校验：
+
+```
+[P4] 备份前 19 表行数=[3,1,4,0,11,33,8,16,9,0,4,12,0,0,0,0,4,1,6]
+[P4] backup.create ok=true name=carbonboo-backup-20261019-0820.json size=32063 tableCount=19
+PASS  P4.a 备份成功且覆盖 19 表  ok=true tableCount=19
+[P4] 改动后 carbon_record 行数=4
+[P4] restore 结果原文={"ok":true,"data":{"tableCount":19,"rowCount":112,"safetyPath":"/mem/files/backup/carbonboo-backup-20261019-0820-2.json"}}
+PASS  P4.b 恢复成功（ok=true）
+[P4] 恢复后 19 表行数=[3,1,4,0,11,33,8,16,9,0,4,12,0,0,0,0,4,1,6]
+PASS  P4.c 恢复后 19 表行数与备份时逐表一致  diff=[]
+[P4] 恢复后 carbon_record 内容=[{"id":"a1831075…","category":"recycle","amount":2},{"id":"a2bbbb47…","category":"recycle","amount":3},{"id":"f575e256…","category":"travel","amount":8}]
+```
+
+19 张表逐表行数 `diff=[]`（完全相同），恢复把"删掉的那条"补了回来、"新加的那条"被覆盖掉。
+
+**变异退回自证（我跑出来的）**：`BackupService.ets` 退回 `973081a`
+（sha256 `d6749c6e3777c60675d6e6b79faa36ff47d46292dfe68d10b1b0c41c7f2efe06`）：
+
+```
+[P4] backup.create ok=true name=carbonboo-backup-20261019-0821.json size=21112 tableCount=19
+[P4] restore 结果原文={"ok":false,"code":"RESTORE_FAILED","message":"恢复失败，已回滚：事务已回滚，原因：Error: near \"order\": syntax error"}
+FAIL  P4.b 恢复成功（ok=true）
+FAIL  P4.c 恢复后 19 表行数与备份时逐表一致  diff=[["carbon_record",2,3],["point_record",3,6]]
+```
+
+⇒ **原始错误文本**（贴在这里便于 grep）：`Error: near "order": syntax error`，外层是
+`RESTORE_FAILED` +「恢复失败，已回滚」。这与 §R10.3 第 4 条登记的文本一致。还原后
+sha256 = `6a43497e…25d0c`，`cmp` 逐字节一致。
+
+**源码边界（读出来的）**：`:255` `const quoted = BackupService.quotedAll(columns)`、`:256` 拼
+`INSERT INTO ${BackupService.quoted(table.name)} (${quoted.join(', ')})`，`:307 quoted` / `:311 quotedAll`
+逐个加双引号；保留字列出处 `data/schema/ClientSchema.ets:171` / `:202` / `:230` / `:276`（4 处 `"order"`）。
+
+### R11.7 缺陷 5 —— `BackupService.ets:64-104` 同分钟同名覆盖（**t48 记「未核」→ 本轮补上直证，成立**）
+
+**直证（我跑出来的）**：同一分钟内（`t1` 与 `t2 = t1 + 1000 ms`，同一 `HHmm` 戳）连续两次 `create()`：
+
+```
+[P5] create(t1=1792369251459) → name="carbonboo-backup-20261019-0820.json" size=38889
+[P5] create(t2=1792369252459) → name="carbonboo-backup-20261019-0820-2.json" size=38889
+[P5] list → ["carbonboo-backup-20261019-0820-2.json","carbonboo-backup-20261019-0820.json"]
+PASS  P5.a 两次备份得到两个不同文件名
+PASS  P5.b 两个文件同时存在（前一份未被覆盖）  list.length=2
+PASS  P5.c 第一份文件内容未被第二次写入破坏  len(before)=38889 len(after)=38889 same=true
+[P5] 第一份文件仍可解析：格式字段="carbonboo-backup"
+```
+
+**真实缺陷场景（自保快照 vs 手动备份）也跑通了**：`restore(target, true)` 在恢复前会写一份安全快照，
+它与目标备份落在同一分钟 —— 修后拿到的是**第三份**名字（`safetyPath=/mem/files/backup/carbonboo-backup-20261019-0820-3.json`），
+恢复后 `list` 三份齐全、**目标文件仍在**：
+
+```
+[P5] restore("/mem/files/backup/carbonboo-backup-20261019-0820.json") ok=true safetyPath=…/carbonboo-backup-20261019-0820-3.json
+[P5] restore 后 list → ["…-0820-3.json","…-0820-2.json","…-0820.json"]
+PASS  P5.d 恢复后原备份文件仍在（自保一份没有覆盖它）  仍在=true 原文件长度=38889
+```
+
+（R11.6 的 P4 里也能看到同一现象：手动备份 `…-0820.json` 之外，安全快照是 `…-0820-2.json`。）
+
+**变异退回自证（我跑出来的）**：同一次 `973081a` 变异下跑 P5：
+
+```
+[P5] create(t1=1792369296976) → name="carbonboo-backup-20261019-0821.json" size=19763
+[P5] create(t2=1792369297976) → name="carbonboo-backup-20261019-0821.json" size=19763
+[P5] list → ["carbonboo-backup-20261019-0821.json"]
+FAIL  P5.a 两次备份得到两个不同文件名  n1=n2=carbonboo-backup-20261019-0821.json
+FAIL  P5.b 两个文件同时存在（前一份未被覆盖）  list.length=1
+FAIL  P5.c 第一份文件内容未被第二次写入破坏  len(before)=19763 len(after)=19763 same=false
+```
+
+⇒ 修复前两次同名、目录里只剩一份、第一份内容**已被覆盖**（`same=false`；长度相同是因为同一库两次
+dump 的字节数相近，内容里的时间戳不同 —— 这正说明它被**改写**了，不是"没写"）。
+**「自保反而毁掉原件」的确切机制由此闭环**：`cleanOld()` 只留最近 3 份、按 `modifiedAt` 倒序取，
+被覆盖的那一份再也拿不回来。
+
+**源码边界（读出来的）**：`:64 create` → `:91 uniqueName(stamp)`（`:96` 循环 `files.exists` 撞名则追加
+`-2`/`-3` 后缀再试）→ `:70 writeText(`${DIR}/${name}`)`；`Formatter.fileStamp(now)` 只到分钟 ⇒ 无此
+helper 时同分钟必同名。还原后 sha256 = `6a43497e…25d0c`，`cmp` 逐字节一致。
+
+### R11.8 实跑门禁（原始输出，收工后重跑一遍以绑定 `f1b66c1`）
+
+```
+$ bash tests/tools/l1_offline/run_tests.sh
+离线 L1 执行器：node v22.22.1，esbuild 0.28.2
+转译完成：78 个 .ets → CJS（.js）
+启动地基：goals=11 badges=8 shop=9 science=12 factors=CF-2026.2
+hypium 用例：36 条，PASS=36 FAIL=0
+RESULT: it_executed=36 passed=36 failed=0 requires_device=0
+CalcBaselineValidator：checked=323 passed=true
+基准复算结论：全部一致：共复算 323 个断言点
+RESULT: PASS
+TESTS_EXIT=0
+
+$ bash tests/tools/l1_offline/run.sh
+仓库 HEAD   : f1b66c1516d67a0e8b45b1282761f2e8ed2e30c8
+RESULT: PASS=55 FAIL=0
+checked = 323
+passed  = true
+summary = 全部一致：共复算 323 个断言点
+RESULT: checked=323 passed=true mismatches=0
+RUN.SH: 全部 PASS（离线纯逻辑部分）
+RUN_EXIT=0
+
+$ python3 tests/tools/check_l0.py --strict
+检查项：28    错误：0
+扫描文件：89    命中：0
+L0-3 人工待修清单（tests/cases/carbon-calc.json → docConflicts）：0 条
+结论：PASS —— 基准自洽，文档无已知冲突
+L0_EXIT=0
+```
+
+（`run_tests.sh` 与 `run.sh` 读的是**工作树**，`run.sh` 头部原始输出记录跑时的 `仓库 HEAD = f1b66c1`。
+门禁三跑与 §R11.3–R11.7 的直证都在这同一份工作树的字节上完成。）
+
+### R11.9 结论与边界
+
+- **结论：5 条缺陷修复逐条成立且承重，`verdict = pass`。** 每一条都同时具备
+  ①**修后直证**（真实实现真跑出的观测值）与 ②**变异退回自证**（退回修复前字节后，同一支探针
+  重现原始故障，含 `near "order": syntax error` 原文与 `unlocked=0` 原文）。
+- **第 5 条「未核」缺口已闭合**：同分钟内两次 `create()` 得到两个不同文件名、前一份内容未被破坏；
+  并复刻了真实场景（恢复前安全快照与手动备份同分钟）。
+- **证据强度与边界**：本节所有「真跑」都在 `node` + `tests/tools/l1_offline/platform/` 垫片上完成，
+  **不是设备上的 `ohosTest`**。缺陷 1/2/3/5 是 ArkTS 实现逻辑的字节级行为（同一份真实实现，转译后逐字节
+  执行）；缺陷 4 是 SQL 解析层错误（真 SQLite 方言），设备侧"同错"是**推断**而非实测 ——
+  R11.0 已如实登记。
+- **未改任何被测字节**：4 次变异全部在同一批命令内还原，`cmp` 与 `sha256sum` 收工值与开工值逐字节一致
+  （见 R11.1）；`git status --short` 收工为空。
+
 ## §R10 round 10（t48 · **离线 L1 从 18/18 收敛到 36/36** + 本轮执行器暴露并修复的 5 条 app 生产缺陷）
 
 > 本节是**新增证据轮 + 缺陷登记轮**，绑定 `HEAD = e83d3c17ae2150feabadb857dbca5561d60bf033`。
