@@ -1,3 +1,252 @@
+# 交付评审报告（round 5 · t51 交付级终审）· CarbonBoo（赛题二）
+
+> 评审人：**verifier-oc**（AgentTeams 成员；本轮角色是**评审者**，不是实现者 —— 只写本文件，
+> 未改任何被测源码 / 规格文档 / 测试基准 / `tests/cases/`）
+> 本轮结论**绑定 `HEAD = 4564599328f3c071bd4cd141f1a9d88c6ae67b99` 的字节**（该 SHA 是本节所有门禁实跑时的 HEAD；开工时 HEAD 为 `68c5b71`，评审期间被 t52/t53 推进两格，逐字节影响见 §R5.1）
+> 被评审对象：`973081a`（t46 修 3 条生产缺陷）、`1f9ca88`（t46 修 2 条）、`e83d3c1`（t45 修测试自身缺陷）、`f1b66c1`（t49 同步写回加引号）、`de0eac1`（t48 文档收口）、`68c5b71`（t50 独立验证）、`66f9f23`/`4564599`（t52/t53 导航口径）→ 三部分交付物（`app/`、`server/`、`server/admin_web/`）+ `docs/VERIFICATION.md` 的「未运行」声明
+> 历史轮次报告（round 4 · t8 attempt 9，绑定 `53f76ca`；round 3 · t32，绑定 `284c069`）**原文保留在下方**，本附录只做追加，不覆盖、不删改。
+> **编号说明**：本节用 `§R5.x` ＝ **本文件（`docs/REVIEW.md`）的第 5 轮评审编号**；与 `docs/VERIFICATION.md` 的 `§R*`（最新是 §R11 ＝ VERIFICATION 的第 11 轮）是两套互相独立的编号体系，勿混。
+
+## §R5.0 开工四查 + 收工四查（原始输出，照录）
+
+开工（本次评审第一次 shell）：
+
+```
+$ git rev-parse HEAD
+68c5b711b77b26b878278739e1a603efab0be8da
+$ git ls-remote origin main
+68c5b711b77b26b878278739e1a603efab0be8da	refs/heads/main
+$ git status --short
+（空）
+```
+
+收工（全部门禁跑完之后）：
+
+```
+$ git rev-parse HEAD
+4564599328f3c071bd4cd141f1a9d88c6ae67b99
+$ git ls-remote origin main
+66f9f238587a0a935407741438109e5c87f2709c	refs/heads/main
+$ git status --short
+（空）
+$ git log --oneline -6
+4564599 docs: t53 登记 docs/VERIFICATION.md 日期口径不一致（索引 2026-11-07 ↔ git 实测 2026-10-16/10-19）
+66f9f23 docs: t52 补 docs/VERIFICATION.md 轮次索引 §R10/§R11 + 顶部 blockquote 口径对齐
+68c5b71 docs: 新增 §R11 —— 5 条 app 生产缺陷修复的非作者独立验证（离线直证 + 变异自证）
+f1b66c1 fix: t49 同步写回 INSERT/UPDATE 列名统一加引号 + LwwMerge 陈旧注释订正
+de0eac1 docs: 登记离线 L1 36/36 与执行器暴露的 5 条生产缺陷（§R10）+ tests/README 补 run_tests.sh
+e83d3c1 test: t45 修测试自身缺陷（非法用户名/过期封顶期望/用例间共享库耦合）—— 36 条离线 L1 全绿
+$ git diff --stat 68c5b71..HEAD
+ docs/VERIFICATION.md | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+```
+
+## §R5.1 绑定字节：评审期间 HEAD 前进了两格（信息 + 处置）
+
+| 时刻 | HEAD | 相对开工的改动 |
+|---|---|---|
+| 开工 | `68c5b711b77b26b878278739e1a603efab0be8da` | — |
+| 评审中途 | `66f9f238587a0a935407741438109e5c87f2709c` | t52：`docs/VERIFICATION.md` 轮次索引/blockquote |
+| 收工/实跑基准 | `4564599328f3c071bd4cd141f1a9d88c6ae67b99` | t53：`docs/VERIFICATION.md` 日期口径登记 |
+
+`git diff --stat 68c5b71..HEAD` 只有 `docs/VERIFICATION.md`（13 insertions / 2 deletions）。即：**从开工到收工，被评审的 `app/`、`server/`、`tests/` 字节零变化**，两格前进全部落在同一条导航文档上。
+
+**处置**：本轮结论绑定 `4564599`（实跑时的字节），并在 §R5.6 说明「写报告这个动作本身还会让 HEAD 再前进一格」对交付门禁的机械影响。凡引用「绑定某 SHA」的结论，一律以**最后一次冻结时的 `git rev-parse HEAD`** 为准。
+
+## §R5.2 本轮实跑的五条门禁（原始输出 + 退出码）
+
+全部在 `HEAD = 4564599`、worktree 干净（`git status --short` 空）时执行。日志：`/tmp/t51/gate_oc.txt`、`/tmp/t51/gate_hap_oc.txt`、`/tmp/t51/gate_l3_oc.txt`（临时目录，不入库）。
+
+| # | 命令 | 退出码 | 关键原始输出 |
+|---|---|---|---|
+| 1 | `python3 tests/tools/check_l0.py --strict` | `L0_EXIT=0` | `检查项：28    错误：0` / `扫描文件：89    命中：0` / `L0-3 人工待修清单：0 条` / `结论：PASS` |
+| 2 | `bash tests/tools/l1_offline/run_tests.sh` | `TESTS_EXIT=0` | `hypium 用例：36 条，PASS=36 FAIL=0` / `RESULT: it_executed=36 passed=36 failed=0 requires_device=0` / `CalcBaselineValidator：checked=323 passed=true` |
+| 3 | `bash tests/tools/l1_offline/run.sh` | `RUN_EXIT=0` | `RESULT: PASS=55 FAIL=0` / `RESULT: checked=323 passed=true mismatches=0` |
+| 4 | `cd app && source ~/harmony-toolchain/env.sh && export OHOS_BASE_SDK_HOME=$DEVECO_SDK_HOME && hvigorw --no-daemon assembleHap` | `ASSEMBLE_EXIT=0` | `BUILD SUCCESSFUL in 5 s 878 ms`（增量） |
+| 5 | `cd server && CARBONBOO_TEST_DB=carbonboo_test_v51 .venv/bin/python -m pytest tests/ -q` | `PYTEST_EXIT=0` | `237 passed, 1 warning in 245.01s (0:04:05)` |
+
+门禁 1 原文（节选）：
+
+```
+L0-1 数值基准自检（tests/cases/carbon-calc.json）
+检查项：28    错误：0
+  OK：18 组正向样例 / 5 组封顶 / 边界样例全部自洽
+L0-2 文档已知冲突扫描（docs/）
+扫描文件：89    命中：0
+L0-3 人工待修清单（tests/cases/carbon-calc.json → docConflicts）：0 条
+结论：PASS —— 基准自洽，文档无已知冲突
+```
+
+门禁 2 原文（节选）：
+
+```
+离线 L1 执行器：node v22.22.1，esbuild 0.28.2
+转译完成：78 个 .ets → CJS（.js）
+启动地基：goals=11 badges=8 shop=9 science=12 factors=CF-2026.2
+hypium 用例：36 条，PASS=36 FAIL=0
+RESULT: it_executed=36 passed=36 failed=0 requires_device=0
+基准复算结论：全部一致：共复算 323 个断言点
+RESULT: PASS
+```
+
+门禁 5 逐文件用例数（`--collect-only` 实测，与门禁 5 同库同配置）：`test_admin=85`、`test_auth=40`、`test_authz=29`、`test_config=25`、`test_shop=10`、`test_sync=48`，合计 **237**。
+
+环境口径（可复现前提）：`docker ps` 显示 `carbonboo-mysql  Up 11 hours  127.0.0.1:13307->3306/tcp`，`/dev/tcp/127.0.0.1/13307` 探测 `13307 OPEN`；`CARBONBOO_TEST_DB` 用本轮专属后缀 `carbonboo_test_v51`（避免与他人的库互撞）；WSL 内没有 `python`，L3 一律用 `server/.venv/bin/python`，L0 用系统 `python3`。
+
+## §R5.3 三部分交付盘点（规模实测）
+
+| 部分 | 实测（`find`/`wc`/`ls`） |
+|---|---|
+| ① `app/`（ArkTS + API 12） | `app/entry/src/main/ets` **108 个 `.ets` / 19885 行**；`pages/` **19** 个；`components/` **23** 个；`viewmodel/` **36** 个；`ohosTest/` **16** 个；`data/schema/ClientSchema.ets` **19 张** `CREATE TABLE IF NOT EXISTS`（`:76/:104/:113/:146/:159/:176/:194/:207/:223/:237/:252/:268/:281/:297/:315/:327/:343/:359/:371`） |
+| ② `server/`（FastAPI + MySQL 8） | `*.py`（排除 `.venv`）**59 个 / 11796 行**；`server/sql/schema.sql` **21 张**表；`app/api/v1` 路由：auth 5 / backup 3 / config 1 / shop 1 / sync 3；L3 六文件 237 用例 |
+| ③ 管理后台 `/admin` | **仓库根没有 `admin/`**，实为可选件 `server/admin_web/`：`api.py` **19 条路由**、`pages.py` 0 条（9 个 `templates/*.html` SSR）、`services/` 8 个模块；挂载点 `server/app/main.py:170 from admin_web.mount import mount_admin`（`:172` 失败静默跳过 → 未装后台也能起服务） |
+
+> **口径提醒**：`AGENTS.md` 与 `docs/PLAN.md` 里写的 `/admin` 指**逻辑交付物**，物理路径是 `server/admin_web/`；README 与部署脚本也按这个路径。这不是缺陷，但评审/验收命令必须写 `server/admin_web/`，写仓库根 `admin/` 会找不到文件。
+
+## §R5.4 必查① 「未运行」声明如实性 —— 结论：如实（1 处计数瑕疵，见 H2）
+
+- `docs/VERIFICATION.md` 顶部 blockquote（`:1`/`:3`）逐轮串起 §R7–§R11 并写明各轮绑定 SHA；N 编号「未运行」表存在于 §R4.7（`:1013`）、§R6.6（`:1408`）、§R10.5（`:1598`）、§13（`:2532`）。
+- 边界句齐全且互相一致：「**未运行 ＝ 不算通过**」「不要把 `assembleHap` BUILD SUCCESSFUL 说成 L1 用例通过」「36 条真跑 ≠ 设备上跑过」「两证不可互相顶替」。
+- `§R8.2` 标题明写「（队长实跑，逐字照抄）」→ **归属如实**：该节的干净全量构建与注入自证不是我跑的，本轮我也不据它宣布结果（见 §R5.11 U6）。
+- `tests/README.md`：`:13`（L1 行）、`:82-85`（「执行状态（设备侧）」）、`:87-111`（§5.1 表 + 四条边界）均如实；其中写明 `requires_device=0` 的含义是「因必须真机而**被跳过**」，**不是**「设备上跑过」——这正是历史上「窄口径假闭环」的更正点。
+- 历史三处失真（视觉模型零达成 / 增量构建当全量 / 窄口径 grep 假闭环）在文档内都留有**原位更正标记**（t38/t41/t42 更正段），没有被静默删掉。
+
+## §R5.5 必查② 网络例外集「五类」口径宽搜 —— 结论：live 口径全部一致（1 处历史留痕会让读者误判，见 H1）
+
+搜索面（宽口径，含「四类 / 四项 / 仅有的四个 / 唯一免鉴权」变体）：全仓 `*.md` + `*.ets` + `*.py` + `tests/cases/*.json`。
+
+- **live 口径全部为「五类」**：`AGENTS.md:71/:104/:143/:179/:243`、`README.md:16/:68`、`docs/PLAN.md:95/:118/:143/:620/:935/:1046/:1071`、`docs/adr/0001-account-and-sync.md:17`、`app/entry/src/main/ets/model/SyncTypes.ets:8`、`app/entry/src/main/ets/viewmodel/net/HttpPort.ets:12`、`tests/cases/carbon-calc.json`（B21 / B42.correct）。
+- **残留「四类/四项」只在两类语境**：①历史留痕（`AGENTS.md:61` B42 条自述「…t21 起再补配置下发→五类」、`AGENTS.md:247`、`docs/CHANGELOG.md:34/:97/:100/:103/:110`、`docs/DECISION-0002-…:22`、`tests/cases/carbon-calc.json:930/:954/:955` 引旧错文）；②根本不是例外集（`docs/PLAN.md:375` 减排分类、APPENDIX-D/E/F、`ChartModel.ets:6/:8/:11/:18/:276`、`CsvRenderer.ets:7/:89`、`ShopService.ets:83`、`DashboardPage.ets:126`）。
+- **唯一会让读者误判的一处**：`docs/CHANGELOG.md:116`（v4.1 条目正文「可依赖网络的例外**仅四项**」）没有任何历史标记，紧邻的 `:100/:103` 才是五类口径 → 见 **H1**。
+- t32 报告 F1 列过的 4 处残留（`SyncTypes.ets:8`、`HttpPort.ets:12`、`README.md:16`、`CHANGELOG.md:116`）：**前三处已修**，只剩 `CHANGELOG.md:116`。
+
+## §R5.6 必查③ Delivery blocked 插件机制独立复核 —— 结论：任务书的归因**只对了一部分**
+
+方法：**用插件自己的代码复现**，不靠读文档猜。脚本 `/tmp/t51/repro.mjs`（仓库外、只读，不入库；动态 import `@nanmicoder/dsh-agent-teams/lib/quality-gates.js` 与 `lib/workspace-audit.js`，读真实 `.agent-teams/carbonboo-delivery/team.json`，对真实 workspace 跑 `auditTeamWorkspace` → `canDeclareDelivery`），输出归档 `/tmp/t51/repro_now.txt`（`REPRO_EXIT=0`，可重跑）。
+
+实测读数：
+
+```
+deliveryArtifactPaths.length = 208      （unique 208）
+audit.artifacts  = 200                  （被截断）
+audit.expandedScope = 198
+audit.gaps = 8 条，全部 reason = "stopped at the 200-path cap, so the scope is only partially recorded"
+canDeclareDelivery.ok = false，blockers = 8 条，warnings = 4 条
+```
+
+**机制（源码级）**：`lib/artifacts.js:44 export const MAX_EXPANDED_ARTIFACTS = 200;`，超限时 `:214/:231/:262/:275` 记 gap；`lib/quality-gates.js:1031 deliveryArtifactPaths(team)` 汇总各任务的 `reviewedArtifacts[].path` + `contractSnapshot.artifacts[].path` + 无 reviewedArtifacts 的 verdict 任务的 `changedPaths`；`lib/workspace-audit.js:26 auditTeamWorkspace` 对「artifact 并集」与「scope pattern 并集」各跑一次 `readArtifactScope` 并**合并两边的 gaps**；`quality-gates.js:1384-1388` 只要 `audit.gaps.length > 0 && (quality.length>0 || blockers.length>0 || audit.artifacts!==undefined)` 就**无条件** `blockers.push('the current workspace audit is incomplete (…); no recorded verdict can be confirmed over partially enumerated or unreadable artifacts')`。故「交付物清单并集 > 200 个文件 ⇒ gap ⇒ 无人可宣布交付」是**真·结构性不可达**。
+
+**但 blocker 一共 8 条，任务书说的 200 上限只解释第 8 条**：
+
+| # | blocker（原文摘要） | 性质 | 谁能解 |
+|---|---|---|---|
+| 1 | `t44 (work) is not completed` | 任务态 | 队长（t44 的 5 条缺陷已由 `973081a`/`1f9ca88` 修 + t50 验证 pass，但任务本身从未 completed） |
+| 2 | `t51 (review) is not completed` | 本任务自身 | 本报告完成即消 |
+| 3 | `t7 (verification) verdict covers a revision that no longer exists`（8 个文件 sha256 前后值） | 旧 verdict 漂移 | 需要**新的、绑定当前字节**的 verdict 顶掉它 |
+| 4 | `t24 (verification) …`（含 2 条 `the workspace changed while this verdict was being formed`；含 `tests/cases/carbon-calc.json 3fdd32a6→632729f8`） | 旧 verdict 漂移 | 同上 |
+| 5 | `t27 (review) …`（另有 `docs/PLAN.md was not in the current workspace snapshot`） | 旧 verdict 漂移 | 同上 |
+| 6 | `t29 (review) …`（`docs/REVIEW.md changed 95873014→27d64dd3`） | 旧 verdict 漂移 | 同上 |
+| 7 | `t32 (review) …`（`docs/REVIEW.md changed 27d64dd3→afdbc6f0`） | 旧 verdict 漂移 | 同上 |
+| 8 | `the current workspace audit is incomplete (… +5 more)` | **结构性** | 需要把交付物并集压到 < 200 个文件（`deliveryArtifactPaths` = 208） |
+
+另有 4 条 warning（`t31`/`t40`/`t47`/`t50`）：「predates content-bound verdicts and recorded no artifact identity; delivery cannot confirm the current bytes are the revision it judged — re-review to bind them」——**warning 不是 blocker**，但它说明这 4 份历史验证的结论**无法用于绑定当前字节**。
+
+**两点必须点明的机械事实**：
+
+1. **写报告这个动作本身会让 HEAD 前进**，而 `docs/REVIEW.md` 恰好是 t29/t32 被判漂移的直接原因（它们的摘要里就写着 `docs/REVIEW.md changed …`）——本报告提交后同样会再前进一格。所以「最后一轮绑定当前字节」这个要求在纯文档工作流里**无法自洽**：任何 verdict 都诞生于一次提交，而那次提交本身就改变工作区。唯一可行的收口是：**所有写手停下 → 冻结 SHA → 在一个已冻结的 revision 上跑完门禁并提交报告 → 之后只允许「不改变任何被审文件摘要」的动作**（例如由队长在平台外记录，或接受第 3–7 条 blocker 以新 verdict 逐条顶掉）。
+2. **第 3–7 条是「可以用新 verdict 顶掉」的**：机制上 `verdictAuditNotes` 会对每个 completed verdict 的 `reviewedArtifacts` 算漂移，只要新 verdict 复核了漂移文件的当前摘要，旧 verdict 就不再是唯一覆盖者（`t8`（round 4）当前既不在 blocker 也不在 warning 列表里，就是「已绑定」的样本）。**第 1 条（t44 未 completed）与第 8 条（208 > 200）必须由队长处置**，本轮评审无法消解。
+
+**本轮评审对此的立场**：我只对「产品是否可交付」给出结论（§R5.13），不对「插件门禁能否放行」背书——后者按上表需要队长的两次处置（关闭 t44；把交付物清单压到 200 以内或接受该 blocker）。
+
+## §R5.7 必查④ t49「表名保持裸写」的边界是否合理、是否被如实标注、有无未覆盖风险 —— 结论：合理且已标注，风险面比 t49 说的更宽（见 H3）
+
+现状（`HEAD = 4564599` 字节）：
+
+- `app/entry/src/main/ets/viewmodel/net/SyncService.ets:697`：`INSERT INTO ${table} (${SyncService.quotedAll(columns).join(', ')}) VALUES (…)` —— **列名已加引号，表名仍是模板变量**；`:541` `UPDATE ${name} SET "sync_state" = 'synced' …`；`:661`/`:668` `DELETE FROM ${table} WHERE id = ?`；`:775`/`:853` 两条字面量 INSERT 的列名也已加引号。`quoted`/`quotedAll` 定义在 `:830` 附近。
+- 边界理由**写在代码注释里**（约 `:803-825`）：①表名只来自 `ClientSchema` 的静态白名单（`SYNCED_TABLES`/`TABLES`），远端来的名字先过 `:595 if (SyncService.isSyncedTable(name))`；②`app/entry/src/ohosTest/ets/test/LwwMerge.test.ets:450`（`DELETE FROM ${TABLE}`）、`:453`（`INSERT INTO ${TABLE}`）、`:599`（两者）按**字面量**匹配 SQL 轨迹，给表名加引号会让这三条断言失配。
+- **独立扫描（不看注释，直接扫代码）**：`/tmp/t51/order_scan.py` 扫 `app/entry/src/main/ets` 内 INSERT/UPDATE/DELETE 语境里裸用保留字 `order` → 命中 2 处**均为假阳性**（`ScienceService.ets:152` 附近是注释「（按 order）」与已正确引号的 `ORDER BY a."order"`）。⇒ **无裸保留字列残留**，t46 的修复是完整的。
+- 保留字列出处：`ClientSchema.ets:171/:202/:230/:276` 的 `"order" INTEGER NOT NULL`（分属 `goal_def`/`badge_def`/`shop_item`/`science_article`）。这 4 张表的种子**不走裸 SQL**，走 relationalStore API：`SeedRepository.ets:272/:293/:315/:336 store.insert('goal_def'|'badge_def'|'shop_item'|'science_article', values, ON_CONFLICT_REPLACE)`。
+- **同类裸表名站点（t49 未列举，故记 H3）**：`BackupService.ets:215`、`AuthService.ets:193`、`DemoService.ets:147`、`SyncService.ets:541/:661/:668/:697`。它们全部来自静态白名单，所以不是缺陷；但「表名不加引号」这条约定目前**只靠注释与人工记忆**维持，仓库里没有任何自动检查（`check_l0.py` 不扫 SQL 拼写）。若将来 `ClientSchema` 引入一个保留字表名（如 `order`/`group`），这 7 处会同时炸，且**只有 L1 用例能发现**（L3 是服务端 SQLAlchemy，不受影响）。
+
+## §R5.8 被核提交逐条核对
+
+| 提交 | 前缀 | 改了什么 | 本轮核对结论 |
+|---|---|---|---|
+| `973081a` | `fix:` | t46：3 条生产缺陷（RewardService 徽章、ServerConfigFetcher 下发、FilesPort 契约） | t50 已独立验证（VERIFICATION §R11）；本轮复核 3 个文件摘要与 §R5.9 铁律一致 |
+| `1f9ca88` | `fix:` | t46：BackupService 引号 + 唯一文件名 | 同上；`order` 裸写已消失（§R5.7 独立扫描） |
+| `e83d3c1` | `test:` | t45：5 个 ohosTest 文件（非法用户名夹具 / 过期封顶期望 / 用例间共享库耦合 / BadgeIdempotent） | 未碰 `main/`；离线 L1 从 19/17 收敛到 36/36（§R5.2 门禁 2 复现） |
+| `f1b66c1` | `fix:` | t49：SyncService 写回列名统一加引号 + LwwMerge 陈旧注释 | 边界合理（§R5.7）；**未碰 `tests/cases/`** |
+| `de0eac1` | `docs:` | t48：VERIFICATION §R10 + `tests/README.md` 补 `run_tests.sh` | 文档与实跑一致（§R5.4） |
+| `68c5b71` | `docs:` | t50：VERIFICATION §R11（5 条缺陷非作者独立验证 + 变异自证） | 该节自述的 4 次变异与还原，本轮**不重跑**（会改 `app/` 源码，超出评审写入范围）；作为「独立验证已完成」的证据采信 |
+| `66f9f23`/`4564599` | `docs:` | t52/t53：`docs/VERIFICATION.md` 导航/日期口径 | 只动 `docs/VERIFICATION.md`（`68c5b71..HEAD` 13+/2−），不影响生产线字节 |
+
+`git show --stat` 逐个核对：**上述 5 个代码/测试提交没有一个触碰 `tests/cases/`**（数值真相源）。
+
+## §R5.9 四条铁律 + 规约红线（各给 `文件:行`）
+
+| 铁律 | 证据（`HEAD = 4564599`） |
+|---|---|
+| ① 本地优先 | 唯一真相源是 `relationalStore`；网络只出现在 §R5.5 的五类例外，且五类都有失败降级（取价/配置 → 内置值） |
+| ② 单一计算入口 | `app/entry/src/main/ets/service/CarbonService.ets:76 static calculate(activity: ActivityInput, factor: FactorSnapshot, options?: CalcOptions): CarbonCalculation` 是**全 app 唯一** `static calculate` 定义；`：101 static calculatePreview` 内部调 `CarbonService.calculate`（`:107`）。唯一因子乘法：`app/entry/src/main/ets/service/CarbonCalc.ets:148 static reductionOf(amount: number, factorValue: number): number` → `:153 const product: Dec = Dec.from(amount).mul(Dec.from(factorValue));`。`pages/` 与 `components/` 内因子乘法（`* factor` / `.mul(`）**零命中**（EXIT=1） |
+| ③ 因子快照 | `app/entry/src/main/ets/data/schema/ClientSchema.ets:85-88`：`factor_value REAL NOT NULL` / `factor_version TEXT NOT NULL` / `factor_source TEXT NOT NULL` / `confidence TEXT NOT NULL` |
+| ④ 积分单向可追溯 | 唯一写入点 `app/entry/src/main/ets/viewmodel/PointService.ets:153 'INSERT OR IGNORE INTO point_record '`；余额同口径 `COALESCE(SUM(points), 0)`：`PointService.ets:91`（balance）`/:121/:136/:235`、`net/SyncService.ets:362/:377`、`LwwMerge.test.ets:683/:703`、`server/admin_web/services/stats.py:90` |
+
+规约红线（`app/entry/src/main/ets` 实测）：`: any` 计数 **0**（EXIT=1）、`@ts-ignore` 计数 **0**（EXIT=1）、非相对 import（排除 `@ohos`/`@kit`）**0 / 565**（跨行感知脚本 `/tmp/t51/imports.py`）、`UPDATE|DELETE FROM point_record` 在 `app/ server/ tests/` 源码树**零命中**（EXIT=1）。
+
+## §R5.10 数值真相源零改动
+
+```
+$ md5sum tests/cases/carbon-calc.json app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+e096b2db77bbcc9a43ee8728cbd883e9  tests/cases/carbon-calc.json
+e096b2db77bbcc9a43ee8728cbd883e9  app/entry/src/ohosTest/resources/rawfile/carbon-calc.json
+$ cmp …  → CMP_IDENTICAL
+$ git diff --stat 284c069 HEAD -- tests/cases/carbon-calc.json   → （空）
+```
+
+- 两个副本 md5 相同、`cmp` 逐字节一致；`git show <rev>:tests/cases/carbon-calc.json | md5sum` 在 `284c069`/`53f76ca`/`e83d3c1`/`68c5b71`/HEAD **全部同值**；语义比对（`/tmp/t51/bench_diff.py`，flatten 后逐路径比）在这些 revision 对 HEAD 的**总差异均为 0**。⇒ 本轮窗口内数值真相源**字节与语义都未变**。
+- 插件 blocker 里 t24 那条 `tests/cases/carbon-calc.json changed (sha256 3fdd32a6 -> 632729f8)` 是**插件按 verdict 记录时刻算的摘要差**（该文件曾在更早的文档登记提交里被动过），不是本轮窗口内的改动。按 `AGENTS.md §5.1-3` 的约定，判「这一轮数值有没有动」一律以 `git diff` 为准 —— 上面第三条命令就是该判据。
+
+## §R5.11 未运行项（单列，**一条都不算通过**）
+
+| 编号 | 未运行项 | 为什么没跑 / 原始错误 |
+|---|---|---|
+| U1 | **L1 全部 hypium（10 套件 / 36 个 `it()`）在真机或模拟器上执行** | 三座桥全断：`hdc` 不在 PATH（`command -v hdc` 空，直调 SDK 内 hdc 得 `Connect server failed`）；`/dev/kvm` 不可写（`crw-rw---- root:kvm`）；`command -v emulator` EXIT=1。历史上 `timeout 420 hvigorw --no-daemon test` → `TEST_EXIT=124`（超时）。**本轮只跑了离线执行器（门禁 2），它 ≠ 真机 hypium** |
+| U2 | **L2 端侧集成**（两条真机 / 真机+模拟器；云通路 + 近场通路；飞行模式下五类例外） | 需要至少两台可用设备，本机零设备（同 U1） |
+| U3 | **`server/deploy/` 实跑**（容器或 systemd 部署、TLS、`mysqldump` 定时备份） | `/opt/carbonboo` 不存在、`nginx` 未安装；本轮未做任何部署动作 |
+| U4 | **`/admin`（`server/admin_web/`）浏览器交互** | 本机无浏览器自动化：`chromium`/`chromium-browser`/`google-chrome`/`playwright`/`chromedriver`/`firefox` 逐个 not found；L3 的 `test_admin`（85 条）走 `TestClient`，是 **HTTP 层**，**不等于**浏览器交互 |
+| U5 | **18 个页面的视觉走查（截图级）** | 页面级截图不可做（同 U4 的显示链路缺失）。**注意区分**：`tests/tools/vision_check/` 的判图腿**已可跑**（t41 更正：`ARK_API_KEY` 取自凭据库，实测识图 `HTTP=200`，`run.sh → RUN_EXIT=0`），但那是**设计令牌色板**的一致性检查，**不能**替代 18 页视觉走查 |
+| U6 | **全量干净构建（`git archive` 副本）+ 编译门禁注入自证** | VERIFICATION §R8.2 由**队长**实跑并逐字照抄；本轮我只复跑了**增量** `assembleHap`（`ASSEMBLE_EXIT=0`，`BUILD SUCCESSFUL in 5 s 878 ms`）。注入自证需要改 `app/` 源码，**超出本评审的写入范围**（本轮 inScope 只有 `docs/REVIEW.md`），故只采信、不重跑，也不据此宣布通过 |
+| U7 | **`server/` 的真实 HTTP 端到端**（真实客户端、并发、`--workers 2` 连接池压测） | 未做；L3 的 237 条是进程内 `TestClient` |
+
+## §R5.12 Findings（全部 low；无 blocker / high / medium）
+
+| id | 严重度 | 问题 | 文件:行 | requiredFix |
+|---|---|---|---|---|
+| H1 | low | v4.1 条目正文仍写「可依赖网络的例外**仅四项**」，且**无历史标记**，与紧邻的五类口径（`:100/:103`）并列时会让读者（含下游验收者）误判 | `docs/CHANGELOG.md:116` | 在该行补「（此为该版本当时口径；自 t21 起为五类，见 :100/:103）」或改为五类并注明变更时点 |
+| H2 | low | 轮次索引把未运行项写成「**四项**」，与 `tests/README.md §5`、`§R10.5` 的「五项」（含页面级视觉走查）口径不一致 | `docs/VERIFICATION.md:1527` | 统一为五项，或在两处互相加交叉引用 |
+| H3 | low | 「表名不加引号」的约定只由注释与人工记忆维持；同类裸表名站点共 7 处，无任何自动检查，未来 schema 引入保留字表名会同时炸且只有 L1 能发现 | `SyncService.ets:541/:661/:668/:697`、`BackupService.ets:215`、`AuthService.ets:193`、`DemoService.ets:147` | 加一条静态检查（如 `check_l0.py` 或 L1 用例断言「白名单表名不含 SQL 保留字」），或把表名也统一走 `quoted()` |
+| H4 | low | 多处「绑定 HEAD X」的文档口径与交付门禁的 content-bound verdict 机制不匹配：报告提交本身会推进 HEAD，且 `docs/REVIEW.md` 正是前两轮被判漂移的原因 | `docs/VERIFICATION.md`（各轮 §R* 首段）、本文件 §R5.1 | 交付说明以**最后一次冻结 SHA** 为准；收口顺序按 §R5.6 的「先停写、再冻结、后出报告」 |
+| H5 | low | 任务 `t44` 终态未完成（其 5 条生产缺陷已修且经 t50 验证 pass），导致交付门禁持续报 `t44 (work) is not completed` | `.agent-teams/carbonboo-delivery/`（团队状态，非仓库文件） | 队长处置：把 t44 关闭/标记完成，或新建一个绑定当前字节的收尾任务替代它 |
+| H6 | low | 插件 audit 的 8 条 gap 里 3 条的 pattern 是任务 inScope 文本碎片（`ets/view`、`PLAN/ADR`、`t5/t6`），会与真实目录一起被展开，虚高 gap 计数 | 团队任务文本（非仓库文件） | 队长把 `reviewedScope` 写成**真实存在的路径或 glob**；同时把交付物并集压到 < 200（当前 208） |
+| H7 | low | VERIFICATION §R8.2/§R8.4（干净全量构建 + 注入自证）由队长实跑，本轮只复跑增量编译；读者若只看 §R5.2 会高估编译门禁的强度 | `docs/VERIFICATION.md` §R8.2、本文件 §R5.11 U6 | 已在 §R5.11 U6 显式标注；无需改文档 |
+
+## §R5.13 结论与放行建议
+
+**verdict = pass（限已跑项）** —— 在 `HEAD = 4564599328f3c071bd4cd141f1a9d88c6ae67b99` 的字节上：
+
+1. 五条门禁全绿且退出码可复现：L0 `EXIT=0`、离线 L1 `36/36 EXIT=0`、基准复算 `323/323 EXIT=0`、`assembleHap EXIT=0`、L3 `237 passed EXIT=0`（逐文件 85/40/29/25/10/48）。
+2. 四条铁律与三条规约红线（`: any` / `@ts-ignore` / 非相对 import）逐条静态成立，各有点位（§R5.9）。
+3. 数值真相源零改动（字节 + 语义，§R5.10）。
+4. 三部分交付物齐备（app 19 页 / server 21 表 237 用例 / 后台 19 条路由，§R5.3）。
+5. 「未运行」声明如实（§R5.4），本轮我自己也**没有**跑 L1 真机、L2、deploy、浏览器交互、截图级视觉走查 —— 这些一条都不算通过（§R5.11）。
+6. 7 条 finding 全为 low，均不影响交付物本身；其中 H1/H2/H3 是文档/防线的加固项，H4/H5/H6 是交付流程的机械处置项，H7 是口径标注项。
+
+**放行建议（给队长）**：产品侧可以交付；但**插件门禁不会自动放行**，需要三步处置 ——
+① 停掉所有写手，取一次 `git rev-parse HEAD` 作为**冻结 SHA**；
+② 处置 blocker #1（t44 未完成）与 blocker #8（`deliveryArtifactPaths` = 208 > 200：把交付物清单收敛到 < 200，或接受该结构性 blocker 并在交付说明中记录）；
+③ 在冻结 SHA 上重出一次绑定当前字节的 verdict 以顶掉 #3–#7（本报告即为其中一份，但它自身的提交会再推进一格 —— 这正是 H4 的机械根因，无法靠再加一份报告消除）。
+
+---
 # 交付评审报告（round 4 · t8 attempt 9 复评）· CarbonBoo（赛题二）
 
 > 评审人：**fixer-oc**（AgentTeams 成员；本轮角色是**评审者**，不是实现者 —— 只写本文件，
