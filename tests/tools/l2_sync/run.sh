@@ -10,7 +10,7 @@
 # 边界（重要）：这里验的是**协议级两端收敛**，**不能替代真机 L2**。
 #       不覆盖：UI、Ability 生命周期、端侧权限、鸿蒙近场/分布式通路、真机进程被杀/后台恢复。
 #
-# 退出码：0 = 八项全过 + 两条反证成立
+# 退出码：0 = 八项全过 + 三条变异反证成立（每条都含「变异必红 + git show 还原必绿」）
 #         1 = 有断言失败（含变异自证未变红、还原后未变绿）
 #         2 = 环境不可达（缺 node:sqlite / esbuild / 容器 / venv / 服务端起不来）
 #
@@ -257,6 +257,42 @@ RESTORED2_EXIT="$(cat "$TMP/exit-mut2-restored.txt")"
 grep -E '^\[(PASS|FAIL)\]|^RESULT' "$TMP/out-mut2-restored.txt" || true
 info "严格基准变异还原后退出码 = $RESTORED2_EXIT（必须 0）"
 
+# ── 6c. 反证 D（t73）：把取反后的 `offsetMs` **叠两次** ⇒ 重建后的 `#4.9` 必红；git show 还原 ⇒ 必绿 ──
+# 为什么单开这条腿：`#4.9` 的旧判据（`noAccum9` 拿初始 T9 当候选集）会假红，而重建后的判据
+#（逐轮 `服务端值 === 本轮本机值 + 本轮 offsetMs`）必须对"偏移被叠两次"这种**真**缺陷立刻变红 ——
+# 否则就是"把假红修成了恒真"。这条变异同时也会打红 #1.x/#2.x/#6.3（同一偏移参与 LWW 比较）。
+say "6c. 反证 D（t73 重建判据）：客户端把取反后的 offsetMs 叠两次 ⇒ #4.9 必红；git show 还原 ⇒ 必绿"
+BUILD_MUT3="$TMP/build-mut3"
+build "$BUILD_MUT3" "--mutate=offset-twice"
+MUT3_SHA="$(sha256sum "$BUILD_MUT3/src/main/ets/viewmodel/net/SyncService.ets" | cut -d' ' -f1)"
+info "第三个变异副本 sha256 = $MUT3_SHA（仓库原件 $REPO_SHA）"
+reset_db
+run_suite "$BUILD_MUT3" "$STRICT_GROUPS" "mut3"
+MUT3_EXIT="$(cat "$TMP/exit-mut3.txt")"
+MUT3_BAD="$(grep -E '^失败项' "$TMP/out-mut3.txt" | head -1)"
+grep -E '^\[FAIL\]|^RESULT|^失败项' "$TMP/out-mut3.txt" || true
+info "叠两次偏移后退出码 = $MUT3_EXIT（必须非 0）"
+case "$MUT3_BAD" in
+  *'#4.9'*) MUT3_HITS=1; info "#4.9 已被这条真缺陷打红：$MUT3_BAD" ;;
+  *) MUT3_HITS=0; info "警告：#4.9 未被这条真缺陷打红 —— 重建后的判据可能是恒真的：$MUT3_BAD" ;;
+esac
+
+git -C "$REPO_ROOT" show "HEAD:$SYNC_REL" > "$BUILD_MUT3/src/main/ets/viewmodel/net/SyncService.ets"
+if cmp -s "$REPO_ROOT/$SYNC_REL" "$BUILD_MUT3/src/main/ets/viewmodel/net/SyncService.ets"; then
+  info "第三个变异副本 git show 还原后与仓库原件逐字节一致（cmp 通过）"
+  RESTORED3_OK=1
+else
+  info "第三个变异副本还原后与仓库原件不一致 —— cmp 失败"
+  RESTORED3_OK=0
+fi
+build "$BUILD_MUT3" "--skip-copy"
+reset_db
+run_suite "$BUILD_MUT3" "$STRICT_GROUPS" "mut3-restored"
+RESTORED3_EXIT="$(cat "$TMP/exit-mut3-restored.txt")"
+grep -E '^\[PASS\]|^\[FAIL\]|^RESULT' "$TMP/out-mut3-restored.txt" | tail -3 || true
+info "叠两次偏移还原后退出码 = $RESTORED3_EXIT（必须 0）"
+
+
 # ── 7. 零改动核对 + 汇总 ───────────────────────────────────────────────────
 say "7. 零改动核对（app/ tests/cases/ tests/tools/l1_offline/；server/ docs/ 并行 agent 的改动单列）"
 STRICT="$(git -C "$REPO_ROOT" status --short -- app/ tests/cases/ tests/tools/l1_offline/ 2>/dev/null)"
@@ -284,6 +320,9 @@ printf '   %-34s %s\n' "变异（平局判据反转）" "退出码 $MUT_EXIT（�
 printf '   %-34s %s\n' "git show 还原后复跑" "退出码 $RESTORED_EXIT（须 0）"
 printf '   %-34s %s\n' "变异（落库换算多 1000ms）" "退出码 $MUT2_EXIT（须非 0）"
 printf '   %-34s %s\n' "严格基准还原后复跑" "退出码 $RESTORED2_EXIT（须 0）"
+printf '   %-34s %s\n' "变异（偏移叠两次）" "退出码 $MUT3_EXIT（须非 0）"
+printf '   %-34s %s\n' "偏移叠两次时 #4.9 是否打红" "$([ "$MUT3_HITS" = 1 ] && echo 是 || echo 否)"
+printf '   %-34s %s\n' "叠两次偏移还原后复跑" "退出码 $RESTORED3_EXIT（须 0）"
 printf '   %-34s %s\n' "app/ tests/cases/ l1_offline 零改动" "$([ "$ZERO_DIFF" = 1 ] && echo 是 || echo 否)"
 printf '   %-34s %s\n' "app/**/*.ets 指纹" "$([ "$CODE_SUM_BEFORE" = "$CODE_SUM_AFTER" ] && echo 未变 || echo 变了)"
 
@@ -295,8 +334,12 @@ FAILED=""
 [ "$MUT2_EXIT" != "0" ] || FAILED="$FAILED 严格基准变异未变红"
 [ "$RESTORED2_EXIT" = "0" ] || FAILED="$FAILED 严格基准还原后未变绿"
 [ "$RESTORED2_OK" = "1" ] || FAILED="$FAILED 严格基准还原不一致"
+[ "$MUT3_EXIT" != "0" ] || FAILED="$FAILED 叠两次偏移未变红"
+[ "$MUT3_HITS" = "1" ] || FAILED="$FAILED 叠两次偏移未打红 #4.9"
+[ "$RESTORED3_EXIT" = "0" ] || FAILED="$FAILED 叠两次偏移还原后未变绿"
+[ "$RESTORED3_OK" = "1" ] || FAILED="$FAILED 叠两次偏移还原不一致"
 if [ -z "$FAILED" ]; then
-  printf '\nRESULT: 全部通过（八项断言 + 三条反证）\n'
+  printf '\nRESULT: 全部通过（八项断言 + 四条反证：平局反转 / 落库换算多 1000ms / 偏移叠两次 各自「变异必红 + git show 还原必绿」）\n'
   exit 0
 fi
 printf '\nRESULT: 失败项 ——%s\n' "$FAILED"

@@ -6,10 +6,11 @@
  *   ② 复用 `tests/tools/l1_offline/platform/` 的 9 个平台垫片（**原样复制**，不改一行）；
  *   ③ 用 esbuild 把复制出来的真实源转成 CJS，并把 `@kit.*` / `@ohos.*` 说明符重写到垫片；
  *   ④ 断言 esbuild 的输入集合全部落在构建目录内（= 转译产物由**复制出来的真实源**决定）；
- *   ⑤ 可选：对**构建目录里的副本**做一次变异（`--mutate=tie-flip`），用于「改真实比较规则必红」的自证。
+ *   ⑤ 可选：对**构建目录里的副本**做一次变异（`--mutate=<kind>`，kind ∈
+ *      `tie-flip` / `offset-drop` / `offset-1000` / `offset-twice`），用于「改真实规则必红」的自证。
  *      变异只作用于构建目录，仓库 `app/**` 一个字节都不动；还原走 `git show`（见 run.sh）。
  *
- * 用法：node lib/build.mjs <repo_root> <build_dir> [--mutate=tie-flip]
+ * 用法：node lib/build.mjs <repo_root> <build_dir> [--mutate=<kind>] [--skip-copy]
  * 输出：人类可读日志 + 末行 `__L2BUILD__{json}`
  */
 
@@ -20,7 +21,7 @@ import { spawnSync } from 'node:child_process';
 
 const [REPO_ROOT, BUILD_DIR, ...flags] = process.argv.slice(2);
 if (!REPO_ROOT || !BUILD_DIR) {
-  console.error('用法：node lib/build.mjs <repo_root> <build_dir> [--mutate=tie-flip] [--skip-copy]');
+  console.error('用法：node lib/build.mjs <repo_root> <build_dir> [--mutate=<kind>] [--skip-copy]');
   process.exit(2);
 }
 const skipCopy = flags.includes('--skip-copy');
@@ -158,6 +159,15 @@ function applyMutation(srcRoot) {
     // 严格式 `端上值 + offsetMs === 服务端值` 必须立刻不等；若用 ±3s 容差则会被吃成绿。
     const from = "out['updated_at'] = updatedAt;";
     const to = "out['updated_at'] = updatedAt + 1000;";
+    if (before.indexOf(from) < 0) {
+      throw new Error(`变异锚点未命中：${from}`);
+    }
+    after = before.replace(from, to);
+  } else if (mutateKind === 'offset-twice') {
+    // t73 新增：**偏移被叠两次**的形态（客户端把取反后的 `offsetMs` 加两遍）。
+    // `#4.9` 重建后必须抓到的真缺陷形态：每多叠一次偏移，本机值与服务端值之间就凭空多出 |offsetMs|。
+    const from = 'const remoteUpdated: number = remoteRaw + offsetMs;';
+    const to = 'const remoteUpdated: number = remoteRaw + offsetMs + offsetMs;';
     if (before.indexOf(from) < 0) {
       throw new Error(`变异锚点未命中：${from}`);
     }

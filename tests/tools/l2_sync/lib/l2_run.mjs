@@ -952,6 +952,24 @@ async function scenario5() {
     b: dbCount('B', 'carbon_record', 'WHERE user_id = ?', [ctx.userId]),
     srv: serverCount('carbon_record'),
   };
+  // t73：`#5.1` 的「逐列不变」原先连 `updated_at` 一起比 ⇒ 复推后本机按**新一轮 offsetMs** 重定基
+  //（`local = server - offset`），`updated_at` 会合法漂 `|Δoffset|`（实测 8 ms）⇒ 假红。
+  // 改为：除 `updated_at` 外逐列严格相同（`CROSS_END_SKIP`），且 `updated_at` 的漂移必须能被
+  // 「本轮 push 是否改写了服务端」解释 —— 没改写 ⇒ 漂移恰好 = 两轮 offset 之差；改写了 ⇒ 漂移为 0。
+  const off51a = ((p1 || {}).data || {}).offsetMs;
+  const off51b = ((p2 || {}).data || {}).offsetMs;
+  const delta51 = (rowBefore === null || rowAfter === null)
+    ? NaN : Number(norm(rowAfter.updated_at)) - Number(norm(rowBefore.updated_at));
+  // 「第二次 push 是否真的改写了服务端那一行」以**push 响应**为准（`accepted>0` 即服务端被写入）。
+  // 用服务端**行数**变化判断是错的：复推不新增行，行数恒等，会把"服务端被改写"误判成"没改写"。
+  const acc51 = (p2 || {}).data === undefined ? NaN : Number(p2.data.accepted);
+  const diff51 = columnDiff(rowBefore, rowAfter, CROSS_END_SKIP);
+  // `updated_at` 只允许两种合法形态：① 本机行没被 pull 重写 ⇒ Δ=0；
+  // ② 被 pull 按新一轮 offsetMs 重定基 ⇒ Δ 恰好 = 两轮 offset 之差。
+  // 任何 1000ms 级/倍率级的换算错误都会让 Δ 落在集合外（不是"放大容差"）。
+  const deltaOk51 = Number.isFinite(delta51) && typeof off51a === 'number' && typeof off51b === 'number'
+    && (delta51 === 0 || Math.abs(delta51 - (off51a - off51b)) <= 1);
+  const rebase51 = deltaOk51;
   const dup = dbRows('A', 'SELECT id, COUNT(*) AS c FROM carbon_record GROUP BY id HAVING c > 1');
   const dupB = dbRows('B', 'SELECT id, COUNT(*) AS c FROM carbon_record GROUP BY id HAVING c > 1');
   check(
@@ -959,14 +977,16 @@ async function scenario5() {
     '复推同一批**不产生重复行**：两端 + 服务端三处行数不变，库内无重复 id，且该行内容逐列不变',
     n1.a === n2.a && n1.b === n2.b && n1.srv === n2.srv
       && dup.length === 0 && (dupB === null || dupB.length === 0)
-      && columnDiff(rowBefore, rowAfter).length === 0,
+      && diff51.length === 0 && rebase51,
     [
       `第一次 push: ${truncate((p1 || {}).raw, 400)}`,
       `重新标脏: ${j(mark.touched)}`,
       `第二次 push（同一批）: ${truncate((p2 || {}).raw, 400)}`,
       `行数 A: ${n1.a} → ${n2.a}；B: ${n1.b} → ${n2.b}；服务端 carbon_record: ${n1.srv} → ${n2.srv}`,
       `A 库重复 id: ${j(dup)}；B 库重复 id: ${j(dupB)}`,
-      `该行内容差异（复推前后）: ${columnDiff(rowBefore, rowAfter).length === 0 ? '无' : columnDiff(rowBefore, rowAfter).join(' ; ')}`,
+      `该行内容差异（复推前后，除 updated_at 外）: ${diff51.length === 0 ? '无' : diff51.join(' ; ')}`,
+      `updated_at 漂移: Δ=${delta51}（两轮 offsetMs: ${off51a} → ${off51b}，差=${off51a - off51b}）；`
+        + `第二次 push 的 accepted=${acc51} ⇒ 合法形态只有 Δ=0 或 Δ=两轮 offset 之差 ⇒ ${rebase51}`,
     ],
   );
   check(
@@ -1353,41 +1373,126 @@ async function scenario4() {
     const p9 = pushOut(r9) || {};
     const l9 = dbRow('A', 'carbon_record', R9);
     const s9 = serverRow('carbon_record', R9);
+    // 该轮 push **上行原文里这一行**的 `updated_at`（客户端基准的原始值）——用于「服务端恰好换算一次」
+    // 的绝对判据。它锚在请求体上，不依赖任何跨轮基准，因此不会被客户端重定基的毫秒级抖动带偏。
+    let pushedRaw = NaN;
+    const w9 = pushWire(r9);
+    if (w9 !== undefined && typeof w9.reqBody === 'string' && w9.reqBody.length > 0) {
+      try {
+        const body9 = JSON.parse(w9.reqBody);
+        const rows9 = ((body9.tables || {}).carbon_record) || [];
+        const mine9 = rows9.find((x) => x !== null && typeof x === 'object' && x.id === R9);
+        if (mine9 !== undefined) {
+          pushedRaw = Number(norm(mine9.updated_at));
+        }
+      } catch (_e9) {
+        pushedRaw = NaN;
+      }
+    }
     round9.push({
       round: i9 + 1,
       ok: r9.ok === true,
       offsetMs: (p9.data || {}).offsetMs,
       local: l9 === null ? NaN : Number(norm(l9.updated_at)),
       server: s9 === null ? NaN : Number(norm(s9.updated_at)),
+      pushedRaw,
       note: l9 === null ? null : l9.note,
     });
     i9 = i9 + 1;
   }
   const near3 = (a, b) => Math.abs(a - b) <= 3000;
-  // 严格不变量（**无容差**）：`本机值 + 该轮 offsetMs === 服务端值`。
-  //   · 该轮 push 被接受 ⇒ 服务端存的就是「本机上行值 + offset」；
-  //   · 该轮 push 被拒（对端换算后不更新）⇒ 本机采纳的是「服务端存量 − offset」。
-  // 两条分支都必须**逐字节相等**；偏移被换算两次（±120000）或符号写反会立刻不等。
-  const inv9 = round9.every((r) => r.ok && r.note === '不漂移'
-    && typeof r.offsetMs === 'number' && r.local + r.offsetMs === r.server);
-  // 服务端值只能等于「单次换算」的候选值，不能是累加形态。
-  const seen9 = [];
-  const noAccum9 = round9.every((r) => {
-    seen9.push(T9 + r.offsetMs);
-    return seen9.indexOf(r.server) >= 0;
-  });
-  // 本机值允许有往返抖动（被拒那一轮取的是对端换算值）⇒ 这一条才用 3s 容差，真正严格的是上面的不变量。
+  // ── t73 重建的 `4.9` 判据（原判据拿**初始 T9** 当基准 ⇒ 假红，见 REPORT §9）─────────────
+  // 修前的 `noAccum9` 是：`seen9.push(T9 + r.offsetMs); return seen9.indexOf(r.server) >= 0;`
+  // —— 候选集锚在**开跑时算出的初始常量 T9** 上。而同一行每轮 push 后，客户端会按**该轮的 offsetMs**
+  // 重定基（`local = server - offset`），offsetMs 每轮随握手抖动几毫秒，于是第 2、3 轮服务端值 =
+  // 「本轮本机值 + 本轮 offset」 ≠ 「初始 T9 + 本轮 offset」⇒ 合法抖动被误判成「偏移被累加」。
+  // 同一个 check 里的 `jitter9` 却用 ±3 s 容差明确承认这种抖动 ⇒ **自相矛盾**。
+  //
+  // 重建后的四条判据职责互不重叠，且都不靠「放大容差」：
+  //   ① inv9 / noAccum9（严格、无容差、逐轮、只基于**该轮实测值**）：`本机值 + 该轮 offsetMs === 服务端值`。
+  //      · 该轮 push 被接受 ⇒ 服务端存的就是「本机上行值 + offset」；
+  //      · 该轮 push 被拒（对端换算后不更新）⇒ 本机刚按 `server − offset` 重定基，反推必然相等。
+  //      两条分支都必须**逐字节**相等；符号写反或多叠一次偏移（±2×|offset|）会立刻不等。
+  //      它**就是**「三轮严格不变量」本身——原 `noAccum9` 与它是同一件事，故直接合并为一个谓词。
+  //   ② wire9（严格、无容差、锚在该轮**上行原文**）：`上行原始 updated_at + 该轮 offsetMs === 服务端值`。
+  //      这是「服务端只换算一次」的**绝对**判据：不依赖跨轮基准（所以不会被重定基抖动带偏），
+  //      且能抓住「服务端把偏移叠两次」（届时服务端值高出 |offsetMs|）。只在**本轮确实改写了服务端**
+  //      那一行时可核（本轮没写 ⇒ 服务端那行是上一轮用另一个 offset 写的，等式前提不成立）。
+  //   ③ bound9（跨轮**不累加**，上界远小于 |offsetMs|）：本机值/服务端值相对第 1 轮的偏移 ≤ DRIFT9。
+  //      `|offsetMs| ≈ 60 s` 而 DRIFT9 = 3 s = |offsetMs|/20 ⇒ 每轮再叠一次 ±offset 立刻越界。
+  //      它与 ① 是两件事：① 管每一轮内部恰好一次，③ 管三轮之间是否越滚越远。
+  //   ④ jitter9（3 s）：只做「本机值相对保存时刻 T9 的收敛上界」，**不承担严格性**（严格性在 ① ②）；
+  //      保留它是因为它能在三轮都恰好一次的前提下发现「本机值整体漂出去」这类退化。
+  const DRIFT9 = 3000;
+  const strict9 = (r) => r.ok === true && r.note === '不漂移'
+    && typeof r.offsetMs === 'number' && !Number.isNaN(r.local) && !Number.isNaN(r.server)
+    && r.local + r.offsetMs === r.server;
+  // 原有的「三轮严格不变量」（t68 起就在，命名不变），与下面的 `noAccum9` 是**同一件事**：
+  const inv9 = round9.every(strict9);
+  // t73 重建的 `noAccum9`：原判据是「服务端值 ∈ {**初始** T9 + 该轮 offsetMs}」，把「本机值随每轮
+  // offsetMs 变化而合法重定基」的毫秒级抖动误判成「偏移被累加」。现在它与 `inv9` 合并为同一判据
+  // —— 「服务端值 === **本轮**本机实际值 + **本轮** offsetMs」，逐轮、无容差、不引用任何跨轮常量。
+  const noAccum9 = round9.every(strict9);
+  // ② 只在「本轮确实改写了服务端那一行」时可核（本轮没写 ⇒ 前提不成立，不是跳过检查）
+  const wrote9 = (r, idx) => idx === 0 || r.server !== round9[idx - 1].server;
+  const wire9 = round9.every((r, idx) => (wrote9(r, idx)
+    ? (typeof r.offsetMs === 'number' && !Number.isNaN(r.pushedRaw) && r.pushedRaw + r.offsetMs === r.server)
+    : true));
+  // 跨轮**不累加**（独立于上面的逐轮等式）：本机值/服务端值相对第 1 轮的偏移都必须 ≤ DRIFT9。
+  // 它验的是「三轮之间有没有越滚越远」，与逐轮等式是两件事（逐轮管每轮恰好一次，这条管跨轮不累积）。
+  const bound9 = round9.every((r) => Math.abs(r.server - round9[0].server) <= DRIFT9
+    && Math.abs(r.local - round9[0].local) <= DRIFT9);
   const jitter9 = round9.every((r) => near3(r.local, T9));
+  // 仅用于证据行：本轮服务端值能否被「一次换算」解释（① 或 ② 任一成立）
+  const explainable9 = (r) => strict9(r)
+    || (typeof r.offsetMs === 'number' && !Number.isNaN(r.pushedRaw)
+      && r.pushedRaw + r.offsetMs === r.server);
+  // ⑤（t73 新增，**确定性**）：上面 ①② 的时序取决于"本轮 push 是否被服务端接受"（offsetMs 每轮抖动几毫秒，
+  //    接受/拒绝是概率性的），所以对"换算叠两次/多 1000ms"这类真缺陷，① 只在"恰好发生重定基"的那些轮里变红。
+  //    这一条换成**只能由 pull 落库路径写入**的行：B 先落一行并推上服务端，A（钟慢 60 秒）首见该行 ⇒
+  //    A 的库内值只能来自 pull 的换算，故必须逐字节等于「服务端值 − 该轮 respOffsetMs」。
+  //    它不依赖任何时序分支，对两种偏移变异都是**确定性**变红。
+  const T9e = Date.now() + 300000;
+  run('B', 'save_record', {
+    userId: ctx.userId, category: 'travel', subType: 'bus', amount: 7,
+    occurredAt: AGO, note: '换算唯一性', at: T9e,
+  });
+  const R9e = recordIdByNote('B', '换算唯一性');
+  run('B', 'sync', { userId: ctx.userId });
+  const srv9e = serverRow('carbon_record', R9e);
+  const server9e = srv9e === null ? NaN : Number(norm(srv9e.updated_at));
+  const sync9e = run('A', 'sync', { userId: ctx.userId }, { clockOffsetMs: -60000 });
+  const off9e = ((pushOut(sync9e) || {}).data || {}).offsetMs;
+  const local9e = dbRow('A', 'carbon_record', R9e);
+  const localVal9e = local9e === null ? NaN : Number(norm(local9e.updated_at));
+  const exact9e = typeof off9e === 'number' && !Number.isNaN(localVal9e) && !Number.isNaN(server9e)
+    && localVal9e + off9e === server9e;
+  const w9e = pullWire(sync9e);
+  const seen9e = w9e !== undefined && String(w9e.resBody || '').indexOf(R9e) >= 0;
   check(
     '4.9',
-    '时钟往返不漂移：偏移恒定（钟慢 60 秒）时同一行连推 3 轮 —— 严格不变量 `本机值 + offsetMs === 服务端值`（无容差，接受/拒绝两条分支都成立），且服务端值只能是「单次换算」的值（排除偏移被累加两次）；本机 note 每轮不变',
-    inv9 && noAccum9 && jitter9,
-    round9.map((r) => `第 ${r.round} 轮：push offsetMs=${r.offsetMs}；本机库 updated_at=${r.local}（对 T9 差 ${r.local - T9}）`
-      + `；服务端库 updated_at=${r.server}；不变量 本机+offset=${r.local + r.offsetMs} vs 服务端=${r.server} ⇒ ${r.local + r.offsetMs === r.server}`
-      + `；本机 note=${r.note}`),
+    '时钟往返不漂移：偏移恒定（钟慢 60 秒）时同一行连推 3 轮 —— ① 逐轮严格等式（无容差，基于该轮实测值）'
+      + '`本机值 + offsetMs === 服务端值`；② 服务端值必须**恰好解释成一次换算**（本轮本机值 + offsetMs 或 本轮上行原文 + offsetMs，二者之一；本轮真改写了服务端时必须由上行原文解释）；'
+      + '③ 跨轮**不累加**（本机值与服务端值相对第 1 轮的偏移 ≤ |offsetMs|/20）；④ 本机 note 每轮不变；'
+      + '；⑤ **pull 落库换算唯一性**（t73 新增，确定性）：对「A 从未见过的、由 B 推上服务端的行」，'
+      + 'A 的库内值必须逐字节等于「服务端值 − 该轮 respOffsetMs」（判据名：原 `noAccum9` 已重建为与 `inv9` 同一件事——逐轮严格等式，不再引用初始 T9）',
+    inv9 && noAccum9 && wire9 && bound9 && jitter9 && exact9e,
+    round9.map((r) => `第 ${r.round} 轮：ok=${r.ok}；push offsetMs=${r.offsetMs}；上行原文 updated_at=${r.pushedRaw}`
+      + `；本机库 updated_at=${r.local}（对 T9 差 ${r.local - T9}）；服务端库 updated_at=${r.server}；`
+      + `①本机+offset=${r.local + r.offsetMs} vs 服务端=${r.server} ⇒ ${r.local + r.offsetMs === r.server}；`
+      + `②上行+offset=${r.pushedRaw + r.offsetMs} vs 服务端=${r.server} ⇒ ${r.pushedRaw + r.offsetMs === r.server}`
+      + `；②'本轮改写服务端=${wrote9(r, r.round - 1)}；恰好一次换算=${explainable9(r)}`
+      + `；本机 note=${r.note}`)
+      .concat([`①'逐轮严格（inv9/noAccum9 同一判据）全轮成立=${inv9 && noAccum9}；`
+        + `③跨轮上界 DRIFT9=${DRIFT9}（|offsetMs|≈${Math.abs(round9[0].offsetMs)} ⇒ 上界 = |offsetMs|/${Math.round(Math.abs(round9[0].offsetMs) / DRIFT9)}）：`
+        + round9.map((r) => `第${r.round}轮 |Δ服务端|=${Math.abs(r.server - round9[0].server)} |Δ本机|=${Math.abs(r.local - round9[0].local)}`).join('；'),
+        `⑤对端行的 pull 落库换算（确定性）：行 id=${R9e}；服务端值=${server9e}；A 库内值=${localVal9e}；`
+          + `该轮 respOffsetMs=${off9e}；A库内+offset=${localVal9e + off9e} vs 服务端=${server9e} ⇒ ${exact9e}`
+          + `（该行确在 A 的 pull 线段中出现过=${seen9e}）`]),
   );
-  note(`4.9 补充：同一行三轮直查值 —— 本机 [${round9.map((r) => r.local).join(', ')}]，服务端 [${round9.map((r) => r.server).join(', ')}]`
-    + `（若换算不幂等，每轮会各累加一次 |offsetMs|=60000 的偏差）。`);
+  note(`4.9 补充：同一行三轮直查值 —— 本机 [${round9.map((r) => r.local).join(', ')}]，服务端 [${round9.map((r) => r.server).join(', ')}]，`
+    + `上行原文 [${round9.map((r) => r.pushedRaw).join(', ')}]，offsetMs [${round9.map((r) => r.offsetMs).join(', ')}]`
+    + `（若换算不幂等，每轮会各累加一次 |offsetMs|≈60000 的偏差；t71/t72 的旧判据把 ±1ms 的合法重定基抖动误判成红）。`);
 
   // ── 4.10 服务端**落库基准**（附录 B §5.3:1095「服务端与云端行的 `updated_at` = 服务端基准」） ──
   // 真推一行（客户端钟慢 60 秒 ⇒ 服务端 `offsetMs ≈ +60000`）：服务端库内必须存**换算后**的值
