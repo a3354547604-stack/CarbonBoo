@@ -829,10 +829,11 @@ export default function lwwMergeTest(): void {
 
     it('⑩ 备份/恢复日志：恢复不产生 conflicts（备份路径与 LWW 无关）', 0, async () => {
       // 口径来源：附录 B §6.3「真冲突 = 两端自上次同步后都改过这一行」。
-      // ⚠️ 注意：`applyRow()` 的 `since` 形参在 :461-497 内**未被使用**，
-      //    故"两端自上次同步后都改过"这一条件在当前实现里**不可判**；
-      //    本用例只断言"远端较新时 conflicts 是否 +1"的可观察结果，
-      //    不假设实现真的按 §6.3 的 lastSyncAt 条件计数（该差异见文件末尾结论）。
+      // 注（t49 订正旧注释）：`applyRow()` 的 `since` 形参**已被使用** ——
+      //    `SyncService.ets:651` 用 `localUpdated > since && remoteRaw > since` 判真冲突（t13 补齐），
+      //    且与写入/保留解耦（去重丢弃只计 skipped、不计 conflicts）；
+      //    **⑧ 用例（本文件 :729）即该计数口径的防线**，此前"since 未被使用、真冲突不可判"的表述已反转。
+      //    本用例只断言"备份/恢复路径不产生 conflicts"这一可观察结果。
       const fx: Fixture = await setup();
       const hub: ServiceHub = fx.hub;
       const userId: string = hub.state.userId();

@@ -538,7 +538,7 @@ export class SyncService {
       if (row !== undefined) {
         n = n + numOf(row, 'n');
       }
-      await this.store.exec(`UPDATE ${name} SET sync_state = 'synced' WHERE user_id = ? AND updated_at > ?`, [userId, since]);
+      await this.store.exec(`UPDATE ${name} SET "sync_state" = 'synced' WHERE user_id = ? AND updated_at > ?`, [userId, since]);
       i = i + 1;
     }
     return n;
@@ -672,7 +672,9 @@ export class SyncService {
     return this.insertRow(table, row, false);
   }
 
-  /** 落一行（`applyRow` 的写回半段）：列集合取自远端行，写成功返回 `written`。 */
+  /** 落一行（`applyRow` 的写回半段）：列集合取自远端行，写成功返回 `written`。
+   *
+   * 列名/表名一律经 `quoted` / `quotedAll` 加引号 —— 列名来自远端 JSON 键，裸拼遇保留字即语法错（见 `quoted` 注释）。 */
   private async insertRow(table: string, row: RowShape, conflict: boolean): Promise<LwwDecision> {
     const columns: string[] = Object.keys(row);
     if (columns.length === 0) {
@@ -691,7 +693,10 @@ export class SyncService {
       marks.push('?');
       m = m + 1;
     }
-    await this.store.exec(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${marks.join(', ')})`, args);
+    await this.store.exec(
+      `INSERT INTO ${table} (${SyncService.quotedAll(columns).join(', ')}) VALUES (${marks.join(', ')})`,
+      args
+    );
     return new LwwDecision('written', conflict);
   }
 
@@ -767,8 +772,8 @@ export class SyncService {
   private async savePreRestore(pre: Object, at: number): Promise<void> {
     const now: number = Date.now();
     await this.store.exec(
-      'INSERT INTO app_config (id, value, version, fetched_at, created_at, updated_at) VALUES (?, ?, NULL, NULL, ?, ?) ' +
-      'ON CONFLICT(id) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at',
+      'INSERT INTO app_config ("id", "value", "version", "fetched_at", "created_at", "updated_at") VALUES (?, ?, NULL, NULL, ?, ?) ' +
+      'ON CONFLICT("id") DO UPDATE SET "value" = excluded."value", "updated_at" = excluded."updated_at"',
       [KEY_PRE_RESTORE, SyncService.wrapPreRestore(pre, at), now, now]
     );
   }
@@ -795,6 +800,40 @@ export class SyncService {
     return out;
   }
 
+  /**
+   * 列名加引号：本文件拼 `INSERT` / `UPDATE` 时，**列名一律经此**进语句。
+   *
+   * 起因（t49，与 t46 在 `BackupService.ets:307` 修掉的是**同一个模式**）：拼 `INSERT` /
+   * `UPDATE` 时把标识符裸拼进语句，遇到保留字就炸。t46 的实例是 `ClientSchema.ets` 里那张
+   * 含列 `order` 的表 —— 裸 `order` 让 SQLite 报 `near "order": syntax error`，
+   * **任何备份都无法恢复**（真机同一条代码路径、同错）。
+   *
+   * 本文件的暴露面比备份更宽一层：`insertRow` 的列集合来自**远端行**的
+   * `Object.keys(row)`（拉取结果里的 JSON 键，见 `rowOf`）。远端给一个保留字列名
+   * （`order` / `key` / `group` …）或畸形键，整条同步就会在运行期以语法错误失败。
+   * 逐列加引号后，列名只被当作标识符（含挡掉标识符注入面）—— 不是给 `order` 打特例补丁。
+   *
+   * 范围界定（t49）：**表名保持裸写**。本文件所有表名都来自 `ClientSchema` 的静态白名单
+   * （`SYNCED_TABLES` / `TABLES`，远端表名先过 `isSyncedTable`），不随远端数据变化；
+   * 且 `LwwMerge.test.ets:450/:453/:599` 的 SQL 轨迹断言按字面量
+   * `` `INSERT INTO ${TABLE}` `` / `` `DELETE FROM ${TABLE}` `` 匹配，表名加引号会让这三处
+   * 断言失配 —— 断言按 t49 契约不得改动。统一的列名加引号已消除 t46 那一类（列）风险；
+   * 表名侧若将来真出现保留字表名，属 schema 层命名约束，需连同那三处轨迹断言一并处理。
+   */
+  private static quoted(name: string): string {
+    return '"' + name + '"';
+  }
+
+  private static quotedAll(names: string[]): string[] {
+    const out: string[] = [];
+    let i: number = 0;
+    while (i < names.length) {
+      out.push(SyncService.quoted(names[i]));
+      i = i + 1;
+    }
+    return out;
+  }
+
   private static isSyncedTable(name: string): boolean {
     let i: number = 0;
     while (i < ClientSchema.SYNCED_TABLES.length) {
@@ -811,7 +850,7 @@ export class SyncService {
     conflicts: number, errorMsg: string, startedAt: number, finishedAt: number
   ): Promise<void> {
     await this.store.exec(
-      'INSERT INTO sync_log (id, user_id, peer_device, direction, status, pulled_count, pushed_count, conflict_count, error_msg, started_at, finished_at, created_at) ' +
+      'INSERT INTO sync_log ("id", "user_id", "peer_device", "direction", "status", "pulled_count", "pushed_count", "conflict_count", "error_msg", "started_at", "finished_at", "created_at") ' +
       'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         IdUtil.uuid(), userId, this.state.deviceId(), direction, status,
