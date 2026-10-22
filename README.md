@@ -83,25 +83,33 @@ CarbonBoo/                # 项目根（本目录，仓库根与工作目录同�
 ├─ AGENTS.md             # 编码代理规约（冲突裁决 / 停手规则 / 待修清单）
 ├─ GLOSSARY.md           # 名词唯一口径
 ├─ README.md             # 本文件：项目入口与文档导航
-├─ docs/                 # 计划书与规格文档（PLAN + 附录 A–F + adr/ + CHANGELOG.md）
-├─ tests/                # L0 检查器 + 数值基准
+├─ app/                  # HarmonyOS 应用工程（DevEco Studio 打开这一层）
+│  └─ entry/src/main/
+│     ├─ ets/            # 108 个 .ets：pages/ 19（18 页 + Index 壳）
+│     │                  #   + components/ 23 + viewmodel/ 18 + util/ 9
+│     │                  #   + service/ 5 + data/ 4 + model/ + entryability/
+│     └─ resources/rawfile/
+│        ├─ factors/carbon-factors.json   # 因子库（附录 A §7 全文，31 项）
+│        ├─ goals/goal-defs.json          # 11 条目标定义
+│        ├─ badges/badge-defs.json        # 8 枚徽章定义
+│        ├─ appearance/avatars.json       # 8 个头像框
+│        ├─ include/benefits.json         # 5 条碳普惠权益（模拟）
+│        ├─ shop/shop-items.json          # 碳小铺内置默认价（离线回退）
+│        └─ science/sci-01.md ~ sci-12.md # 12 篇科普 + science-index.json
+├─ server/               # FastAPI + MySQL：账号 + 同步 + 取价 + 云备份
+│  ├─ app/               # 服务端主应用（21 张表）
+│  ├─ admin_web/         # Web 后台管理端（**可选件**，ADR-0001）
+│  ├─ sql/               # schema.sql + seed.sql + migrations/
+│  └─ tests/             # L3 pytest（243 条，跑真 MySQL）
+├─ tests/                # L0 文档一致性检查器 + 数值基准 + 各层离线验证工具
+├─ docs/                 # 计划书与规格文档（PLAN + 附录 A–F + adr/ + toolchain/ + CHANGELOG.md）
 ├─ _src/                 # 碳因子原始资料（PDF + 抽取文本），只读参考
-│  └─ txt/
 └─ .gitattributes        # 文本按 LF、二进制资料不做转换
 ```
 
-**编码阶段将创建的目录**（约定见 [docs/README.md](./docs/README.md)）：
-
-```
-app/                     # HarmonyOS 应用工程（DevEco Studio 打开这一层）
-│  └─ entry/src/main/resources/rawfile/
-│     ├─ factors/carbon-factors.json     # 因子库（附录 A §7 全文）
-│     ├─ science/sci-01.md ~ sci-12.md   # 12 篇科普（附录 C §8）
-│     └─ shop/shop-items.json            # 碳小铺内置默认价（离线回退）
-server/                  # 必做：FastAPI + MySQL（账号 + 同步 + 取价；后台管理端可选）
-```
-
-> `_src/` 是**资料**，不是交付物；`app/`、`server/` 尚未创建。
+> `_src/` 是**资料**，不是交付物。`app/` 与 `server/` **均已落库**：
+> 构建鸿蒙侧的坑与命令见 [docs/toolchain/harmony-cli-build.md](./docs/toolchain/harmony-cli-build.md)，
+> 服务端环境与启动见 [server/README.md](./server/README.md) 与 [docs/toolchain/server-env.md](./docs/toolchain/server-env.md)。
 
 ---
 
