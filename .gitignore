@@ -6,6 +6,10 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+# pytest 在 server/ 下留下的临时目录（tmp_path 夹具产物，跑一次 L3 就冒一批）
+server/pytest-of-*/
+server/tmp*/
+.pytest_cache/
 
 # 本机工具配置（CommandCode；含个人 taste 配置，不入库）
 .commandcode/

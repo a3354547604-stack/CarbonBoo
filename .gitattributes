@@ -19,3 +19,18 @@
 *.json text eol=lf
 *.yml  text eol=lf
 *.yaml text eol=lf
+
+# 源码类同样强制 LF。
+# 为什么必须逐个列：`* text=auto` 只让 Git 按内容猜，配合 Windows 上
+# `core.autocrlf=true` 会把工作区检出成 CRLF；而 `tests/tools/l1_offline/run.sh`
+# 用 `sed` 改写后 `diff` 校验，CRLF 会让每个文件都被判成「越界改写」而 exit 3。
+*.ets   text eol=lf
+*.ts    text eol=lf
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.cjs   text eol=lf
+*.sh    text eol=lf
+*.sql   text eol=lf
+*.json5 text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
