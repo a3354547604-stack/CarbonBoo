@@ -14,7 +14,9 @@ import { promptAction } from '@kit.ArkUI';
 import { RouteName } from '../viewmodel/RouteName';
 import { ServiceHub } from '../viewmodel/ServiceHub';
 import { NavParams } from '../viewmodel/RouteName';
-import { DevicePeer, SyncSessionState } from '../model/SyncTypes';
+import { SyncSessionState } from '../model/SyncTypes';
+import { NearbyDevice } from '../viewmodel/distributed/DistributedPort';
+import { NearbyView } from '../viewmodel/DistributedService';
 import { FamilyMember, FamilySummary, SyncService, SyncStatus } from '../viewmodel/net/SyncService';
 import { SyncLogRow } from '../viewmodel/store/RowMapper';
 import { AppTheme, LiteralConstants } from '../util/AppTheme';
@@ -28,7 +30,22 @@ import { LoginDialog } from '../components/LoginDialog';
 export struct SyncPage {
   @State status: SyncStatus = SyncService.emptyStatus('');
   @State family: FamilySummary = SyncService.emptyFamily();
-  @State peers: DevicePeer[] = [];
+  /**
+   * 近场协同（ADR-0001 决策②的「近场演示层」）。
+   *
+   * 与「云端同步」严格分开：近场只在同一局域网、已组网的两台设备之间搬运**统计快照**
+   * （记录数 / 减排量 / 积分），不搬明细、不改本机账本，所以这里的数字是**只读合并视图**。
+   * 设备不支持分布式 / 未权限 / 未组网时 `nearbyAvailable = false`，卡片照常显示并给出提示，
+   * 绝不崩溃（附录 D D6-x 的降级要求）。
+   */
+  @State nearbyAvailable: boolean = false;
+  @State nearbyDevices: NearbyDevice[] = [];
+  @State nearbyNote: string = '';
+  @State nearbyBusy: boolean = false;
+  @State nearbyMergedDevices: number = 0;
+  @State nearbyMergedRecords: number = 0;
+  @State nearbyMergedReduction: number = 0;
+  @State nearbyMergedPoints: number = 0;
   @State logs: SyncLogRow[] = [];
   @State showLogs: boolean = false;
   @State showLogin: boolean = false;
@@ -55,8 +72,24 @@ export struct SyncPage {
     const st: SyncStatus = await hub.sync.status(uid);
     this.status = st;
     this.family = await hub.sync.family(uid);
-    this.peers = await hub.sync.discover();
+    this.applyNearby(await hub.distributed.view(now));
     this.logs = await hub.sync.logs(uid, LiteralConstants.SYNC_LOG_LIMIT);
+  }
+
+  /** 把一次近场视图落进 @State（ArkUI 只认 @State 赋值，所以逐字段拷）。 */
+  private applyNearby(view: NearbyView): void {
+    this.nearbyAvailable = view.available;
+    this.nearbyDevices = view.devices;
+    this.nearbyNote = view.message;
+    this.nearbyMergedDevices = view.report.summary.devices;
+    this.nearbyMergedRecords = view.report.summary.recordCount;
+    this.nearbyMergedReduction = view.report.summary.reductionKg;
+    this.nearbyMergedPoints = view.report.summary.points;
+  }
+
+  /** 只刷新近场卡片（不重跑云端状态查询）。 */
+  private async reloadNearby(): Promise<void> {
+    this.applyNearby(await ServiceHub.get().distributed.view(Date.now()));
   }
 
   private toast(msg: string | Resource): void {
@@ -87,28 +120,44 @@ export struct SyncPage {
     await this.reload();
   }
 
-  private async doNearField(peer: DevicePeer): Promise<void> {
+  /**
+   * 近场合并一次：把本机统计快照写到 `carbonboo_family` 分布式 KV，拉回同组设备的快照，
+   * 去重/校验/定点累加后刷新只读合并视图。
+   *
+   * 失败语义全在 `AppResult` 里（`NEARBY_UNAVAILABLE` / `NEARBY_NO_PEER` / `NEARBY_FAILED`），
+   * 页面只负责把 message 显示出来——不抛错、不崩。
+   */
+  private async doNearby(): Promise<void> {
+    if (this.nearbyBusy) {
+      return;
+    }
     const hub: ServiceHub = ServiceHub.get();
-    this.progressText = $r('app.string.sync_step_discovering');
-    const res = await hub.sync.nearFieldSync(peer, Date.now());
-    this.progressText = $r('app.string.sync_step_writing');
+    this.nearbyBusy = true;
+    this.progressText = $r('app.string.sync_step_merging');
+    const res = await hub.distributed.exchange(Date.now());
+    this.nearbyBusy = false;
+    this.progressText = '';
     const state: SyncSessionState | undefined = res.data;
     if (state !== undefined) {
       this.pulledCount = state.pulledCount;
       this.pushedCount = state.pushedCount;
     }
+    if (!res.ok && res.message !== undefined) {
+      this.nearbyNote = res.message;
+    }
+    await this.reloadNearby();
+    if (this.nearbyNote.length > 0) {
+      this.toast(this.nearbyNote);
+    }
     setTimeout(() => {
-      this.progressText = '';
       this.pulledCount = -1;
       this.pushedCount = -1;
-    }, 1200);
-    await this.reload();
+    }, 1500);
   }
 
   private async doDiscover(): Promise<void> {
-    const hub: ServiceHub = ServiceHub.get();
-    this.peers = await hub.sync.discover();
-    if (this.peers.length === 0) {
+    await this.reloadNearby();
+    if (this.nearbyDevices.length === 0) {
       this.toast($r('app.string.sync_no_peer'));
     }
   }
@@ -334,13 +383,19 @@ export struct SyncPage {
             .width('100%')
           }
 
-          // ── 18.3 近场演示 ─────────────────────────────────────────────────
+          // ── 18.3 近场演示（鸿蒙分布式，ADR-0001 决策②）────────────────────
           SectionCard({ title: $r('app.string.sync_near_section') }) {
             Column({ space: AppTheme.CARD_GAP }) {
-              if (this.peers.length === 0) {
+              // 可用性说明：设备不支持 / 未组网时也照常显示，只是把原因写出来（绝不崩）
+              Text(this.nearbyNote)
+                .fontSize(AppTheme.FONT_CAPTION)
+                .fontColor(AppTheme.COLOR_TEXT_HINT)
+                .width('100%')
+
+              if (this.nearbyDevices.length === 0) {
                 EmptyView({ icon: '📱', text: $r('app.string.sync_no_peer') })
               } else {
-                ForEach(this.peers, (peer: DevicePeer) => {
+                ForEach(this.nearbyDevices, (peer: NearbyDevice) => {
                   Row({ space: AppTheme.CARD_GAP }) {
                     Text(peer.online ? '●' : '○')
                       .fontSize(AppTheme.FONT_CAPTION)
@@ -349,42 +404,49 @@ export struct SyncPage {
                       Text(peer.deviceName)
                         .fontSize(AppTheme.FONT_BODY)
                         .fontColor(AppTheme.COLOR_TEXT_PRIMARY)
-                      if (peer.lastSeenAt !== undefined) {
-                        Row({ space: 2 }) {
-                          Text($r('app.string.sync_last_seen'))
-                            .fontSize(AppTheme.FONT_CAPTION)
-                            .fontColor(AppTheme.COLOR_TEXT_HINT)
-                          Text(Formatter.timeOfDay(peer.lastSeenAt))
-                            .fontSize(AppTheme.FONT_CAPTION)
-                            .fontColor(AppTheme.COLOR_TEXT_HINT)
-                        }
-                      } else {
-                        Text(peer.networkId)
-                          .fontSize(AppTheme.FONT_CAPTION)
-                          .fontColor(AppTheme.COLOR_TEXT_HINT)
-                      }
+                      Text(peer.deviceModel)
+                        .fontSize(AppTheme.FONT_CAPTION)
+                        .fontColor(AppTheme.COLOR_TEXT_HINT)
                     }
                     .layoutWeight(1)
                     .alignItems(HorizontalAlign.Start)
-                    Button($r('app.string.sync_near_action'))
-                      .height(AppTheme.BTN_HEIGHT)
+                    Text(Formatter.timeOfDay(peer.lastSeenAt))
                       .fontSize(AppTheme.FONT_CAPTION)
-                      .backgroundColor(AppTheme.COLOR_PRIMARY)
-                      .fontColor(AppTheme.COLOR_SURFACE)
-                      .borderRadius(AppTheme.BTN_RADIUS)
-                      .onClick(() => this.doNearField(peer))
+                      .fontColor(AppTheme.COLOR_TEXT_HINT)
                   }
                   .width('100%')
                   .alignItems(VerticalAlign.Center)
-                }, (peer: DevicePeer) => peer.deviceId)
+                }, (peer: NearbyDevice) => peer.deviceId)
               }
-              Button($r('app.string.sync_discover'))
-                .width('100%')
-                .height(AppTheme.BTN_HEIGHT)
-                .backgroundColor(AppTheme.COLOR_DISABLED_BG)
-                .fontColor(AppTheme.COLOR_TEXT_PRIMARY)
-                .borderRadius(AppTheme.BTN_RADIUS)
-                .onClick(() => this.doDiscover())
+
+              // 只读合并视图：设备数 / 记录数 / 减排合计 / 积分合计
+              this.statRow($r('app.string.sync_devices'), `${this.nearbyMergedDevices}`)
+              this.statRow($r('app.string.sync_family_member'), `${this.nearbyMergedRecords}`)
+              this.statRow(
+                $r('app.string.sync_family_reduction'),
+                `${Formatter.reduction(this.nearbyMergedReduction)} kg`
+              )
+              this.statRow($r('app.string.sync_family_points'), `${Formatter.points(this.nearbyMergedPoints)}`)
+
+              Row({ space: AppTheme.CARD_GAP }) {
+                Button($r('app.string.sync_discover'))
+                  .layoutWeight(1)
+                  .height(AppTheme.BTN_HEIGHT)
+                  .backgroundColor(AppTheme.COLOR_DISABLED_BG)
+                  .fontColor(AppTheme.COLOR_TEXT_PRIMARY)
+                  .borderRadius(AppTheme.BTN_RADIUS)
+                  .onClick(() => this.doDiscover())
+                Button($r('app.string.sync_near_action'))
+                  .layoutWeight(1)
+                  .height(AppTheme.BTN_HEIGHT)
+                  .backgroundColor(AppTheme.COLOR_PRIMARY)
+                  .fontColor(AppTheme.COLOR_SURFACE)
+                  .borderRadius(AppTheme.BTN_RADIUS)
+                  .enabled(this.nearbyAvailable && !this.nearbyBusy)
+                  .onClick(() => this.doNearby())
+              }
+              .width('100%')
+
               this.statRow($r('app.string.sync_step_discovering'), '①')
               this.statRow($r('app.string.sync_step_merging'), '②')
               this.statRow($r('app.string.sync_step_writing'), '③')

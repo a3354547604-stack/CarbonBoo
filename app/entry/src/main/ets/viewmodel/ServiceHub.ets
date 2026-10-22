@@ -40,6 +40,8 @@ import { ShareService } from './ShareService';
 import { HttpClient, HttpPort } from './net/HttpPort';
 import { ShopPriceFetcher, ShopPriceOutcome } from './net/ShopPriceFetcher';
 import { ServerConfigFetcher, ServerConfig, ServerConfigOutcome } from './net/ServerConfigFetcher';
+import { DistributedPort, NullDistributedPort } from './distributed/DistributedPort';
+import { DistributedService } from './DistributedService';
 import { CarbonCalc } from '../service/CarbonCalc';
 
 /** 可注入的端口（用例替换副作用边界）。 */
@@ -49,6 +51,15 @@ export interface HubPorts {
   files?: FilesPort;
   engine?: AiEngine;
   provider?: AuthProvider;
+  /**
+   * 近场协同端口（ADR-0001 决策②的「近场演示层」）。
+   *
+   * 生产环境由 `EntryAbility` 注入 `DistributedKitAdapter`；用例注入内存假端口。
+   * **不传 = `NullDistributedPort`（协同不可用，其余功能零影响）**。
+   * 注意：本文件只认识 `DistributedPort` 接口，绝不 import 真机适配器——
+   * 否则离线 L1 一 require 就会撞上 `platform/unavailable.cjs` 的抛错代理。
+   */
+  distributed?: DistributedPort;
 }
 
 /** 服务端地址缺省值（设置页可改；取价/登录失败都按铁律 1 降级，不影响单机功能）。 */
@@ -63,6 +74,15 @@ export interface DevStats {
 
 export class ServiceHub {
   private static instance: ServiceHub | undefined = undefined;
+  /**
+   * 进程级默认近场端口。
+   *
+   * 为什么要有它：`ServiceHub.init` 会被调用不止一次（`EntryAbility` 的两条冷启动链路各一次、
+   * `pages/Index` 真正进入首页再一次），而每次都会新建 Hub。若只把端口塞进某一次 `init` 的
+   * `ports` 参数，后一次 init 会把它覆盖回 `NullDistributedPort`，协同就"时有时无"。
+   * 因此由 `EntryAbility.onCreate` 调 `installDistributedPort` 注册一次，后续所有 init 继承。
+   */
+  private static defaultDistributedPort: DistributedPort = new NullDistributedPort();
 
   readonly context: common.Context;
   readonly store: StorePort;
@@ -91,10 +111,15 @@ export class ServiceHub {
   readonly ai: AiAssistService;
   readonly demo: DemoService;
   readonly share: ShareService;
+  /** 家庭碳积分合并（近场协同，只读视图；ADR-0001 决策②）。 */
+  readonly distributed: DistributedService;
+  /** 近场端口原样留存：`rebuildHttp` / `useLocalProvider` 重建 Hub 时不能把它丢掉。 */
+  readonly distributedPort: DistributedPort;
 
   private constructor(
     context: common.Context, store: StorePort, state: AppState, cfg: AppConfig, http: HttpPort,
-    resources: ResourcePort, files: FilesPort, engine: AiEngine, provider: AuthProvider
+    resources: ResourcePort, files: FilesPort, engine: AiEngine, provider: AuthProvider,
+    distributed: DistributedPort
   ) {
     this.context = context;
     this.store = store;
@@ -122,6 +147,8 @@ export class ServiceHub {
     this.ai = new AiAssistService(resources, engine);
     this.demo = new DemoService(store, state, this.records, this.reward, this.points, this.include, cfg);
     this.share = new ShareService(context, store, state);
+    this.distributedPort = distributed;
+    this.distributed = new DistributedService(this.stats, this.points, state, distributed);
   }
 
   /**
@@ -149,7 +176,12 @@ export class ServiceHub {
     const provider: AuthProvider = ports !== undefined && ports.provider !== undefined
       ? ports.provider
       : new ServerAuthProvider(http);
-    const hub: ServiceHub = new ServiceHub(context, store, state, cfg, http, resources, files, engine, provider);
+    const distributed: DistributedPort = ports !== undefined && ports.distributed !== undefined
+      ? ports.distributed
+      : ServiceHub.defaultDistributedPort;
+    const hub: ServiceHub = new ServiceHub(
+      context, store, state, cfg, http, resources, files, engine, provider, distributed
+    );
     ServiceHub.instance = hub;
     return hub;
   }
@@ -165,6 +197,24 @@ export class ServiceHub {
 
   static ready(): boolean {
     return ServiceHub.instance !== undefined;
+  }
+
+  /**
+   * 注册进程级近场端口（由 `EntryAbility.onCreate` 调用一次）。
+   *
+   * 只有真机入口能调它——因为唯一的生产实现 `DistributedKitAdapter` 会 import
+   * `@ohos.distributedDeviceManager` / `@ohos.data.distributedKVStore`，而离线 L1 执行器
+   * 把这两个模块别名到会抛错的 `unavailable.cjs`。**本文件不得 import 该适配器**，
+   * 只能由 `entryability/` 把实例传进来（`entryability/` 不在 L1 的转译目录里）。
+   * @param port 端口实现；用例里也可用它把假端口装成默认值
+   */
+  static installDistributedPort(port: DistributedPort): void {
+    ServiceHub.defaultDistributedPort = port;
+  }
+
+  /** 当前进程级近场端口（调试 / 用例用）。 */
+  static currentDistributedPort(): DistributedPort {
+    return ServiceHub.defaultDistributedPort;
   }
 
   /** 用例用：换掉单例（注入内存 store / FakeHttpClient）。 */
@@ -258,9 +308,11 @@ export class ServiceHub {
 
   static async createForTest(
     context: common.Context, store: StorePort, cfg: AppConfig, state: AppState, resources: ResourcePort,
-    files: FilesPort, engine: AiEngine, http: HttpPort, provider: AuthProvider
+    files: FilesPort, engine: AiEngine, http: HttpPort, provider: AuthProvider,
+    distributed?: DistributedPort
   ): Promise<ServiceHub> {
-    return new ServiceHub(context, store, state, cfg, http, resources, files, engine, provider);
+    const port: DistributedPort = distributed !== undefined ? distributed : new NullDistributedPort();
+    return new ServiceHub(context, store, state, cfg, http, resources, files, engine, provider, port);
   }
 
   /**
@@ -271,7 +323,7 @@ export class ServiceHub {
     const http: HttpPort = new HttpClient(baseUrl);
     ServiceHub.instance = new ServiceHub(
       this.context, this.store, this.state, this.cfg, http, this.resources, this.files, this.engine,
-      new ServerAuthProvider(http)
+      new ServerAuthProvider(http), this.distributedPort
     );
   }
 
@@ -279,7 +331,7 @@ export class ServiceHub {
   useLocalProvider(): void {
     ServiceHub.instance = new ServiceHub(
       this.context, this.store, this.state, this.cfg, this.http, this.resources, this.files, this.engine,
-      new LocalAuthProvider()
+      new LocalAuthProvider(), this.distributedPort
     );
   }
 }

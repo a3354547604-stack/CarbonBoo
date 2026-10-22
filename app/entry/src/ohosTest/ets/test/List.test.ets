@@ -14,6 +14,7 @@ import csvExport from './CsvExport.test';
 import lwwMerge from './LwwMerge.test';
 import shopPriceFallback from './ShopPriceFallback.test';
 import serverConfigFallback from './ServerConfigFallback.test';
+import nearbyMerge from './NearbyMerge.test';
 
 export default function testsuite(): void {
   calcSamples();
@@ -26,4 +27,5 @@ export default function testsuite(): void {
   lwwMerge();
   shopPriceFallback();
   serverConfigFallback();
+  nearbyMerge();
 }

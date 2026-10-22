@@ -6,11 +6,42 @@
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **v4.3** | 2026-10-22 | **鸿蒙近场协同落地（ADR-0001 决策② 从"待 spike"转为"已实现"）**：新增四层文件（`viewmodel/distributed/DistributedPort.ets`、`viewmodel/domain/NearbyMerge.ets`、`viewmodel/DistributedService.ets`、`viewmodel/distributed/DistributedKitAdapter.ets`），`ServiceHub` 增 `HubPorts.distributed` + `installDistributedPort`/`currentDistributedPort`（默认 `NullDistributedPort`，适配器只在 `entryability/` 注入，保证离线 L1 不 require 到 `@ohos.*`），`SyncPage` §18.3 改走 `hub.distributed`（未组网降级显示、绝不崩），新增 L1 套件 `NearbyMerge.test.ets`（7 条）并在 `List.test.ets` 登记；**未改任何数值**，`tests/cases/carbon-calc.json` 零改动、`docConflicts` 仍 0 条。详见 §v4.3 |
 | **v4.2.3** | 2026-10-19 | **补验收项 D4-10「外观切换持久化」（t80）**：附录 D §1.4 紧邻 D4-8 / D4-9 追加 **D4-10**，覆盖「外观」页（`APPEARANCE` → `app/entry/src/main/ets/pages/AppearancePage.ets` + `app/entry/src/main/ets/viewmodel/AppearanceService.ets:49/:86/:110`），判据含「选择即生效 / 杀进程重开仍生效（落 `user_appearance`，`uq_ua(user_id)`）/ 未登录·无网络可用」；附录 C §20 逐元素标注承载（头像 / 头像框 / 昵称 / 主题 / `[ 保存 ]` / 未登录可用），关闭 t79 终审 F1（「验收项 ↔ 界面」双向承载由「部分成立」转「成立」）。**未改任何数值**，`tests/cases/carbon-calc.json` 零改动、`docConflicts` 仍 0 条（本项为契约缺口补齐、非冲突登记） |
 | **v4.2.2** | 2026-10-19 | **文档一致性勘误（t74）**：页面数定真值 **18**（`pages/` 19 个 `.ets` = 18 个页面 + `Index.ets` 导航壳，`README.md` 头部的「19 个页面」为 t71 误改已回正）；全仓 `it()` 计数统一到实测 **41**（历史留痕的「36」不改写、只加指针）；`docs/VERIFICATION.md` 的「F1/F2 均未修」过期结论加更正指针（F1/F2 已由 t62/t68 修复）。决策记录：`docs/DECISION-0004-doc-consistency-errata.md` |
 | **v4.2** | 2026-11-06 | **文档契约勘误（对齐已实现并验证的口径）**：`uq_pr_source` 补 `user_id`、同步契约七处收紧（备份三端点 / `clientNow` / `ignored` 与 `conflicts` 分离 / 鉴权）、附录 C 落盘路径与附录 D §9 演示数据口径；**后续（2026-11-07 追加）**：`offsetMs` 同名双视角消歧 + `lastSyncAt` 基准单一化、冻结免鉴权 `GET /api/v1/config` 配置下发通道（B46 / B47，见 §6）；**收尾回写（2026-11-07，见 §7）**：测试清单计数对齐仓库实测（L1 **10** 个用例文件 + `List.test.ets`、L3 **6** 个）、`LwwMerge` 行的失效 STOP 反转、`admin_web/README` 的 STOP-1 改记「已闭环」、附录 B §5.5 版本 bump 条件消歧；**再追加（2026-11-07，见 §8）**：`AGENTS.md §5.1-4` 增「已推送」证据条款（唯一合格证据 = `git ls-remote` 原始输出），该条以本节代 `docs/DECISION-*.md` 留痕 |
 | **v4.1** | 2026-11-06 | **文档契约冻结**：统一账号与同步口径、补齐可执行契约、验收与界面双向承载、因子基准收敛 |
 | v4.0 | 2026-10-15 | 规划定稿：9 项官方要求全做、出行类净减排口径、因子 30 个、19 张表、11 个目标、8 枚徽章 |
+
+---
+
+## v4.3（2026-10-22）· 鸿蒙近场协同落地
+
+**触发**：`docs/adr/0001-account-and-sync.md` 决策②把鸿蒙分布式协同定为「保留为近场演示层」，但当时是"spike 通过才做"的待办；实测全仓 `distributedDataObject|distributedKVStore|distributedDeviceManager` **零命中**，`SyncService.nearFieldSync()` 是写死 0 的空桩，`ohos.permission.DISTRIBUTED_DATASYNC` 声明了却没有实现 —— 即「创新项Ⅰ：鸿蒙特色能力」对外只有自建服务端云同步，没有鸿蒙分布式能力。本次补齐代码层。
+**门禁**：`check_l0.py --strict` → PASS（退出码 0）；L1 离线 `run_tests.sh` → **48 条全绿**（含新增 7 条），`CalcBaselineValidator checked=323 passed=true`；`assembleHap` → `BUILD SUCCESSFUL`，退出码 0。
+
+### 1. 新增四层（全部新文件，不改既有业务语义）
+
+- **`app/entry/src/main/ets/viewmodel/distributed/DistributedPort.ets`** —— 端口抽象 + DTO（`NearbyDevice` / `DeviceContribution`）与 `NullDistributedPort`（`available()` 恒 false、其余返回空、**永不抛错**）。头注释写明三条硬约束：L1 的 `unavailable.cjs` 是"属性访问即抛错"的 Proxy、ADR-0001 决策②「摘掉 `DistributedService` 后其余功能不受影响」、以及**只传聚合统计不传明细**（隐私）。
+- **`app/entry/src/main/ets/viewmodel/domain/NearbyMerge.ets`** —— 纯函数层：`isValidContribution`（越界即丢弃、不修正）、`normalize`（按 `deviceId` 做 LWW 去重 → `deviceId` 升序 → 截断 `MAX_CONTRIBUTIONS = 32`）、`summarize`（`DecimalUtil.Dec` 定点累加，**禁止浮点累加**）、`mergeReport`（产出 `invalidCount` / `duplicateCount = 合法条数 − 去重后条数`）、`serializeContribution` / `parseContribution`（显式逐字段即线上契约；解析走 `JsonUtil` 防御式，超长与脏数据一律丢弃）。
+- **`app/entry/src/main/ets/viewmodel/DistributedService.ets`** —— 编排层：`view(now)` 给面板数据（端口异常一律降级为不可用）；`exchange(now)` 走 `available → discover → localContribution → port.exchange → mergeReport`，失败用 `AppResult` 返回稳定错误码 `NEARBY_UNAVAILABLE` / `NEARBY_NO_PEER` / `NEARBY_FAILED`，**不抛异常**。
+- **`app/entry/src/main/ets/viewmodel/distributed/DistributedKitAdapter.ets`** —— **唯一** import `@ohos.distributedDeviceManager` / `@ohos.data.distributedKVStore` 的文件；`createDeviceManager` + `getAvailableDeviceListSync` + `getLocalDeviceNetworkId` 发现设备，`getKVStore('carbonboo_family', { kvStoreType: DEVICE_COLLABORATION, securityLevel: S1 })` + `put` / `sync(PUSH_PULL)` / `getEntries` 做有界轮询交换（250 ms 步进、2 s 上限），全 try/catch。
+
+### 2. 装配与页面
+
+- **`ServiceHub`**：`HubPorts` 增 `distributed?: DistributedPort`；新增 `private static defaultDistributedPort`（因为 `ServiceHub.init` 会被调用 3 次——`EntryAbility` 两条冷启动链路 + `pages/Index.ets`，只塞进某一次会被覆盖回 Null）+ `installDistributedPort` / `currentDistributedPort`；字段 `distributed: DistributedService` 与 `distributedPort: DistributedPort`；`createForTest` 增可选参数。
+- **`EntryAbility`**：`onCreate` 调 `installNearbyPort()`，用 `context.abilityInfo.bundleName` 构造 `DistributedKitAdapter` 并注册到 `ServiceHub`，全 try/catch，失败只 `hilog.warn`（协同降级为不可用，单机功能不受影响）。
+- **`SyncPage` §18.3**：删掉旧 `DevicePeer` 桩调用，改走 `hub.distributed.view()` / `hub.distributed.exchange()`；未组网时显示降级提示与「未发现已配对设备」，**绝不崩**；复用既有 `sync_near_*` / `sync_family_*` 文案键，未新增资源。
+
+### 3. 测试
+
+- 新增 `app/entry/src/ohosTest/ets/test/NearbyMerge.test.ets`（7 条：非法剔除、LWW 去重 + 排序、截断、定点汇总、线上格式往返与脏数据拒绝、端口不可用降级、有对端合并的冲突计数与 LWW 取值），并在 `List.test.ets` 登记。
+- 顺带修掉 `DistributedService.view()` 的一个真 bug：原实现把 `lastReport.contributions` 二次 `mergeReport` 会导致 `invalidCount` / `duplicateCount` 被重算成 0（面板永远看不到"丢弃了 X 条"的诊断）；改为 `lastReport` 存在时直接用缓存结果。
+
+### 4. 仍未做（如实记录）
+
+- **真机段未验**：两台真机的 `distributedDeviceManager` / `distributedKVStore` 真实配对、`sync()` 往返、跨设备 `dataChange` 均**未跑过**（本机无真机、`hdc` 无设备）。当前证据强度 = 纯逻辑 + 端口替身全绿，**不等于真机可用**。
+- `app/hvigor/hvigor-config.json5` 的 `file:C:/...` 本机路径已 `git update-index --skip-worktree`（不提交），Windows 侧规矩见 `docs/toolchain/harmony-cli-build.md §坑 4-W`。
 
 ---
 

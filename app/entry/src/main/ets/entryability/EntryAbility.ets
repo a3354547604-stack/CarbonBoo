@@ -19,6 +19,7 @@ import { SeedRepository, SeedReport } from '../service/SeedRepository';
 import { FactorRepository } from '../service/FactorRepository';
 import { AppConstants } from '../util/AppConstants';
 import { ServiceHub } from '../viewmodel/ServiceHub';
+import { DistributedKitAdapter } from '../viewmodel/distributed/DistributedKitAdapter';
 import { ShopPriceOutcome } from '../viewmodel/net/ShopPriceFetcher';
 import { ServerConfigOutcome } from '../viewmodel/net/ServerConfigFetcher';
 import { AppResult } from '../model/Result';
@@ -34,10 +35,38 @@ export default class EntryAbility extends UIAbility {
    */
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, TAG, 'EntryAbility onCreate, launchReason=%{public}s', String(launchParam.launchReason));
+    // 注册近场协同的真机端口（ADR-0001 决策②的「近场演示层」，可整体关闭）。
+    // 整条链路都在 try/catch 里：设备不支持分布式 / 无权限 只让协同不可用，绝不影响启动。
+    this.installNearbyPort();
     // 冷启动即启动数据地基：打开 19 张表 + 幂等写入静态字典种子。
     // 刻意 **不 await**：Ability 生命周期回调必须立刻返回，否则系统会判定启动超时。
     // 失败只记日志——页面读取时若库仍不可用，会由后续切片的 ViewModel 再报错给用户。
     this.bootstrapDataFoundation();
+  }
+
+  /**
+   * 注册近场协同端口（`DistributedKitAdapter`）。
+   *
+   * 为什么在这里而不在 `ServiceHub` 里直接 `new`：适配器是仓库里**唯一** import
+   * `@ohos.distributedDeviceManager` / `@ohos.data.distributedKVStore` 的文件，
+   * 而离线 L1 执行器会把这两个模块别名到「一碰属性就抛错」的 `unavailable.cjs`。
+   * 把 `new` 收敛到 `entryability/`（L1 不转译该目录），`ServiceHub` 就只依赖接口。
+   *
+   * 失败语义：注册不上 = 协同不可用（`NullDistributedPort` 语义），单机功能 100% 可用。
+   */
+  private installNearbyPort(): void {
+    try {
+      const bundleName: string = this.context.abilityInfo.bundleName;
+      if (bundleName.length === 0) {
+        hilog.warn(DOMAIN, TAG, '取不到 bundleName，跳过近场端口注册（协同降级为不可用）');
+        return;
+      }
+      ServiceHub.installDistributedPort(new DistributedKitAdapter(this.context, bundleName));
+      hilog.info(DOMAIN, TAG, '近场协同端口已注册（bundle=%{public}s）', bundleName);
+    } catch (e) {
+      const msg: string = e instanceof Error ? e.message : `${e}`;
+      hilog.warn(DOMAIN, TAG, '近场协同端口注册失败（协同降级为不可用，不影响单机功能）：%{public}s', msg);
+    }
   }
 
   /**
