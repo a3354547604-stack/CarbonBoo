@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -744,10 +745,19 @@ def _unescape_mount_point(raw: str) -> str:
 
 
 def _mount_fstype(path: Path) -> str:
-    """取该路径所在文件系统的类型（最长前缀匹配）。"""
+    """取该路径所在文件系统的类型（最长前缀匹配）。
+
+    原生 Windows 上没有 `/proc/mounts`（`Path('/proc/mounts').read_text()` 会抛
+    `FileNotFoundError`，t-Win 实测）：此时按 `ntfs` 处理 —— 它本就在
+    `_NO_POSIX_MODE_FS` 里，因此仍走下面**更强**的 ACL 分支，而不是放宽断言跳过。
+    WSL 下把 Windows 盘挂成 9p/drvfs 时走同一分支，两条路殊途同归。
+    """
+    mounts = Path("/proc/mounts")
+    if os.name == "nt" or not mounts.exists():
+        return "ntfs"
     target = str(path.resolve())
     best_mount, best_type = "", ""
-    for line in Path("/proc/mounts").read_text(encoding="utf-8").splitlines():
+    for line in mounts.read_text(encoding="utf-8").splitlines():
         fields = line.split()
         if len(fields) < 3:
             continue
@@ -756,6 +766,18 @@ def _mount_fstype(path: Path) -> str:
             if len(mount) > len(best_mount):
                 best_mount, best_type = mount, fields[2]
     return best_type
+
+
+def _windows_acl_path(path: Path) -> str:
+    """把绝对路径换算成 PowerShell 能直接用的 Windows 路径。
+
+    原生 Windows 上 `resolve()` 已经是 `C:\\...`（原样返回）；WSL 上是 `/mnt/c/...`，
+    需要还原成 `C:\\...`（旧实现在原生 Windows 上会算成 `C:\\C:\\...` 这种畸形路径）。
+    """
+    resolved = str(path.resolve())
+    if os.name == "nt":
+        return resolved
+    return "C:\\" + resolved.removeprefix("/mnt/c/").replace("/", "\\")
 
 
 def test_no_secret_files_in_repo():
@@ -783,8 +805,12 @@ def test_no_secret_files_in_repo():
     # ② 密钥文件只对属主可读
     fstype = _mount_fstype(env_file)
     if fstype in _NO_POSIX_MODE_FS:
-        powershell = shutil.which("powershell.exe") or "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
-        win_path = "C:\\" + str(env_file.resolve()).removeprefix("/mnt/c/").replace("/", "\\")
+        powershell = (
+            shutil.which("powershell.exe")
+            or shutil.which("powershell")
+            or "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+        )
+        win_path = _windows_acl_path(env_file)
         acl = subprocess.run(
             [
                 powershell,
