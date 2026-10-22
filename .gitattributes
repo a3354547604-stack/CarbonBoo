@@ -34,3 +34,4 @@
 *.json5 text eol=lf
 *.css   text eol=lf
 *.html  text eol=lf
+*.ps1   text eol=lf

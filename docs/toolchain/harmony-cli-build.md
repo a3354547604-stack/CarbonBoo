@@ -107,6 +107,51 @@ sed -i "s#/home/qinyixiang#$HOME#g" app/hvigor/hvigor-config.json5
   且 `git diff --stat app/hvigor/hvigor-config.json5` 为空（与仓库里的 `$HOME` 版**逐字节相同**）。
 - 这是**唯一**一处「照文档复现仍会在构建门禁失败」的机器锁定项（`docs/VERIFICATION.md §R15.8-F2`）。
 
+#### 坑 4-W：Windows + DevEco Studio 形态（不适用上面那条 `sed`）
+
+上面那条 `sed` 的前提是「工具链装在 `$HOME/harmony-toolchain`」。Windows 上装的是 **DevEco Studio 自带的
+hvigor**，路径与 `$HOME` 没有任何前缀关系，`sed` 换不出来。这两行改成：
+
+```json5
+"@ohos/hvigor-ohos-plugin": "file:C:/Program Files/Huawei/DevEco Studio/tools/hvigor/hvigor-ohos-plugin",
+"@ohos/hvigor":             "file:C:/Program Files/Huawei/DevEco Studio/tools/hvigor/hvigor"
+```
+
+三个踩过的写法（每个报不同的错）：
+
+| 写法 | 结果 |
+|---|---|
+| `file:/home/qinyixiang/...`（Linux 版原样） | pnpm 解成 `C:/home/qinyixiang/...` → 装成 `0.0.0` 桩包 → `ENOENT .../@ohos/hvigor/bin/hvigor.js` |
+| `file:/c/Program Files/...`（MSYS 风格） | pnpm 解成 `C:/c/Program Files/...` → 同上 |
+| **`file:C:/Program Files/...`**（盘符直接跟冒号） | ✅ 可用 |
+
+Windows 独有的两条前置条件：
+- **用户目录必须有 `~/.npmrc`**，否则 hvigor 报 `ERROR: 00303137 Configuration Error ... No npmrc file is matched in the current user folder`。最小内容：`registry=https://registry.npmjs.org/`。
+- **`app/local.properties` 必须写 `sdk.dir`**，否则报 `00303208 ... Unable to find 'sdk.dir' in 'local.properties' or 'OHOS_BASE_SDK_HOME'`。该文件已在 `.gitignore:39` 忽略，**不入库**。
+
+**⚠️ 这个文件在 Windows 上「只许本地改，永不许提交」**
+
+原因：`@ohos/hvigor` / `@ohos/hvigor-ohos-plugin`（6.26.8）在 `registry.npmjs.org`、`registry.npmmirror.com`、
+`repo.huaweicloud.com/repository/npm/` 全是 **404**，`repo.harmonyos.com/npm/` 是 **401**（需华为账号）；
+hvigor 的 json5 既不支持环境变量展开、也不接受相对路径。所以**只能写本机绝对路径**，
+不存在一份能让两台机器同时可用的内容。vendor 进仓库也不可行：`hvigor` 79.7 MB +
+`hvigor-ohos-plugin` 145.8 MB = **225 MB / 1.7 万文件**。
+
+因此约定（**Windows 侧一次设置**）：
+
+```powershell
+git update-index --skip-worktree app/hvigor/hvigor-config.json5
+```
+
+- 仓库里**保留队友的 `/home/qinyixiang` 版**，他的 `sed` 规则继续有效，对 Linux 侧零影响。
+- 设好之后该文件的本地改动**不会被 `git add -A` 带走**，杜绝误提交把队友构建打挂。
+- 查询 / 撤销：`git ls-files -v app/hvigor/hvigor-config.json5`（首列 `S` = 已设置）；
+  `git update-index --no-skip-worktree app/hvigor/hvigor-config.json5`。
+- **代价（必须知道）**：队友若改了这个文件并推上来，你 `pull` 时 git 会**跳过它**而不是合并。
+  所以每次 `pull` 后若发现 hvigor 版本变了（看 `tools/hvigor/hvigor/package.json` 的 `version`），
+  先 `--no-skip-worktree` → `git checkout -- app/hvigor/hvigor-config.json5` →
+  重跑 `scripts/set-hvigor-local.ps1`（见该脚本头注释）。
+
 ### 坑 5：`build-profile.json5` 三个坑
 ```json5
 {
