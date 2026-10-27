@@ -85,36 +85,48 @@ struct Index {
     }
   }
 
-  /** 二级页装配表：名字 → 组件（参数由 NavParams 提供）。 */
+  /**
+   * 二级页装配表：名字 → 组件（参数由 NavParams 提供）。
+   *
+   * ⚠️ `navDestination` 的 builder **必须**返回一个 `NavDestination` 容器节点，
+   * 只返回裸的自定义组件时 ArkUI 会报
+   * `js_navigation_stack.cpp(515): router map is invalid, child size is not one`
+   * 并在压栈时让 JS 引擎崩溃（0xc0000005）。此前 13 个页面都是裸组件，
+   * 预览器里点任何二级页入口必崩；因此这里统一包一层 NavDestination。
+   * 标题栏由各页自己的 `PageHeader` 画，所以 `hideTitleBar(true)`。
+   */
   @Builder
   pageMap(name: string) {
-    if (name === RouteName.RECORD_EDIT) {
-      RecordEditPage()
-    } else if (name === RouteName.RECORD_DETAIL) {
-      RecordDetailPage()
-    } else if (name === RouteName.RECORD_SEARCH) {
-      RecordSearchPage()
-    } else if (name === RouteName.GOAL) {
-      GoalPage()
-    } else if (name === RouteName.BADGE) {
-      BadgePage()
-    } else if (name === RouteName.SHOP) {
-      ShopPage()
-    } else if (name === RouteName.POINT_LOG) {
-      PointLogPage()
-    } else if (name === RouteName.SCIENCE_DETAIL) {
-      ScienceDetailPage()
-    } else if (name === RouteName.SYNC) {
-      SyncPage()
-    } else if (name === RouteName.INCLUDE) {
-      IncludePage()
-    } else if (name === RouteName.APPEARANCE) {
-      AppearancePage()
-    } else if (name === RouteName.SETTINGS) {
-      SettingsPage()
-    } else if (name === RouteName.ABOUT) {
-      AboutPage()
+    NavDestination() {
+      if (name === RouteName.RECORD_EDIT) {
+        RecordEditPage()
+      } else if (name === RouteName.RECORD_DETAIL) {
+        RecordDetailPage()
+      } else if (name === RouteName.RECORD_SEARCH) {
+        RecordSearchPage()
+      } else if (name === RouteName.GOAL) {
+        GoalPage()
+      } else if (name === RouteName.BADGE) {
+        BadgePage()
+      } else if (name === RouteName.SHOP) {
+        ShopPage()
+      } else if (name === RouteName.POINT_LOG) {
+        PointLogPage()
+      } else if (name === RouteName.SCIENCE_DETAIL) {
+        ScienceDetailPage()
+      } else if (name === RouteName.SYNC) {
+        SyncPage()
+      } else if (name === RouteName.INCLUDE) {
+        IncludePage()
+      } else if (name === RouteName.APPEARANCE) {
+        AppearancePage()
+      } else if (name === RouteName.SETTINGS) {
+        SettingsPage()
+      } else if (name === RouteName.ABOUT) {
+        AboutPage()
+      }
     }
+    .hideTitleBar(true)
   }
 
   @Builder
