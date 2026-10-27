@@ -39,3 +39,6 @@ app/**/.cxx/
 local.properties
 *.hap
 *.har
+
+# 预览器（DevEco Previewer）产生的中间目录
+.preview/
