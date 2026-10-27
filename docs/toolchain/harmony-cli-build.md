@@ -322,3 +322,43 @@ CLT 里的 `Previewer` 直接运行会缺四个共享库：`libshared_libz.so`�
 `env.sh` 会把它拼进 `LD_LIBRARY_PATH`，此后 `ldd -r Previewer` 未解析符号为 0、缺库为 0。
 **但这只解决加载问题**——Previewer 起来之后仍会崩在 glibc 断言（见 §6），
 所以 **localTest 在本机依然不可用**，垫片不是「L1 能跑了」的证据。
+
+### 7.2 Windows 侧：用 DevEco 预览器批量截图（已跑通）+ 它的硬限制
+
+**能做什么**：在 DevEco Studio 里打开工程 → `Ctrl+Shift+A` 搜 `preview` → 打开**预览器**工具窗口
+（目标文件必须是 `app/entry/src/main/ets/pages/Index.ets`，全工程唯一的 `@Entry`）→ 双击标签页最大化，
+即可渲染真实页面。之后用仓库里的脚本抓图，无需手动截屏：
+
+```powershell
+# 查询窗口与页面矩形
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\preview-run.ps1 -Action info
+# 抓一张
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\preview-run.ps1 -Action capture -OutFile docs\screenshots\01-home.png
+# 点页面内某点（坐标就是 PNG 上的像素坐标），可顺带再抓一张
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\preview-run.ps1 -Action click -PageX 148 -PageY 610 -OutFile docs\screenshots\03-records.png
+```
+
+`preview-run.ps1` 的关键做法（照抄即可）：**必须声明 DPI 感知**
+（`SetProcessDpiAwarenessContext(-4)` → 回退 `SetProcessDpiAwareness(2)` → 回退 `SetProcessDPIAware()`），
+否则在 125% 缩放下 `CopyFromScreen` 只能拿到逻辑分辨率的放大模糊图；裁页面不用固定坐标，而是按
+**行/列亮像素剖面**求包围盒（顶栏、状态栏本身有大量亮像素，直接求全局包围盒一定退化）；
+预览器把鼠标事件当触摸事件（日志可见 `MousePress → TouchPress`），所以 `mouse_event` 点击有效。
+
+**硬限制（务必知道，别浪费时间）**：**预览器里的 `RdbStore` 是 mock 实现**。日志原文：
+
+```
+W A0c0d0/JSAPP: The RdbStore.executeSql interface in the Previewer is a mocked implementation and may behave dif...
+W A0c0d0/JSAPP: The RdbStore.querySql interface in the Previewer is a mocked implementation and may behave diffe...
+```
+
+后果：`EntryAbility.bootstrapDataFoundation()` 里 `schema ok / seeds: goals=… badges=… science=…` 这行日志
+**永远不出现**，`goal_def` / `badge_def` / `shop_item` / `science_article` 全是空表。于是**所有依赖数据库的
+页面都只能看到空态**：
+
+- 目标页「这个分组还没有目标」、科普页「没有匹配的文章」、看板「本周期还没有记录」、首页「累计减排 0.0000 kg」；
+- **`15-record-detail` 与 `17-science-detail` 两张截图因此无法产出**：前者要先有记录，后者要先有文章列表可点，
+  而 `ScienceDetailPage.reload()` 第一步就是 `hub.science.metaOf(id)`（查库），拿不到 meta 就不会渲染正文。
+
+**要拿到带数据的截图，只有三条路**：① 真机（`signingConfigs` 为空，需先在 DevEco 里生成调试签名）；
+② 模拟器（需 `bcdedit /set hypervisorlaunchtype auto` + **重启**，本机当前 `HypervisorPresent=False`、无镜像）；
+③ 写临时代码把页面根内容换成假数据（**会污染源码，不推荐**，且截出来的不是真实运行结果）。
