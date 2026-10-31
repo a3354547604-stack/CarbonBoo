@@ -110,35 +110,31 @@ class Doc:
         set_run_font(run, SONG, size if size else BODY_PT, bold, color)
         return para
 
-    def h1(self, text):
-        para = self.d.add_paragraph()
+    def _heading(self, text, level, size):
+        """用内置 Heading 样式（Word 导航窗格与自动目录才认），再覆盖中文字体与字号。
+
+        为什么必须挂 Heading 样式：交付文档要能在 Word 里折叠/跳转，评委按章节翻；
+        只在段落上做直接格式（黑体加粗）时，导航窗格是空的、也无法自动生成目录。
+        python-docx 的 add_heading 会给段落套 `Heading N`，之后再把 run 的字体改回黑体。
+        """
+        para = self.d.add_heading('', level=level)
         pf = para.paragraph_format
         pf.line_spacing = LINE
-        pf.space_before = Pt(16)
-        pf.space_after = Pt(8)
+        pf.space_before = Pt(16 if level == 1 else (10 if level == 2 else 8))
+        pf.space_after = Pt(8 if level == 1 else (6 if level == 2 else 4))
+        pf.first_line_indent = Pt(0)
         run = para.add_run(text)
-        set_run_font(run, HEI, 16, True)
+        set_run_font(run, HEI, size, True)
         return para
+
+    def h1(self, text):
+        return self._heading(text, 1, 16)
 
     def h2(self, text):
-        para = self.d.add_paragraph()
-        pf = para.paragraph_format
-        pf.line_spacing = LINE
-        pf.space_before = Pt(10)
-        pf.space_after = Pt(6)
-        run = para.add_run(text)
-        set_run_font(run, HEI, 14, True)
-        return para
+        return self._heading(text, 2, 14)
 
     def h3(self, text):
-        para = self.d.add_paragraph()
-        pf = para.paragraph_format
-        pf.line_spacing = LINE
-        pf.space_before = Pt(8)
-        pf.space_after = Pt(4)
-        run = para.add_run(text)
-        set_run_font(run, HEI, 12, True)
-        return para
+        return self._heading(text, 3, 12)
 
     def bullets(self, items, marker='（%d）'):
         for i, it in enumerate(items, start=1):
@@ -267,28 +263,30 @@ def build():
 
     doc.page_break()
 
-    # =============================================================== 目录说明
+    # =============================================================== 目录（域）
     doc.h1('目录')
-    toc = [
-        '一、项目概述',
-        '二、设计思路',
-        '三、功能实现逻辑',
-        '四、技术架构',
-        '五、软硬件选型',
-        '六、碳核算方法与因子库',
-        '七、界面实现',
-        '八、测试结果',
-        '九、安全、隐私与合规',
-        '十、创新点总结',
-        '附录 A　文档与代码索引',
-        '附录 B　提交物清单',
-    ]
-    for item in toc:
-        para = doc.d.add_paragraph()
-        para.paragraph_format.line_spacing = LINE
-        para.paragraph_format.space_after = Pt(2)
-        r = para.add_run(item)
-        set_run_font(r, SONG, 12)
+    # 用真正的 Word 目录域：打开文档后 Ctrl+A → F9（或右键"更新域"）即可生成带页码的目录。
+    # 为什么不写死条目：章节标题已挂 Heading 1/2/3，域能保证页码与实际排版永远一致；
+    # 手写目录一旦页数变化就会失真（上一版就是手写的，没有页码）。
+    para = doc.d.add_paragraph()
+    para.paragraph_format.line_spacing = LINE
+    fld_begin = OxmlElement('w:fldChar')
+    fld_begin.set(qn('w:fldCharType'), 'begin')
+    instr = OxmlElement('w:instrText')
+    instr.set(qn('xml:space'), 'preserve')
+    instr.text = 'TOC \\o "1-2" \\h \\z \\u'
+    fld_sep = OxmlElement('w:fldChar')
+    fld_sep.set(qn('w:fldCharType'), 'separate')
+    hint = OxmlElement('w:t')
+    hint.text = '（在此处右键 → 更新域，即可生成带页码的目录）'
+    fld_end = OxmlElement('w:fldChar')
+    fld_end.set(qn('w:fldCharType'), 'end')
+    r = para.add_run()._r
+    r.append(fld_begin)
+    r.append(instr)
+    r.append(fld_sep)
+    r.append(hint)
+    r.append(fld_end)
     doc.page_break()
 
     # =============================================================== 一、项目概述
@@ -762,14 +760,24 @@ def build():
     doc.table(
         ['项目', '状态', '原因与计划'],
         [
-            ['真机运行', '未执行', '当前开发机没有 OpenHarmony 真机，且工程尚未配置调试签名；计划用一台 API 12 设备补测'],
-            ['独立模拟器', '未执行', '模拟器需要启用 Windows 虚拟机监控程序并重启主机，本机当前未启用'],
+            ['真机运行', '未执行', '开发机无 OpenHarmony 真机；已产出**已签名 HAP**（2,577,863 B，'
+                                 '用 OpenHarmony 官方测试密钥本地签名并通过 verify），拿到设备即可 hdc install'],
+            ['独立模拟器', '未执行', '模拟器需启用 Windows 虚拟机监控程序并重启主机，本机当前未启用'],
             ['近场双设备实测', '未执行', '需两台已组网设备；协议与合并算法已在 L1 用假端口覆盖'],
             ['真云部署', '未执行', '服务端已在本机 MySQL 8 上跑通全部接口测试，公网部署需域名与备案'],
             ['预览器截图完整性', '16 / 18', '预览器的 relationalStore 为模拟实现，写不进种子数据，'
                                      '「记录明细」与「科普详情」两页需有数据才能进入，待真机补拍'],
         ],
         widths=[3.2, 2.2, 11.0], font_pt=10)
+
+    doc.p('截图均为真机尺寸（1080×2340 逻辑分辨率）在 DevEco 预览器中渲染后抓取，未做任何图像修饰；'
+          '由于预览器不支持滚动与数据播种，长页面（设置、关于、目标）只能展示首屏。')
+    doc.p('**关于签名**：`scripts/sign-hap.ps1` 用的是 OpenHarmony 开源生态的**公开测试密钥**'
+          '（SDK 自带 `OpenHarmony.p12`），只适合自测与开源演示，不用于商用分发；'
+          '正式上架需自行申请发布证书。签名材料不入仓库（`.gitignore` 忽略 `sign/`）。')
+    doc.p('**关于登录鉴权**：客户端与管理端使用两套独立 JWT 密钥，客户端 token 访问 `/admin/*` 一律 403；'
+          '`/admin` 的 JWT 为无状态实现，管理员登出或改密后旧令牌在有效期内仍可重放（默认 120 分钟），'
+          '属已知取舍：后台为可选项，正式部署应缩短有效期并接入令牌黑名单。')
 
     # =============================================================== 九、合规
     doc.page_break()
