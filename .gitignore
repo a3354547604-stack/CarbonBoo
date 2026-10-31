@@ -42,3 +42,8 @@ local.properties
 
 # 预览器（DevEco Previewer）产生的中间目录
 .preview/
+
+# 提交物：生成中间帧与打包产物不入库
+submit/_frames/
+submit/*.rar
+/*.rar
