@@ -18,6 +18,11 @@ export struct BadgeItem {
   @Prop badge: BadgeProgress = emptyBadgeProgress();
   @Prop condition: string = '';
 
+  /** 进度数字只保留最多 1 位小数：徽章格很窄，4 位小数会换行把卡片撑破。 */
+  private short(v: number): string {
+    return `${Math.round(v * 10) / 10}`;
+  }
+
   build() {
     Column({ space: 6 }) {
       Text(this.badge.icon.length > 0 ? this.badge.icon : '🏅')
@@ -34,17 +39,20 @@ export struct BadgeItem {
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
         ProgressBarView({ percent: this.badge.percent })
-        Text(`${Formatter.number(this.badge.progress, 'factor')}/${Formatter.number(this.badge.threshold, 'factor')}`)
-          .fontSize(AppTheme.FONT_CAPTION)
-          .fontColor(AppTheme.COLOR_TEXT_HINT)
-      } else {
-        Text($r('app.string.badge_honor_only'))
+        Text(`${this.short(this.badge.progress)}/${this.short(this.badge.threshold)}`)
           .fontSize(AppTheme.FONT_CAPTION)
           .fontColor(AppTheme.COLOR_TEXT_HINT)
           .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      } else {
+        // 已解锁不再重复「纯荣誉」说明：页脚已统一说明一次，格子内只留达成时间占位
+        Text('已解锁')
+          .fontSize(AppTheme.FONT_CAPTION)
+          .fontColor(AppTheme.COLOR_PRIMARY)
+          .maxLines(1)
       }
     }
-    .layoutWeight(1)
+    .width('100%')
     .alignItems(HorizontalAlign.Center)
   }
 }

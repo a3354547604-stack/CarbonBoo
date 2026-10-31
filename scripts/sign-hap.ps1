@@ -81,6 +81,11 @@ $tpl.'bundle-info'.'developer-id' = 'CarbonBoo'
 $tpl.uuid = [guid]::NewGuid().ToString()
 $tpl.validity.'not-before' = $now - 86400
 $tpl.validity.'not-after' = $now + 315360000
+# 分享卡片「保存到相册」要 WRITE_IMAGEVIDEO，它在 HarmonyOS 上属受限权限，
+# 必须在 Profile 的 allowed-acls / restricted-permissions 里显式授予，否则安装报
+# `install failed due to grant request permissions failed`。
+$tpl.acls.'allowed-acls' = @('ohos.permission.WRITE_IMAGEVIDEO')
+$tpl.permissions.'restricted-permissions' = @('ohos.permission.WRITE_IMAGEVIDEO')
 $json = $tpl | ConvertTo-Json -Depth 12
 [System.IO.File]::WriteAllText($profJsn, $json, [System.Text.UTF8Encoding]::new($false))
 

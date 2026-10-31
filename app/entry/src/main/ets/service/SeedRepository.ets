@@ -21,6 +21,7 @@
 import { relationalStore } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import * as J from '../util/JsonUtil';
 import { JsonArray, JsonObject } from '../util/JsonUtil';
 import { AppConstants } from '../util/AppConstants';
@@ -83,14 +84,14 @@ export class SeedRepository {
 
     const now: number = Date.now();
     await helper.runInTransaction(async () => {
-      await SeedRepository.writeGoals(helper.store(), goals, now);
-      await SeedRepository.writeBadges(helper.store(), badges, now);
-      await SeedRepository.writeShop(helper.store(), shop, now);
-      await SeedRepository.writeScience(helper.store(), science, now);
-      await SeedRepository.writeFactorMeta(helper.store(), factors, now);
+      await SeedRepository.step('goals', async () => { await SeedRepository.writeGoals(helper.store(), goals, now); });
+      await SeedRepository.step('badges', async () => { await SeedRepository.writeBadges(helper.store(), badges, now); });
+      await SeedRepository.step('shop', async () => { await SeedRepository.writeShop(helper.store(), shop, now); });
+      await SeedRepository.step('science', async () => { await SeedRepository.writeScience(helper.store(), science, now); });
+      await SeedRepository.step('factorMeta', async () => { await SeedRepository.writeFactorMeta(helper.store(), factors, now); });
       // 头像与权益没有独立表：作为展示字典存进 app_config（id 即字典键）。
-      await SeedRepository.putConfig(helper.store(), 'avatars', SeedRepository.toJson(avatars), factors.version(), now);
-      await SeedRepository.putConfig(helper.store(), 'benefits', SeedRepository.toJson(benefits), factors.version(), now);
+      await SeedRepository.step('cfg-avatars', async () => { await SeedRepository.putConfig(helper.store(), 'avatars', SeedRepository.toJson(avatars), factors.version(), now); });
+      await SeedRepository.step('cfg-benefits', async () => { await SeedRepository.putConfig(helper.store(), 'benefits', SeedRepository.toJson(benefits), factors.version(), now); });
     });
 
     return new SeedReport(
@@ -102,6 +103,53 @@ export class SeedRepository {
       benefits.length,
       factors.version()
     );
+  }
+
+  /**
+   * 逐段执行种子写入并记录段名（排障用：定位事务里到底哪一段 insert 抛错）。
+   * 失败时打 `seed step FAILED: <段名> → <错误原文>` 并把段名带进异常消息。
+   */
+  static async step(name: string, run: () => Promise<void>): Promise<void> {
+    try {
+      await run();
+      hilog.info(0x0001, 'CarbonBoo', 'seed step ok: %{public}s', name);
+    } catch (e) {
+      const msg: string = e instanceof Error ? e.message : String(e);
+      hilog.error(0x0001, 'CarbonBoo', 'seed step FAILED: %{public}s → %{public}s', name, msg);
+      throw new Error(`种子写入失败于 ${name}：${msg}`);
+    }
+  }
+
+  /**
+   * 逐列加引号的 `INSERT OR REPLACE`（绕开保留字列名）。
+   *
+   * 起因（**真机才暴露**）：`goal_def` / `badge_def` / `shop_item` / `science_article` 四张
+   * 静态字典表都有一个列名是 SQL 保留字 `order`。建表 DDL 自己加了引号没问题，查询也都按
+   * 「逐列加引号」写；但 `RdbStore.insert(table, ValuesBucket)` 只吃键值对，它拼出的 SQL
+   * 列名是**裸的** ⇒ SQLite 报 `near "order": syntax error` ⇒ 首装播种事务整体回滚
+   * ⇒ 静态字典全空、`FactorRepository` 不加载 ⇒ 演示数据一条都写不进去。
+   * 修法与 `BackupService` / `SyncService` 保持一致：**逐列加引号**，不给 `order` 打特例补丁。
+   */
+  private static async insertQuoted(
+    store: relationalStore.RdbStore,
+    table: string,
+    values: relationalStore.ValuesBucket
+  ): Promise<void> {
+    const cols: string[] = [];
+    const marks: string[] = [];
+    const args: relationalStore.ValueType[] = [];
+    const keys: string[] = Object.keys(values);
+    let i: number = 0;
+    while (i < keys.length) {
+      const k: string = keys[i];
+      cols.push(`"${k}"`);
+      marks.push('?');
+      const v: relationalStore.ValueType | undefined = values[k];
+      args.push(v === undefined ? null : v);
+      i = i + 1;
+    }
+    const sql: string = `INSERT OR REPLACE INTO ${table} (${cols.join(', ')}) VALUES (${marks.join(', ')})`;
+    await store.executeSql(sql, args);
   }
 
   // ---------------------------------------------------------------- rawfile
@@ -269,7 +317,7 @@ export class SeedRepository {
         created_at: now,
         updated_at: now,
       };
-      await store.insert('goal_def', values, relationalStore.ConflictResolution.ON_CONFLICT_REPLACE);
+      await SeedRepository.insertQuoted(store, 'goal_def', values);
       i = i + 1;
     }
   }
@@ -290,7 +338,7 @@ export class SeedRepository {
         created_at: now,
         updated_at: now,
       };
-      await store.insert('badge_def', values, relationalStore.ConflictResolution.ON_CONFLICT_REPLACE);
+      await SeedRepository.insertQuoted(store, 'badge_def', values);
       i = i + 1;
     }
   }
@@ -312,7 +360,7 @@ export class SeedRepository {
         created_at: now,
         updated_at: now,
       };
-      await store.insert('shop_item', values, relationalStore.ConflictResolution.ON_CONFLICT_REPLACE);
+      await SeedRepository.insertQuoted(store, 'shop_item', values);
       i = i + 1;
     }
   }
@@ -333,7 +381,7 @@ export class SeedRepository {
         created_at: now,
         updated_at: now,
       };
-      await store.insert('science_article', values, relationalStore.ConflictResolution.ON_CONFLICT_REPLACE);
+      await SeedRepository.insertQuoted(store, 'science_article', values);
       i = i + 1;
     }
   }
@@ -352,7 +400,7 @@ export class SeedRepository {
       created_at: now,
       updated_at: now,
     };
-    await store.insert('carbon_factor_meta', values, relationalStore.ConflictResolution.ON_CONFLICT_REPLACE);
+    await SeedRepository.insertQuoted(store, 'carbon_factor_meta', values);
   }
 
   private static async putConfig(
@@ -370,7 +418,7 @@ export class SeedRepository {
       created_at: now,
       updated_at: now,
     };
-    await store.insert('app_config', values, relationalStore.ConflictResolution.ON_CONFLICT_REPLACE);
+    await SeedRepository.insertQuoted(store, 'app_config', values);
   }
 
   private static toJson(rows: Object[]): string {

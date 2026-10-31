@@ -67,6 +67,21 @@ export struct RecordDetailPage {
     return `${this.record.factorSource}`;
   }
 
+  /**
+   * 行为中文名 —— 一律取因子库里的 `name`（附录 A §2），不硬编码映射表。
+   * 因子库不可用时退化显示 subType，保证页面不空。
+   */
+  private behaviourName(): string {
+    if (this.record === undefined) {
+      return '';
+    }
+    const item = ServiceHub.get().records.factorItemOf(this.record.subType);
+    if (item === undefined) {
+      return `${this.record.subType}`;
+    }
+    return item.name.length > 0 ? item.name : `${this.record.subType}`;
+  }
+
   @Builder
   infoRow(label: ResourceStr, value: string) {
     Row() {
@@ -100,7 +115,7 @@ export struct RecordDetailPage {
               Row({ space: AppTheme.CARD_GAP }) {
                 Text(categoryIcon(this.record.category)).fontSize(AppTheme.ICON_LG)
                 Column({ space: 4 }) {
-                  Text(`${this.record.subType}`)
+                  Text(this.behaviourName())
                     .fontSize(AppTheme.FONT_SECTION)
                     .fontWeight(FontWeight.Medium)
                     .fontColor(AppTheme.COLOR_TEXT_PRIMARY)

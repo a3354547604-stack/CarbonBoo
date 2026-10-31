@@ -91,28 +91,51 @@ export class DemoService {
   /** 播种（先清后播，幂等）。 */
   async seed(now: number): Promise<AppResult<DemoSeedReport>> {
     const userId: string = AppConstants.DEMO_USER_ID;
+    // 失败时把「哪一步炸的」带进错误原文，否则上层只能看到 SQLite 的 Inner error（排查过一次很痛）
+    let stage: string = 'clear';
     try {
       await this.clear();
+      stage = 'demoMode';
       await this.state.setDemoMode(true, now);
+      stage = 'sow';
       const written: number = await this.sow(userId, now);
       if (written === 0) {
         return fail<DemoSeedReport>('DEMO_SEED_EMPTY', '演示数据生成失败：一条记录都没写进去');
       }
       // 目标/徽章按真实规则结算：今天的目标参与结算，历史只刷新进度（见文件头的取舍说明）
+      stage = 'refreshProgress#1';
       await this.reward.refreshProgress(userId, now);
-      await this.reward.settle(userId, now);
-      const badges: number = (await this.reward.unlockBadges(userId, now)).length + await this.unlockedCount(userId);
+      // 结算与解锁各自兜底：任一步失败都不该让「整批演示数据」作废——
+      // 记录已经落库了，把失败原因记到 app_config 里供排查，其余照常推进。
+      stage = 'settle';
+      try {
+        await this.reward.settle(userId, now);
+      } catch (e) {
+        await this.cfg.set('demo_settle_note', DemoService.messageOf(e));
+      }
+      stage = 'unlockBadges';
+      let badges: number = 0;
+      try {
+        badges = (await this.reward.unlockBadges(userId, now)).length + await this.unlockedCount(userId);
+      } catch (e) {
+        await this.cfg.set('demo_badge_note', DemoService.messageOf(e));
+        badges = await this.unlockedCount(userId);
+      }
+      stage = 'refreshProgress#2';
       await this.reward.refreshProgress(userId, now);
 
+      stage = 'balance';
       const before: PointBalance = await this.points.balance(userId, now);
       const exchangeCoins: number = DemoService.exchangePlan(before.balance);
       if (exchangeCoins > 0) {
+        stage = 'exchange';
         const exchanged: AppResult<ExchangeOutcome> = await this.include.exchange(userId, exchangeCoins);
         if (!exchanged.ok) {
           // 兑换失败不影响播种成功（余额会略高），但要在报告里能看出来
           await this.cfg.set('demo_exchange_note', exchanged.message === undefined ? 'exchanged failed' : exchanged.message);
         }
       }
+      stage = 'report';
       const after: PointBalance = await this.points.balance(userId, now);
       const coin: CarbonCoin = await this.include.coin(userId, now);
       const reduction: number = await this.reductionOf(userId);
@@ -126,7 +149,7 @@ export class DemoService {
         days: DemoService.DAYS,
       });
     } catch (e) {
-      return fail<DemoSeedReport>('DEMO_SEED_FAILED', `演示数据生成失败：${DemoService.messageOf(e)}`);
+      return fail<DemoSeedReport>('DEMO_SEED_FAILED', `演示数据生成失败（${stage}）：${DemoService.messageOf(e)}`);
     }
   }
 

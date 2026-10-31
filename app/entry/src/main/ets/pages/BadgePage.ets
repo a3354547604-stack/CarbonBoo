@@ -67,24 +67,30 @@ export struct BadgePage {
     return text === undefined ? '' : text;
   }
 
+  /** 每格固定高度：不用 Grid（只给 columnsTemplate 时行高会被剩余空间撑开），改用 Flex 换行。 */
+  private static readonly CELL_HEIGHT: number = 152;
+
+  private cardWidth(): string {
+    return '30%';
+  }
+
   @Builder
   badgeGrid(list: BadgeProgress[]) {
-    Grid() {
+    Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Start }) {
       ForEach(list, (badge: BadgeProgress) => {
-        GridItem() {
-          Column() {
-            BadgeItem({ badge: badge, condition: this.conditionOf(badge.badgeId) })
-          }
-          .width('100%')
-          .padding(AppTheme.CARD_GAP)
-          .backgroundColor(AppTheme.COLOR_SURFACE)
-          .borderRadius(AppTheme.CARD_RADIUS)
+        Column() {
+          BadgeItem({ badge: badge, condition: this.conditionOf(badge.badgeId) })
         }
+        .width(this.cardWidth())
+        .height(BadgePage.CELL_HEIGHT)
+        .margin({ right: '3%', bottom: AppTheme.CARD_GAP })
+        .justifyContent(FlexAlign.Center)
+        .padding(AppTheme.CARD_GAP)
+        .backgroundColor(AppTheme.COLOR_SURFACE)
+        .borderRadius(AppTheme.CARD_RADIUS)
       }, (badge: BadgeProgress) => badge.badgeId)
     }
-    .columnsTemplate('1fr 1fr 1fr')
-    .rowsGap(AppTheme.CARD_GAP)
-    .columnsGap(AppTheme.CARD_GAP)
+    .width('100%')
   }
 
   build() {
