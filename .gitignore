@@ -47,3 +47,6 @@ local.properties
 submit/_frames/
 submit/*.rar
 /*.rar
+
+# 本地签名材料（密钥库/证书/Profile，绝不入库）
+sign/
