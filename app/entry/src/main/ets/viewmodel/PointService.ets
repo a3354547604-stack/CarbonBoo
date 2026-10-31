@@ -20,6 +20,7 @@ import { RowMapper } from './store/RowMapper';
 import { AppConstants } from '../util/AppConstants';
 import { DateUtil } from '../util/DateUtil';
 import { IdUtil } from './domain/IdUtil';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AppState } from './AppState';
 import { ServerConfig, ServerConfigFetcher } from './net/ServerConfigFetcher';
 
@@ -172,10 +173,26 @@ export class PointService {
     const row = firstOf(exists);
     const actualId: string = row === undefined ? '' : textOf(row, 'id');
     if (actualId === id) {
-      await this.rebuildDay(userId, DateUtil.dayKeyOfMs(input.occurredAt));
+      try {
+        await this.rebuildDay(userId, DateUtil.dayKeyOfMs(input.occurredAt));
+      } catch (e) {
+        hilog.error(0x0001, 'CarbonBoo', 'append.rebuildDay failed (%{public}s): %{public}s', input.type, PointService.detailOf(e));
+        throw new Error('append.rebuildDay failed');
+      }
       return id;
     }
     return '';
+  }
+
+  /** 把异常转成可读文本（BusinessError 的 message 常只有 Inner error，code 才是线索）。 */
+  static detailOf(e: Object): string {
+    let text: string = `${e}`;
+    try {
+      text = `${text} | ${JSON.stringify(e)}`;
+    } catch (err) {
+      text = `${text} | (json failed)`;
+    }
+    return text;
   }
 
   /**
@@ -266,9 +283,12 @@ export class PointService {
   async rebuildDay(userId: string, dayKey: string): Promise<void> {
     const now: number = Date.now();
     await this.store.exec('DELETE FROM point_daily_stat WHERE user_id = ? AND day_key = ?', [userId, dayKey]);
+    // 占位符只有三个：SELECT 里的 `updated_at`（= now）、WHERE 里的 `user_id`、HAVING 里的 dayKey。
+    // 早前多传了一个 userId，参数个数对不上，真机上只报 `Inner error. | {"code":14800000}`，
+    // 导致目标结算与「重建 point_daily_stat」都悄悄失败。
     await this.store.exec(
       `${PointService.AGGREGATE_SQL} HAVING day_key = ?`,
-      [userId, now, userId, dayKey]
+      [now, userId, dayKey]
     );
   }
 
@@ -279,7 +299,7 @@ export class PointService {
    */
   async rebuildDailyStat(userId: string, now: number): Promise<number> {
     await this.store.exec('DELETE FROM point_daily_stat WHERE user_id = ?', [userId]);
-    await this.store.exec(PointService.AGGREGATE_SQL, [userId, now, userId]);
+    await this.store.exec(PointService.AGGREGATE_SQL, [now, userId]);
     const rows = await this.store.query('SELECT COUNT(*) AS n FROM point_daily_stat WHERE user_id = ?', [userId]);
     const row = firstOf(rows);
     return row === undefined ? 0 : numOf(row, 'n');
@@ -293,7 +313,7 @@ export class PointService {
    *  - `goal_points`：`type='goal'`；
    *  - `spent_points`：其余支出（碳小铺购买、碳普惠兑换），**正数存储**；
    *  - `record_count`：记录类笔数（冲正减 1，与「记录数」可加和）。
-   * 参数顺序：`[user_id(插入), updated_at, user_id(过滤)]`。
+   * 参数顺序：`[updated_at(=now), user_id(过滤)]` —— 与 SQL 里两个 `?` 严格对应。
    */
   private static readonly AGGREGATE_SQL: string =
     'INSERT INTO point_daily_stat (user_id, day_key, record_points, goal_points, spent_points, record_count, rebuilt_at, updated_at) ' +

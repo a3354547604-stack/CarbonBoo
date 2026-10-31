@@ -39,7 +39,7 @@ $py = 'C:\Users\Admin\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\
 依赖：`python-docx`、`python-pptx`、`Pillow`（bundled Python 已内置）、`imageio-ffmpeg` 提供的 ffmpeg 二进制。
 
 视频脚本的时间轴与 `docs/APPENDIX-E-demo-script.md` §2 的 9 个分镜一一对应；
-截图取自 `docs/screenshots/`，是**HarmonyOS 模拟器（API 26 / 1280×2832）上的真实运行截图**，由 `scripts/emu-shot.ps1` 抓取，且全部带演示数据（252 条记录 / 5,641 分 / 55.9896 kgCO₂e）。
+截图取自 `docs/screenshots/`，是**HarmonyOS 模拟器（API 26 / 1280×2832）上的真实运行截图**，由 `scripts/emu-shot.ps1` 抓取，且全部带演示数据（252 条记录 / 5,741 分 / 55.9896 kgCO₂e）。
 
 ## 四、已知情况（如实说明）
 

@@ -29,6 +29,7 @@ import { ServerConfig, ServerConfigFetcher } from './net/ServerConfigFetcher';
 import { StatsService } from './StatsService';
 import { AppState } from './AppState';
 import { IdUtil } from './domain/IdUtil';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 
 /** 结算与刷新结果（保存记录后据此排队弹庆祝半模态）。 */
 export interface RewardRefresh {
@@ -208,27 +209,45 @@ export class RewardService {
       const decision: SettleDecision = decisions[d];
       const nm: string | undefined = nameOf.get(decision.goalId);
       const name: string = nm === undefined ? decision.goalId : nm;
-      const written: string = await this.points.append(userId, {
-        type: 'goal',
-        points: decision.reward,
-        sourceType: 'goal',
-        sourceId: IdUtil.goalSourceId(decision.goalId, decision.periodKey),
-        title: `达成目标「${name}」`,
-        remark: '目标奖励不受每日记录上限影响',
-        occurredAt: now,
-      });
+      // 每一步都带段名：settle 里的写库失败在真机上只会冒出一句 SQLite 的 Inner error，
+      // 不带段名根本分不清是发分、改 settled 还是重建缓存炸的。
+      let written: string = '';
+      try {
+        written = await this.points.append(userId, {
+          type: 'goal',
+          points: decision.reward,
+          sourceType: 'goal',
+          sourceId: IdUtil.goalSourceId(decision.goalId, decision.periodKey),
+          title: `达成目标「${name}」`,
+          remark: '目标奖励不受每日记录上限影响',
+          occurredAt: now,
+        });
+      } catch (e) {
+        hilog.error(0x0001, 'CarbonBoo', 'settle.append failed: %{public}s', RewardService.detailOf(e));
+        throw new Error('settle.append failed');
+      }
       if (written.length > 0) {
-        await this.store.exec(
-          'UPDATE user_goal SET settled = 1, settled_at = ?, updated_at = ? WHERE user_id = ? AND goal_id = ? AND period_key = ?',
-          [now, now, userId, decision.goalId, decision.periodKey]
-        );
+        try {
+          await this.store.exec(
+            'UPDATE user_goal SET settled = 1, settled_at = ?, updated_at = ? WHERE user_id = ? AND goal_id = ? AND period_key = ?',
+            [now, now, userId, decision.goalId, decision.periodKey]
+          );
+        } catch (e) {
+          hilog.error(0x0001, 'CarbonBoo', 'settle.markSettled failed: %{public}s', RewardService.detailOf(e));
+          throw new Error('settle.markSettled failed');
+        }
         applied.push(decision);
       }
       d = d + 1;
     }
     // 结算写入了 goal 流水，重建当日缓存（与重建共用同一条聚合 SQL，口径天然一致）
     if (applied.length > 0) {
-      await this.points.rebuildDailyStat(userId, now);
+      try {
+        await this.points.rebuildDailyStat(userId, now);
+      } catch (e) {
+        hilog.error(0x0001, 'CarbonBoo', 'settle.rebuildDailyStat failed: %{public}s', RewardService.detailOf(e));
+        throw new Error('settle.rebuildDailyStat failed');
+      }
     }
     return applied;
   }
@@ -370,6 +389,20 @@ export class RewardService {
       'progress = excluded.progress, threshold = excluded.threshold, updated_at = excluded.updated_at, is_deleted = 0',
       [IdUtil.uuid(), userId, def.id, periodKey, progress, def.threshold, now, now, this.state.deviceId(), this.state.syncState()]
     );
+  }
+
+  /**
+   * 把异常转成可读文本 —— BusinessError 的 `message` 往往只有 "Inner error."，
+   * 真正能定位问题的 code 在对象属性上，所以连同 JSON 一起打出来。
+   */
+  static detailOf(e: Object): string {
+    let text: string = `${e}`;
+    try {
+      text = `${text} | ${JSON.stringify(e)}`;
+    } catch (err) {
+      text = `${text} | (json failed)`;
+    }
+    return text;
   }
 
   private static recordsIn(records: CarbonRecord[], fromMs: number, toMs: number): CarbonRecord[] {
