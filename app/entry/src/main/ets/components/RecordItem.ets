@@ -52,7 +52,7 @@ export struct RecordItem {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
         Row({ space: 8 }) {
-          Text(`${Formatter.number(this.record.amount, 'factor')} ${this.record.unit}`)
+          Text(`${Formatter.amount(this.record.amount)} ${this.record.unit}`)
             .fontSize(AppTheme.FONT_CAPTION)
             .fontColor(AppTheme.COLOR_TEXT_SECONDARY)
           Text(`减排 ${Formatter.reduction(this.record.reductionKg)}`)

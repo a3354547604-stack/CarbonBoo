@@ -8,15 +8,18 @@ export struct StatCard {
   @Prop label: ResourceStr = '';
   @Prop value: string = '';
   @Prop sub: string = '';
+  /** 数值字号；0 表示用默认口径（`AppTheme.FONT_NUMBER_MD`），长文本卡片可调小避免折行。 */
+  @Prop valueSize: number = 0;
   onTap?: () => void;
 
   build() {
     Column({ space: 4 }) {
       Text(this.label).fontSize(AppTheme.FONT_CAPTION).fontColor(AppTheme.COLOR_TEXT_SECONDARY)
       Text(this.value)
-        .fontSize(AppTheme.FONT_NUMBER_MD)
+        .fontSize(this.valueSize > 0 ? this.valueSize : AppTheme.FONT_NUMBER_MD)
         .fontWeight(FontWeight.Medium)
         .fontColor(AppTheme.COLOR_TEXT_PRIMARY)
+        .maxLines(2)
       if (this.sub.length > 0) {
         Text(this.sub).fontSize(AppTheme.FONT_CAPTION).fontColor(AppTheme.COLOR_TEXT_HINT)
       }

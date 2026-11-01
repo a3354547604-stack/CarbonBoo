@@ -35,7 +35,7 @@ export struct GoalItem {
       .width('100%')
       ProgressBarView({ percent: this.card.percent, color: this.card.settled ? AppTheme.COLOR_ACCENT : AppTheme.COLOR_PRIMARY })
       Row({ space: 8 }) {
-        Text(`${Formatter.number(this.card.progress, 'factor')}/${Formatter.number(this.card.threshold, 'factor')} ${this.card.unit}`)
+        Text(`${Formatter.progress(this.card.progress)}/${Formatter.progress(this.card.threshold)} ${this.card.unit}`)
           .fontSize(AppTheme.FONT_CAPTION)
           .fontColor(AppTheme.COLOR_TEXT_SECONDARY)
           .layoutWeight(1)

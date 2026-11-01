@@ -18,9 +18,9 @@ export struct BadgeItem {
   @Prop badge: BadgeProgress = emptyBadgeProgress();
   @Prop condition: string = '';
 
-  /** 进度数字只保留最多 1 位小数：徽章格很窄，4 位小数会换行把卡片撑破。 */
+  /** 进度数字走统一口径（最多 2 位、裁掉末尾 0）：徽章格很窄，四位小数会撑破卡片。 */
   private short(v: number): string {
-    return `${Math.round(v * 10) / 10}`;
+    return Formatter.progress(v);
   }
 
   build() {

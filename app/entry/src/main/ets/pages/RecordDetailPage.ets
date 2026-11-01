@@ -119,7 +119,7 @@ export struct RecordDetailPage {
                     .fontSize(AppTheme.FONT_SECTION)
                     .fontWeight(FontWeight.Medium)
                     .fontColor(AppTheme.COLOR_TEXT_PRIMARY)
-                  Text(`${this.record.amount} ${this.record.unit}`)
+                  Text(`${Formatter.amount(this.record.amount)} ${this.record.unit}`)
                     .fontSize(AppTheme.FONT_BODY)
                     .fontColor(AppTheme.COLOR_TEXT_SECONDARY)
                 }

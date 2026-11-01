@@ -18,7 +18,7 @@ import { Dec } from './DecimalUtil';
 import { DateUtil } from './DateUtil';
 
 /** 数字口径（附录 C §3.4 表）。 */
-export type NumberKind = 'reduction' | 'factor' | 'points' | 'coin';
+export type NumberKind = 'reduction' | 'factor' | 'points' | 'coin' | 'amount' | 'progress';
 
 /** 千分位分隔符。 */
 const THOUSAND: string = ',';
@@ -33,16 +33,60 @@ export class Formatter {
    */
   static number(value: number, kind: NumberKind): string {
     if (kind === 'reduction') {
-      return Dec.from(value).toFixed(4);
+      // 附录 A §4 / PLAN §10.4：存 4 位、展示 2 位；小于 1 kg 时展示 3 位（避免 0.01 这种把差别抹平）
+      return Math.abs(value) < 1 ? Dec.from(value).toFixed(3) : Dec.from(value).toFixed(2);
     }
     if (kind === 'factor') {
-      return Dec.from(value).toFixed(4);
+      // 因子值可能很小（水 0.000168），保留 6 位有效小数再裁掉末尾 0
+      return Formatter.trimZeros(value, 6);
+    }
+    if (kind === 'amount') {
+      // 活动量：条/次/天 这类计数显示整数，km/L/kWh/kg 最多 2 位
+      return Formatter.trimZeros(value, 2);
+    }
+    if (kind === 'progress') {
+      // 目标与徽章进度：同上，不做四位小数
+      return Formatter.trimZeros(value, 2);
     }
     const int: number = Math.round(value);
     if (kind === 'coin') {
       return `${int}`;
     }
     return Formatter.thousands(int);
+  }
+
+  /** 固定 2 位小数的减排量口径（CSV / 报表等需要固定位宽时用）。 */
+  static reductionFixed(kg: number): string {
+    return Dec.from(kg).toFixed(2);
+  }
+
+  /** 活动量文本（`80 L` / `1.5 km` / `2 次`）。 */
+  static amount(v: number): string {
+    return Formatter.number(v, 'amount');
+  }
+
+  /** 目标/徽章进度文本（`1/1` / `0.26/5` / `10.1/20`）。 */
+  static progress(v: number): string {
+    return Formatter.number(v, 'progress');
+  }
+
+  /**
+   * 保留至多 `places` 位小数并裁掉末尾的 0 与孤立小数点（`80.0000`→`80`、`1.5000`→`1.5`）。
+   * 用 `Dec` 定点舍入，避免 `1.005` 这类二进制浮点误差。
+   */
+  static trimZeros(value: number, places: number): string {
+    const fixed: string = Dec.from(value).toFixed(places);
+    if (fixed.indexOf('.') < 0) {
+      return fixed;
+    }
+    let end: number = fixed.length;
+    while (end > 0 && fixed.charAt(end - 1) === '0') {
+      end = end - 1;
+    }
+    if (end > 0 && fixed.charAt(end - 1) === '.') {
+      end = end - 1;
+    }
+    return fixed.substring(0, end);
   }
 
   /** 减排量：固定 4 位小数，千位不加分隔符（`12.4800`）。 */

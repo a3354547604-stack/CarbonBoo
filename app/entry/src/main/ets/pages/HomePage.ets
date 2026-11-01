@@ -152,7 +152,7 @@ export struct HomePage {
               .fontWeight(FontWeight.Bold)
               .fontColor(AppTheme.COLOR_PRIMARY)
             Text(this.stats.hasRecord
-              ? `≈ ${Formatter.number(this.stats.treeEquivalent, 'factor')} 棵树一年的吸收量`
+              ? `≈ ${Formatter.progress(this.stats.treeEquivalent)} 棵树一年的吸收量`
               : '记录第一笔，开始你的碳足迹')
               .fontSize(AppTheme.FONT_CAPTION)
               .fontColor(AppTheme.COLOR_TEXT_HINT)
@@ -173,6 +173,7 @@ export struct HomePage {
             StatCard({
               label: $r('app.string.home_today_record'),
               value: `${this.stats.todayCount} 条 · +${Formatter.points(this.stats.todayEarned)} 分`,
+              valueSize: 16,
               sub: this.cappedText(), onTap: () => this.push(RouteName.RECORD)
             })
           }

@@ -68,8 +68,8 @@ export class ShareCardModel {
     data.badgeTotal = badgeTotal;
     const trees: number = reductionKg / LiteralConstants.TREE_ABSORB_KG_PER_YEAR;
     const km: number = reductionKg * LiteralConstants.CAR_KM_PER_KG;
-    data.treeText = `≈ ${Formatter.number(trees, 'factor')} 棵树一年的吸收量`;
-    data.carText = `≈ 少开 ${Formatter.number(km, 'factor')} km 车`;
+    data.treeText = `≈ ${Formatter.progress(trees)} 棵树一年的吸收量`;
+    data.carText = `≈ 少开 ${Formatter.progress(km)} km 车`;
     return data;
   }
 
