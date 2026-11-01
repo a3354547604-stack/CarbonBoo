@@ -257,11 +257,18 @@ export class RecordService {
    */
   async search(userId: string, keyword: string, category: CategoryKey | 'all', fromMs: number, toMs: number, limit: number): Promise<SearchResult> {
     const like: string = `%${keyword}%`;
+    // 库里只存英文子类名（`water`），用户却按中文名搜（「自来水」「水」）。
+    // 因此把「中文名命中关键词」的子类也并进 WHERE，否则搜「水」永远 0 条。
+    const matched: string[] = this.subTypesMatching(keyword);
+    const nameCond: string = matched.length === 0
+      ? ''
+      : ` OR sub_type IN (${matched.map((): string => '?').join(',')})`;
     const cond: string = category === 'all' ? '' : ' AND category = ?';
-    const base: (string | number | null)[] = category === 'all'
-      ? [userId, like, like, fromMs, toMs]
-      : [userId, like, like, category, fromMs, toMs];
-    const where: string = `WHERE user_id = ? AND is_deleted = 0 AND (note LIKE ? OR sub_type LIKE ?)${cond} AND occurred_at >= ? AND occurred_at < ?`;
+    const head: (string | number | null)[] = [userId, like, like];
+    const nameArgs: (string | number | null)[] = matched.slice();
+    const tail: (string | number | null)[] = category === 'all' ? [fromMs, toMs] : [category, fromMs, toMs];
+    const base: (string | number | null)[] = head.concat(nameArgs).concat(tail);
+    const where: string = `WHERE user_id = ? AND is_deleted = 0 AND (note LIKE ? OR sub_type LIKE ?${nameCond})${cond} AND occurred_at >= ? AND occurred_at < ?`;
     const rows = await this.store.query(`SELECT * FROM carbon_record ${where} ORDER BY occurred_at DESC LIMIT ?`, base.concat([limit]));
     const sumRows = await this.store.query(`SELECT COUNT(*) AS n, COALESCE(SUM(reduction_kg), 0) AS red FROM carbon_record ${where}`, base);
     const srow = firstOf(sumRows);
@@ -279,6 +286,21 @@ export class RecordService {
    */
   pointExpectedOf(record: CarbonRecord): number {
     return CarbonCalc.expectedPointOf(record.reductionKg);
+  }
+
+  /** 关键词命中的子类列表（因子库中文名包含关键词；大小写不敏感对中文无意义，直接 includes）。 */
+  private subTypesMatching(keyword: string): string[] {
+    const lib: FactorLibrary | undefined = this.factors.library();
+    const out: string[] = [];
+    if (lib === undefined || keyword.length === 0) {
+      return out;
+    }
+    for (const item of lib.all()) {
+      if (item.name.includes(keyword)) {
+        out.push(item.subType);
+      }
+    }
+    return out;
   }
 
   factorItemOf(subType: string): FactorItem | undefined {
