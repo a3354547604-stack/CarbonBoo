@@ -568,7 +568,8 @@ MINE ─┬─ APPEARANCE / POINT_LOG / GOAL / BADGE / SHOP
 
 **规则**
 - Markdown 由 `MarkdownRenderer` 渲染，**只用内置 `rawfile` 内容，不联网**。
-- 滚动 **≥80% 且停留 ≥3 秒**后标记已读，写 `science_progress.progress = 1`（判定口径与附录 D4-4 一致）。
+- 头部元信息行下方显示**阅读状态标签**：未读「未读」/ 已读「已读 ✓」（不再显示裸百分比——那个数字既不随滚动更新，也没有说明）。
+- **两条标记路径**：①**显式点击**页脚按钮（文案「标记为已读」，成功后变「已读 ✓」并置灰禁用）→ 立即标记，**不受门槛限制**；②**自动判定**：滚动 **≥80% 且停留 ≥3 秒**后标记。两条都写 `science_progress.progress = 1`（口径与附录 D4-4 一致）。
 - 收藏写 `science_progress.is_favorite`，同步到其他设备。
 
 ---

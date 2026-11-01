@@ -13,6 +13,7 @@ import { AppConstants } from '../util/AppConstants';
 import { PageHeader } from '../components/PageHeader';
 import { SectionCard } from '../components/SectionCard';
 import { LoadingOverlay } from '../components/LoadingOverlay';
+import { ShopRules } from '../viewmodel/domain/ShopRules';
 
 @Component
 export struct AppearancePage {
@@ -98,7 +99,7 @@ export struct AppearancePage {
   @Builder
   frameCell(id: string, name: ResourceStr) {
     Column({ space: 4 }) {
-      Text(this.owned.indexOf(id) >= 0 ? '🖼️' : '🔒')
+      Text(this.owned.indexOf(id) >= 0 ? ShopRules.frameIcon(id) : '🔒')
         .fontSize(AppTheme.ICON_MD)
         .opacity(this.owned.indexOf(id) >= 0 ? 1 : 0.35)
       Text(name)

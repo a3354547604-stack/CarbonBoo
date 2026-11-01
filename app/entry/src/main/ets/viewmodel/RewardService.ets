@@ -350,7 +350,21 @@ export class RewardService {
       }
       i = i + 1;
     }
-    return BadgeEngine.progressRows(defs, stats, unlockedIds, atMap);
+    // 现场判定：徽章是纯荣誉，真相由 `BadgeEngine` 给出；`user_badge` 只负责留痕与同步。
+    // 不这样算的话，只要库里还没落库（例如重播演示数据后 `unlockBadges` 未跑成功），
+    // 徽章墙与「我的」页就会各说各话（用户实测：墙 5/8、我的 0/8）。
+    const newly: BadgeDef[] = BadgeEngine.evaluate(defs, stats, unlockedIds);
+    const live: string[] = unlockedIds.slice();
+    let n: number = 0;
+    while (n < newly.length) {
+      const id: string = newly[n].id;
+      live.push(id);
+      if (!atMap.has(id)) {
+        atMap.set(id, now);
+      }
+      n = n + 1;
+    }
+    return BadgeEngine.progressRows(defs, stats, live, atMap);
   }
 
   /**

@@ -61,6 +61,40 @@ export class ShopRules {
     return frameCount >= total;
   }
 
+  /**
+   * 头像框的展示图标（emoji）。
+   *
+   * 只按 `frame_0x` 固定映射，不读图片资源——`resources/base/media` 里只有 `app_icon.png`，
+   * 用 emoji 既避免新增二进制资源，也让 8 个框一眼可区分（此前 8 个框全画成同一个 🖼️）。
+   */
+  static frameIcon(frameId: string): string {
+    if (frameId === 'frame_01') {
+      return '🌱';
+    }
+    if (frameId === 'frame_02') {
+      return '🌿';
+    }
+    if (frameId === 'frame_03') {
+      return '🎡';
+    }
+    if (frameId === 'frame_04') {
+      return '🌌';
+    }
+    if (frameId === 'frame_05') {
+      return '🌠';
+    }
+    if (frameId === 'frame_06') {
+      return '🎋';
+    }
+    if (frameId === 'frame_07') {
+      return '✨';
+    }
+    if (frameId === 'frame_08') {
+      return '🪵';
+    }
+    return '🖼️';
+  }
+
   /** 已拥有的商品 id 集合（来自 `user_purchase`）。 */
   static ownedIds(purchasedIds: string[]): string[] {
     return purchasedIds;

@@ -85,6 +85,25 @@ export struct ScienceDetailPage {
     this.marked = true;
   }
 
+  /**
+   * 用户**显式**点「标记为已读」。
+   *
+   * 与 `markRead()` 的区别：那个是「滚动到底 + 停留 ≥3 秒」的自动判定（口径见附录 D4-4），
+   * 有门槛就会让用户点完没反应（此前实际表现：点一下毫无变化、也不给任何提示）。
+   * 显式点击不需要门槛——点这个按钮本身就是「我已经读完」的意思表示；门槛只用于自动判定。
+   */
+  private async explicitRead(): Promise<void> {
+    if (this.read) {
+      return;
+    }
+    const hub: ServiceHub = ServiceHub.get();
+    await hub.science.markProgress(hub.state.userId(), this.articleId, 1);
+    this.progress = 1;
+    this.read = true;
+    this.marked = true;
+    this.getUIContext().getPromptAction().showToast({ message: '已标记为已读' });
+  }
+
   private async toggleFavorite(): Promise<void> {
     const hub: ServiceHub = ServiceHub.get();
     this.favorited = await hub.science.toggleFavorite(hub.state.userId(), this.articleId);
@@ -214,14 +233,12 @@ export struct ScienceDetailPage {
               }
               .width('100%')
               Row({ space: 8 }) {
-                Text(ScienceService.percentText(this.progress))
+                Text(this.read ? $r('app.string.science_read_tag') : $r('app.string.science_unread_tag'))
                   .fontSize(AppTheme.FONT_CAPTION)
-                  .fontColor(AppTheme.COLOR_TEXT_SECONDARY)
-                if (this.read) {
-                  Text($r('app.string.science_read_tag'))
-                    .fontSize(AppTheme.FONT_CAPTION)
-                    .fontColor(AppTheme.COLOR_TEXT_HINT)
-                }
+                  .fontColor(this.read ? AppTheme.COLOR_PRIMARY : AppTheme.COLOR_TEXT_HINT)
+                  .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+                  .borderRadius(4)
+                  .backgroundColor(AppTheme.COLOR_BG)
               }
               .width('100%')
             }
@@ -248,12 +265,13 @@ export struct ScienceDetailPage {
             }
             .width('100%')
 
-            Button($r('app.string.science_mark_read'))
+            Button(this.read ? $r('app.string.science_read_done') : $r('app.string.science_mark_read'))
               .width('100%')
               .height(AppTheme.BTN_HEIGHT)
-              .backgroundColor(AppTheme.COLOR_PRIMARY)
-              .fontColor(AppTheme.COLOR_SURFACE)
-              .onClick(() => this.markRead())
+              .backgroundColor(this.read ? AppTheme.COLOR_DISABLED_BG : AppTheme.COLOR_PRIMARY)
+              .fontColor(this.read ? AppTheme.COLOR_TEXT_HINT : AppTheme.COLOR_SURFACE)
+              .enabled(!this.read)
+              .onClick(() => this.explicitRead())
           }
           .width('100%')
         }

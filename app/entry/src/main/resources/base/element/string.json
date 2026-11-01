@@ -618,7 +618,7 @@
     },
     {
       "name": "science_mark_read",
-      "value": "已读"
+      "value": "标记为已读"
     },
     {
       "name": "science_my_favorite",
@@ -633,7 +633,15 @@
       "value": "上一篇"
     },
     {
+      "name": "science_unread_tag",
+      "value": "未读"
+    },
+    {
       "name": "science_read_tag",
+      "value": "已读 ✓"
+    },
+    {
+      "name": "science_read_done",
       "value": "已读 ✓"
     },
     {

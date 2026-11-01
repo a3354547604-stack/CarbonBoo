@@ -5,6 +5,7 @@
  * 碳普惠行尾必须带「模拟演示」小黄标（附录 C §9、§19）。
  */
 import { ServiceHub } from '../viewmodel/ServiceHub';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { RouteName, RouteParam, NavParams } from '../viewmodel/RouteName';
 import { OverviewStats } from '../viewmodel/StatsService';
 import { CarbonCoin } from '../model/IncludeTypes';
@@ -16,6 +17,7 @@ import { StatCard } from '../components/StatCard';
 import { ShareSheet } from '../components/ShareSheet';
 import { ShareCardData } from '../util/CardRenderer';
 import { emptyOverview } from './HomePage';
+import { BadgeProgress } from '../model/BadgeTypes';
 
 @Component
 export struct MinePage {
@@ -27,6 +29,7 @@ export struct MinePage {
   @State sync: SyncStatus = SyncService.emptyStatus('');
   @State nickname: string = '';
   @State avatarId: string = 'avatar_leaf';
+  @State badgeUnlocked: number = 0;
   @State isDemo: boolean = false;
   @State ready: boolean = false;
   @State showShare: boolean = false;
@@ -51,6 +54,19 @@ export struct MinePage {
     const frames: number = await hub.shop.ownedFrameCount(userId);
     const sync: SyncStatus = await hub.sync.status(userId);
     const appearance = await hub.appearance.current(userId);
+    // 「我的」页的徽章数与徽章墙必须同源：徽章墙按 `badgeRows` 现场判定，
+    // 而 `stats.badgeUnlocked` 数的是 `user_badge` 里已落库的行——
+    // 两者不一致时用户会看到「我的 0/8、徽章墙 5/8」。这里统一取现场判定。
+    const badgeRows: BadgeProgress[] = await hub.reward.badgeRows(userId, now);
+    let unlockedCount: number = 0;
+    let bi: number = 0;
+    while (bi < badgeRows.length) {
+      if (badgeRows[bi].unlocked) {
+        unlockedCount = unlockedCount + 1;
+      }
+      bi = bi + 1;
+    }
+    this.badgeUnlocked = unlockedCount;
     this.stats = stats;
     this.coin = coin.balance;
     this.frameCount = frames;
@@ -64,6 +80,38 @@ export struct MinePage {
 
   /** 切换到某个 Tab。由 Index 注入；默认空实现，便于单独渲染本页。 */
   goTab: (index: number) => void = (index: number): void => {};
+
+  /**
+   * 与 `rowItem` 相同，但右侧文案由**闭包**现算。
+   *
+   * 为什么需要它：`@Builder` 的参数是按值传入的，若把 `${this.badgeUnlocked}/8 已解锁` 算好后当参数传进去，
+   * 这个字符串就被钉在首帧（实测：`reload()` 已算出 5，界面仍显示 0）。改成渲染时调闭包即可拿到最新值。
+   */
+  @Builder
+  rowItemDynamic(icon: string, label: ResourceStr, valueOf: () => string, badge: string, onTap: () => void) {
+    Row({ space: 12 }) {
+      Text(icon)
+        .fontSize(AppTheme.ICON_MD)
+      Text(label)
+        .fontSize(AppTheme.FONT_BODY)
+        .fontColor(AppTheme.COLOR_TEXT_PRIMARY)
+        .layoutWeight(1)
+      if (badge.length > 0) {
+        Text(badge)
+          .fontSize(AppTheme.FONT_CAPTION)
+          .fontColor(AppTheme.COLOR_WARNING)
+          .backgroundColor(AppTheme.COLOR_WARNING_BG)
+          .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+          .borderRadius(4)
+      }
+      Text(valueOf())
+        .fontSize(AppTheme.FONT_CAPTION)
+        .fontColor(AppTheme.COLOR_TEXT_HINT)
+    }
+    .width('100%')
+    .height(AppTheme.BTN_HEIGHT)
+    .onClick(() => onTap())
+  }
 
   private push(name: string, param?: RouteParam): void {
     NavParams.set(param);
@@ -168,8 +216,8 @@ export struct MinePage {
           .width('100%')
 
           Column() {
-            this.rowItem('🎯', $r('app.string.mine_goal_badge'),
-              `${this.stats.badgeUnlocked}/${LiteralConstants.BADGE_TOTAL} 已解锁 ›`, '',
+            this.rowItemDynamic('🎯', $r('app.string.mine_goal_badge'),
+              (): string => `${this.badgeUnlocked}/${LiteralConstants.BADGE_TOTAL} 已解锁 ›`, '',
               () => this.push(RouteName.GOAL))
             this.rowItem('🏪', $r('app.string.mine_shop'),
               `${this.frameCount} 个头像框 ›`, '', () => this.push(RouteName.SHOP))

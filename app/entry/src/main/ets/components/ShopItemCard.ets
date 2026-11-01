@@ -5,6 +5,7 @@
 import { ShopItem } from '../model/ShopTypes';
 import { AppTheme } from '../util/AppTheme';
 import { Formatter } from '../util/Formatter';
+import { ShopRules } from '../viewmodel/domain/ShopRules';
 
 export function emptyShopItem(): ShopItem {
   const item: ShopItem = {
@@ -24,7 +25,7 @@ export struct ShopItemCard {
 
   build() {
     Column({ space: 6 }) {
-      Text('🖼️')
+      Text(ShopRules.frameIcon(this.item.id))
         .fontSize(AppTheme.ICON_LG)
         .width('100%')
         .textAlign(TextAlign.Center)
