@@ -112,7 +112,8 @@ export struct AppearancePage {
         .fontColor(this.frameId === id ? AppTheme.COLOR_PRIMARY : AppTheme.COLOR_TEXT_HINT)
     }
     .onClick(() => {
-      if (this.owned.indexOf(id) < 0) {
+      // 「无」= 不戴框，本来就不需要购买；只有真正的框才校验是否已拥有。
+      if (id.length > 0 && this.owned.indexOf(id) < 0) {
         this.getUIContext().getPromptAction().showToast({ message: '请先到碳小铺兑换' });
         return;
       }

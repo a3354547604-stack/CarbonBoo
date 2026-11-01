@@ -154,6 +154,24 @@ export struct AvatarWithFrame {
   }
 
   build() {
+    // 「无」= 不戴框：只画头像本体，不画环/光晕/饰物。
+    if (this.frameId.length === 0) {
+      Stack({ alignContent: Alignment.Center }) {
+        Text(this.centerEmoji())
+          .fontSize(this.diameter * 0.62)
+          .textAlign(TextAlign.Center)
+      }
+      .width(this.diameter)
+      .height(this.diameter)
+      .borderRadius(this.diameter / 2)
+      .backgroundColor(AppTheme.COLOR_DISABLED_BG)
+    } else {
+      this.ringed()
+    }
+  }
+
+  @Builder
+  ringed() {
     Stack({ alignContent: Alignment.Center }) {
       // ① 外发光（仅已解锁，营造「戴上去了」的存在感）
       if (!this.locked && this.style().halo > 0) {
