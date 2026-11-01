@@ -45,5 +45,6 @@ $py = 'C:\Users\Admin\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\
 
 1. **截图真机口径**：模拟器（HarmonyOS 7.0.0，API 26）上安装的是**已签名的 HAP**（`scripts/sign-hap.ps1`，OpenHarmony 公开测试证书）；应用本身 `compileSdkVersion` 为 **API 12**。真机（API 12）尚未实测，属未覆盖项。
 2. **18 张截图齐备**：含 `15-record-detail`（记录明细）与 `17-science-detail`（科普详情）；数据由「关于与合规 → 连点版本号 7 次 → 开发者选项 → 播种演示数据」生成。
+2.1 **近场协同（创新项Ⅰ）实测边界**：已在**两台**模拟器（Mate 90 Pro 1280×2832 + Mate X7 2210×2416）上验证——运行时权限 `ohos.permission.DISTRIBUTED_DATASYNC` 申请通过（`granted=true results=[0]`）、`distributedDeviceManager` 能力判定可用（`available=true`）、无对端时面板正确降级不崩。因两台模拟器无华为账号、未建立可信设备关系，`getAvailableDeviceListSync()` 返回 0，**「发现对端 → 分布式 KV 同步 → 家庭合并」一段未跑通**，该段由 7 条离线用例以假端口覆盖。这也是本轮修掉的一个**真 bug**：该权限属 user_grant，未在运行时申请时任何真机/模拟器都会因 `code 201` 让能力恒判不可用。
 3. **视频是"界面实拍 + 讲解字幕"的合成片**，素材是上面 18 张真实截图；不是屏幕录制。为补足这一点，另附 `04-真机录屏片段-碳小布CarbonBoo.mp4`（模拟器上逐帧抓取的连续操作，14.6 秒），可证明跳转与滚动是真实运行的。`screenrecord` 在该模拟器镜像上不可用，故采用「连续 `snapshot_display` 抽帧 + ffmpeg 合成」的方式取得真录屏。
 4. **报名已过期**：官方报名截止 2026-10-30（此前仅填写过预报名）。**作品提交截止 2026-11-06**，按竞赛 QQ 群规定方式提交。
