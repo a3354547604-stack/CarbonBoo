@@ -29,6 +29,7 @@ export struct RecordSearchPage {
   @State searched: boolean = false;
   @State ready: boolean = false;
   private now: number = 0;
+  private names: Map<string, string> = new Map<string, string>();
 
   aboutToAppear(): void {
     const param: RouteParam = NavParams.take();
@@ -38,6 +39,13 @@ export struct RecordSearchPage {
     this.fromMs = DateUtil.addDays(this.now, -LiteralConstants.BACKDATE_DAYS);
     if (category !== undefined) {
       this.category = category;
+    }
+    // 看板下钻：带区间进来时只看那一天/那一桶，不改默认的「最近 BACKDATE_DAYS 天」。
+    const fromMs: number | undefined = param.fromMs;
+    const toMs: number | undefined = param.toMs;
+    if (fromMs !== undefined && toMs !== undefined && toMs > fromMs) {
+      this.fromMs = fromMs;
+      this.toMs = toMs;
     }
     this.ready = true;
     this.search();
@@ -134,6 +142,22 @@ export struct RecordSearchPage {
     return 'travel';
   }
 
+  /**
+   * 子类显示名：与记录列表同一口径（取因子库的 `name`，查不到才退化 `subType`）。
+   * 搜索结果原先直接打印 `record.subType`，于是同一笔记录在列表里叫「自来水」、
+   * 在搜索结果里叫 `water` —— 两处不一致。
+   */
+  private nameOf(subType: string): string {
+    const cached: string | undefined = this.names.get(subType);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const item = ServiceHub.get().records.factorItemOf(subType);
+    const name: string = item === undefined ? subType : item.name;
+    this.names.set(subType, name);
+    return name;
+  }
+
   private push(recordId: string): void {
     NavParams.set(RouteParam.record(recordId));
     this.stack.pushPath({ name: RouteName.RECORD_DETAIL });
@@ -215,10 +239,10 @@ export struct RecordSearchPage {
               Row({ space: AppTheme.CARD_GAP }) {
                 Text(categoryIcon(record.category)).fontSize(AppTheme.ICON_MD)
                 Column({ space: 2 }) {
-                  Text(record.subType)
+                  Text(this.nameOf(record.subType))
                     .fontSize(AppTheme.FONT_BODY)
                     .fontColor(AppTheme.COLOR_TEXT_PRIMARY)
-                  Text(`${record.amount} ${record.unit} · ${Formatter.monthDay(record.occurredAt)}`)
+                  Text(`${Formatter.amount(record.amount)} ${record.unit} · ${Formatter.monthDay(record.occurredAt)}`)
                     .fontSize(AppTheme.FONT_CAPTION)
                     .fontColor(AppTheme.COLOR_TEXT_HINT)
                 }

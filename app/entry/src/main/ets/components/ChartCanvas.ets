@@ -28,6 +28,8 @@ export struct ChartCanvas {
   @Prop @Watch('onDataChange') buckets: ChartBucket[] = [];
   @Prop @Watch('onDataChange') slices: PieSlice[] = [];
   @Prop @Watch('onDataChange') chartHeight: number = 140;
+  /** 点折线/柱状某一点时回调（下标）。为 undefined 时组件不可点。 */
+  onPointTap: ((index: number) => void) | undefined = undefined;
   private settings: RenderingContextSettings = new RenderingContextSettings(true);
   private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
   private ready: boolean = false;
@@ -40,12 +42,48 @@ export struct ChartCanvas {
         this.ready = true;
         this.draw();
       })
+      .onClick((event: ClickEvent) => {
+        this.handleTap(event.x);
+      })
   }
 
   onDataChange(): void {
     if (this.ready) {
       this.draw();
     }
+  }
+
+  /**
+   * 点击命中测试：把点击的 x 坐标换算成数据点下标。
+   *
+   * 几何与 `drawLine` / `drawBars` 必须一致，否则会点中相邻的点：
+   * 折线是「4 + step·i，端点落在 4 .. w-4」，柱状是「按等宽槽位 floor」。
+   */
+  private handleTap(x: number): void {
+    const cb: ((index: number) => void) | undefined = this.onPointTap;
+    if (cb === undefined) {
+      return;
+    }
+    const w: number = this.ctx.width;
+    const n: number = this.buckets.length;
+    if (w <= 0 || n <= 0) {
+      return;
+    }
+    let idx: number = 0;
+    if (this.kind === 'bar') {
+      const slot: number = w / n;
+      idx = Math.floor(x / slot);
+    } else {
+      const step: number = n > 1 ? (w - 8) / (n - 1) : 0;
+      idx = step > 0 ? Math.round((x - 4) / step) : 0;
+    }
+    if (idx < 0) {
+      idx = 0;
+    }
+    if (idx > n - 1) {
+      idx = n - 1;
+    }
+    cb(idx);
   }
 
   private draw(): void {

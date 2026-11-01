@@ -3,7 +3,7 @@
  * 分桶与占比全部由 `ChartModel`（纯函数）算好；本页只负责切换粒度/筛选与画布。
  */
 import { ServiceHub } from '../viewmodel/ServiceHub';
-import { CarbonRecord } from '../model/CarbonTypes';
+import { CarbonRecord, CategoryKey } from '../model/CarbonTypes';
 import { ChartBucket, ChartFilter, ChartModel, DashboardModel, Grain, PieSlice } from '../viewmodel/domain/ChartModel';
 import { AppTheme } from '../util/AppTheme';
 import { Formatter } from '../util/Formatter';
@@ -12,6 +12,7 @@ import { SectionCard } from '../components/SectionCard';
 import { ChartCanvas } from '../components/ChartCanvas';
 import { EmptyView } from '../components/EmptyView';
 import { DemoModeBanner } from '../components/DemoModeBanner';
+import { NavParams, RouteName, RouteParam } from '../viewmodel/RouteName';
 
 @Component
 export struct DashboardPage {
@@ -28,6 +29,37 @@ export struct DashboardPage {
 
   onTick(): void {
     this.reload();
+  }
+
+  /**
+   * 点折线/柱状下钻：把那一桶的时间区间带到记录搜索页，只看那一天/那一月。
+   * 桶的 `startMs` / `endMs` 由 `ChartModel.emptyBuckets()` 算好，此处只搬运。
+   */
+  private drillToBucket(index: number): void {
+    const line: ChartBucket[] = this.model.line;
+    if (index < 0 || index >= line.length) {
+      return;
+    }
+    const bucket: ChartBucket = line[index];
+    if (bucket.endMs <= bucket.startMs) {
+      return;
+    }
+    NavParams.set(RouteParam.range(bucket.startMs, bucket.endMs));
+    NavParams.push(RouteName.RECORD_SEARCH);
+  }
+
+  /** 点分类柱状图下钻：按该分类筛记录。 */
+  private drillToCategory(index: number): void {
+    const bars: ChartBucket[] = this.model.bars;
+    if (index < 0 || index >= bars.length) {
+      return;
+    }
+    const category: CategoryKey | undefined = bars[index].category;
+    if (category === undefined) {
+      return;
+    }
+    NavParams.set(RouteParam.of(category));
+    NavParams.push(RouteName.RECORD_SEARCH);
   }
 
   private async reload(): Promise<void> {
@@ -74,7 +106,10 @@ export struct DashboardPage {
           EmptyView({ text: '本周期还没有记录', hint: '去记一笔，看板立刻有数据' })
         } else {
           SectionCard({ title: $r('app.string.dashboard_line'), showTitle: true }) {
-            ChartCanvas({ kind: 'line', buckets: this.model.line, chartHeight: 140 })
+            ChartCanvas({
+              kind: 'line', buckets: this.model.line, chartHeight: 140,
+              onPointTap: (index: number): void => this.drillToBucket(index)
+            })
             Text(this.model.rangeLabel).fontSize(AppTheme.FONT_CAPTION).fontColor(AppTheme.COLOR_TEXT_HINT)
           }
 
@@ -103,7 +138,10 @@ export struct DashboardPage {
           }
 
           SectionCard({ title: $r('app.string.dashboard_bars'), showTitle: true }) {
-            ChartCanvas({ kind: 'bar', buckets: this.model.bars, chartHeight: 130 })
+            ChartCanvas({
+              kind: 'bar', buckets: this.model.bars, chartHeight: 130,
+              onPointTap: (index: number): void => this.drillToCategory(index)
+            })
           }
 
           SectionCard({ title: $r('app.string.dashboard_period'), showTitle: true }) {

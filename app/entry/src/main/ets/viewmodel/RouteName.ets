@@ -36,6 +36,9 @@ export class RouteParam {
   recordId?: string = undefined;
   articleId?: string = undefined;
   section?: string = undefined;
+  /** 区间下钻用（看板点柱/点折线 → 记录搜索页只看那一天）。 */
+  fromMs?: number = undefined;
+  toMs?: number = undefined;
 
   static of(category?: CategoryKey): RouteParam {
     const p: RouteParam = new RouteParam();
@@ -52,6 +55,14 @@ export class RouteParam {
   static article(articleId: string): RouteParam {
     const p: RouteParam = new RouteParam();
     p.articleId = articleId;
+    return p;
+  }
+
+  /** 时间区间（下钻到某一天/某一月）。 */
+  static range(fromMs: number, toMs: number): RouteParam {
+    const p: RouteParam = new RouteParam();
+    p.fromMs = fromMs;
+    p.toMs = toMs;
     return p;
   }
 
