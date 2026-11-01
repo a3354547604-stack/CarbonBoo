@@ -19,9 +19,31 @@
  */
 import distributedDeviceManager from '@ohos.distributedDeviceManager';
 import distributedKVStore from '@ohos.data.distributedKVStore';
-import { common } from '@kit.AbilityKit';
+import { abilityAccessCtrl, common, PermissionRequestResult, Permissions } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DeviceContribution, DistributedPort, NearbyDevice } from './DistributedPort';
 import { parseContribution, serializeContribution } from '../domain/NearbyMerge';
+
+/** hilog 标签（与其余服务一致）。 */
+const TAG: string = 'CarbonBoo';
+
+/**
+ * 近场协同所需的运行时权限。
+ *
+ * `ohos.permission.DISTRIBUTED_DATASYNC` 是 **user_grant** 权限：只在 `module.json5` 里声明不够，
+ * 必须运行时 `requestPermissionsFromUser` 取得用户授权；未授权时 `getAvailableDeviceListSync()`
+ * 直接抛 `Permission verification failed ... {"code":"201"}`，于是能力恒判为不可用。
+ */
+const DISTRIBUTED_PERMISSION: Permissions = 'ohos.permission.DISTRIBUTED_DATASYNC';
+
+/**
+ * 把异常压成一行可读文本（`Inner error.` 这类 message 不足以下结论，必须带 `code`）。
+ * 近场失败**只记日志不改变行为**：适配器对外永远返回「不可用」。
+ */
+function detailOf(e: Object): string {
+  return `${e} | ${JSON.stringify(e)}`;
+}
 
 /** 家庭协同使用的 KV 库名（同一 bundle 下唯一）。 */
 const STORE_ID: string = 'carbonboo_family';
@@ -42,6 +64,8 @@ export class DistributedKitAdapter implements DistributedPort {
   private manager: distributedDeviceManager.DeviceManager | undefined = undefined;
   private kvManager: distributedKVStore.KVManager | undefined = undefined;
   private store: distributedKVStore.SingleKVStore | undefined = undefined;
+  /** 运行时权限已授予（避免每次刷新面板都弹同一个系统对话框）。 */
+  private permissionGranted: boolean = false;
 
   constructor(context: common.Context, bundleName: string) {
     this.context = context;
@@ -56,7 +80,11 @@ export class DistributedKitAdapter implements DistributedPort {
     try {
       this.manager = distributedDeviceManager.createDeviceManager(this.bundleName);
     } catch (e) {
+      hilog.warn(0x0001, TAG, 'near createDeviceManager failed: %{public}s', detailOf(e));
       this.manager = undefined;
+    }
+    if (this.manager === undefined) {
+      hilog.warn(0x0001, TAG, 'near manager unavailable, bundle=%{public}s', this.bundleName);
     }
     return this.manager;
   }
@@ -89,6 +117,37 @@ export class DistributedKitAdapter implements DistributedPort {
     return this.store;
   }
 
+  async ensurePermission(): Promise<boolean> {
+    if (this.permissionGranted) {
+      return true;
+    }
+    try {
+      const atManager: abilityAccessCtrl.AtManager = abilityAccessCtrl.createAtManager();
+      const ctx: common.UIAbilityContext = this.context as common.UIAbilityContext;
+      // 用回调重载手工包成 Promise：`requestPermissionsFromUser` 同时有回调与 Promise 两套重载，
+      // 直接 await 会被推成 `void & Promise<...>` 的交叉类型，编译不过（实测 ArkTS 报 TS 错）。
+      const res: PermissionRequestResult = await new Promise<PermissionRequestResult>(
+        (resolve: (r: PermissionRequestResult) => void, reject: (e: Error) => void) => {
+          atManager.requestPermissionsFromUser(ctx, [DISTRIBUTED_PERMISSION],
+            (err: BusinessError, data: PermissionRequestResult) => {
+              if (err) {
+                reject(new Error(`permission request error ${err.code}: ${err.message}`));
+              } else {
+                resolve(data);
+              }
+            });
+        });
+      const codes: number[] = res.authResults;
+      this.permissionGranted = codes.length > 0 && codes[0] === 0;
+      hilog.info(0x0001, TAG, 'near permission: granted=%{public}s results=%{public}s',
+        `${this.permissionGranted}`, JSON.stringify(codes));
+    } catch (e) {
+      hilog.warn(0x0001, TAG, 'near permission request failed: %{public}s', detailOf(e));
+      this.permissionGranted = false;
+    }
+    return this.permissionGranted;
+  }
+
   async available(): Promise<boolean> {
     const manager: distributedDeviceManager.DeviceManager | undefined = this.ensureManager();
     if (manager === undefined) {
@@ -96,9 +155,11 @@ export class DistributedKitAdapter implements DistributedPort {
     }
     try {
       // 能列设备即视为可用；空列表是"可用但附近没设备"，不是不可用。
-      manager.getAvailableDeviceListSync();
+      const list: distributedDeviceManager.DeviceBasicInfo[] = manager.getAvailableDeviceListSync();
+      hilog.info(0x0001, TAG, 'near available: peer count=%{public}d', list.length);
       return true;
     } catch (e) {
+      hilog.warn(0x0001, TAG, 'near getAvailableDeviceListSync failed: %{public}s', detailOf(e));
       return false;
     }
   }

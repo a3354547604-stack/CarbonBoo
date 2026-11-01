@@ -39,7 +39,12 @@ param(
   [string]$Out = '',
   [string]$SdkRoot = 'C:\Users\Admin\ohos-sdk\12',
   [string]$DevEcoRoot = 'C:\Program Files\Huawei\DevEco Studio',
-  [string]$BundleName = 'com.carbonboo.app'
+  [string]$BundleName = 'com.carbonboo.app',
+  # 出 debug 类型 HAP：profile 用 UnsgnedDebugProfileTemplate + Debug 证书，并写入当前设备的 udid。
+  # 只有 debug HAP 的 token 才允许用 `atm perm -g/-r` 直接改权限（近场协同的 DISTRIBUTED_DATASYNC
+  # 是 user_grant 权限，模拟器上点系统弹窗不可靠），也才允许 hypium 在真机上跑。
+  [switch]$Debug,
+  [string]$Udid = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,8 +56,17 @@ if (-not (Test-Path $Hap)) { throw "找不到待签名的 HAP：$Hap（先跑 as
 $lib     = Join-Path $SdkRoot 'toolchains\lib'
 $signJar = Join-Path $lib 'hap-sign-tool.jar'
 $ohP12   = Join-Path $lib 'OpenHarmony.p12'
-$relPem  = Join-Path $lib 'OpenHarmonyProfileRelease.pem'
-$tplJsn  = Join-Path $lib 'UnsgnedReleasedProfileTemplate.json'
+if ($Debug) {
+  $relPem  = Join-Path $lib 'OpenHarmonyProfileDebug.pem'
+  $tplJsn  = Join-Path $lib 'UnsgnedDebugProfileTemplate.json'
+  $profAlias = 'openharmony application profile debug'
+  $certField = 'development-certificate'
+} else {
+  $relPem  = Join-Path $lib 'OpenHarmonyProfileRelease.pem'
+  $tplJsn  = Join-Path $lib 'UnsgnedReleasedProfileTemplate.json'
+  $profAlias = 'openharmony application profile release'
+  $certField = 'distribution-certificate'
+}
 foreach ($p in @($signJar, $ohP12, $relPem, $tplJsn)) {
   if (-not (Test-Path $p)) { throw "SDK 里缺少签名材料：$p" }
 }
@@ -75,12 +89,33 @@ function Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 Step "生成 Profile（bundle-name=$BundleName）"
 $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 $tpl = Get-Content $tplJsn -Raw -Encoding UTF8 | ConvertFrom-Json
-$leafPem = $tpl.'bundle-info'.'distribution-certificate'.Replace('\n', "`n")
+$leafPem = $tpl.'bundle-info'.$certField.Replace('\n', "`n")
 $tpl.'bundle-info'.'bundle-name' = $BundleName
 $tpl.'bundle-info'.'developer-id' = 'CarbonBoo'
 $tpl.uuid = [guid]::NewGuid().ToString()
 $tpl.validity.'not-before' = $now - 86400
 $tpl.validity.'not-after' = $now + 315360000
+if ($Debug) {
+  # debug profile 必须列明可安装的设备 udid。不传 -Udid 时把 hdc 上**所有**已连接设备都写进去，
+  # 这样一台机器上有两台模拟器时同一个 HAP 能装到两边（双设备实测必需）。
+  $ids = @()
+  if ($Udid) {
+    $ids = @($Udid)
+  } else {
+    $hdcExe = Join-Path $SdkRoot 'toolchains\hdc.exe'
+    if (Test-Path $hdcExe) {
+      $targets = (& $hdcExe list targets 2>&1 | Where-Object { $_ -and $_.Trim() -ne '[Empty]' })
+      foreach ($t in $targets) {
+        $line = (& $hdcExe -t $t.Trim() shell 'bm get -u' 2>&1 | Where-Object { $_ -match '^[0-9A-F]{32,}$' } | Select-Object -First 1)
+        if ($line) { $ids += $line.Trim() }
+      }
+    }
+  }
+  if ($ids.Count -eq 0) { throw '无法确定设备 udid：请用 -Udid 显式传入（hdc shell bm get -u）' }
+  $tpl.'debug-info'.'device-id-type' = 'udid'
+  $tpl.'debug-info'.'device-ids' = $ids
+  Write-Host "     debug 设备 udid（$($ids.Count) 台）：$($ids -join ', ')" -ForegroundColor DarkGray
+}
 # 分享卡片「保存到相册」要 WRITE_IMAGEVIDEO，它在 HarmonyOS 上属受限权限，
 # 必须在 Profile 的 allowed-acls / restricted-permissions 里显式授予，否则安装报
 # `install failed due to grant request permissions failed`。
@@ -89,7 +124,7 @@ $tpl.permissions.'restricted-permissions' = @('ohos.permission.WRITE_IMAGEVIDEO'
 $json = $tpl | ConvertTo-Json -Depth 12
 [System.IO.File]::WriteAllText($profJsn, $json, [System.Text.UTF8Encoding]::new($false))
 
-& $java -jar $signJar sign-profile -keyAlias 'openharmony application profile release' `
+& $java -jar $signJar sign-profile -keyAlias $profAlias `
   -signAlg SHA256withECDSA -mode localSign -profileCertFile $relPem `
   -inFile $profJsn -keystoreFile $ohP12 -outFile $profP7b `
   -keyPwd 123456 -keystorePwd 123456

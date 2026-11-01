@@ -71,6 +71,14 @@ class FakeNearbyPort implements DistributedPort {
     return this.exchanged;
   }
 
+  /**
+   * 权限申请在测试里恒等于「能力是否可用」：`usable=false` 的假端口同时模拟「用户拒绝授权」，
+   * 这样既覆盖编排层「先要权限再判可用」的分支，也不用在离线执行器里伪造系统对话框。
+   */
+  async ensurePermission(): Promise<boolean> {
+    return this.usable;
+  }
+
   async available(): Promise<boolean> {
     return this.usable;
   }

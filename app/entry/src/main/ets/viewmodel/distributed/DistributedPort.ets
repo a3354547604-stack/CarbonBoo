@@ -59,6 +59,16 @@ export interface DeviceContribution {
  */
 export interface DistributedPort {
   /**
+   * 申请近场协同所需的运行时权限（`ohos.permission.DISTRIBUTED_DATASYNC` 是 **user_grant**）。
+   *
+   * 为什么必须显式申请：只在 `module.json5` 里声明不够 —— 未获授权时
+   * `getAvailableDeviceListSync()` 直接抛 `Permission verification failed ... {"code":"201"}`，
+   * 于是 `available()` 恒为 false，界面永远显示「未组网」。
+   * 返回值：`true` = 已授权；`false` = 用户拒绝或能力缺失（编排层照常降级）。
+   */
+  ensurePermission(): Promise<boolean>;
+
+  /**
    * 分布式能力是否可用。
    * 返回 `false` 时编排层直接进入「未组网」降级态，不再调用其余方法。
    */
@@ -89,6 +99,10 @@ export interface DistributedPort {
  * 用户仍可正常使用全部单机功能（铁律 1）。
  */
 export class NullDistributedPort implements DistributedPort {
+  async ensurePermission(): Promise<boolean> {
+    return false;
+  }
+
   async available(): Promise<boolean> {
     return false;
   }

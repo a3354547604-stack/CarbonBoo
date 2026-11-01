@@ -12,6 +12,7 @@
  *  ③ **不碰 `@ohos.*`**：分布式 API 全部藏在 `DistributedPort` 实现里。本文件只 import 接口，
  *     否则离线 L1 用例一 require 就会撞上 `platform/unavailable.cjs` 的抛错代理。
  */
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AppResult, fail, ok } from '../model/Result';
 import { SyncSessionState } from '../model/SyncTypes';
 import { PointBalance } from '../model/PointTypes';
@@ -20,6 +21,9 @@ import { PointService } from './PointService';
 import { StatsService } from './StatsService';
 import { DeviceContribution, DistributedPort, NearbyDevice } from './distributed/DistributedPort';
 import { emptySummary, FamilySummary, mergeReport, MergeReport } from './domain/NearbyMerge';
+
+/** hilog 域与标签（与 EntryAbility / 其余服务保持一致）。 */
+const TAG: string = 'CarbonBoo';
 
 /** 近场面板要展示的全部内容（一次取齐，避免页面自己拼装业务口径）。 */
 export interface NearbyView {
@@ -84,14 +88,23 @@ export class DistributedService {
     let available: boolean = false;
     let devices: NearbyDevice[] = [];
     try {
+      // 先要运行时权限（`DISTRIBUTED_DATASYNC` 是 user_grant）：没授权时列设备必抛 201。
+      // 授权与否都不影响单机功能——拒绝就当作「未组网」。
+      await this.port.ensurePermission();
       available = await this.port.available();
       if (available) {
         devices = await this.port.discover();
       }
     } catch (e) {
+      // 端口异常一律降级为「不可用」：面板照常渲染，只是没有对端。
       available = false;
       devices = [];
     }
+    // 诊断用：区分「分布式能力不可用」与「能力可用但没有已信任对端」——
+    // 这两种情况界面文案相同，但排查时结论完全相反（前者是环境问题，后者是组网问题）。
+    hilog.info(0x0001, TAG,
+      'near view: available=%{public}s devices=%{public}d',
+      `${available}`, devices.length);
     let local: DeviceContribution;
     try {
       local = await this.localContribution(now);
@@ -134,6 +147,7 @@ export class DistributedService {
   async exchange(now: number): Promise<AppResult<SyncSessionState>> {
     let available: boolean = false;
     try {
+      await this.port.ensurePermission();
       available = await this.port.available();
     } catch (e) {
       available = false;
