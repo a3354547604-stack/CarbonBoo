@@ -904,7 +904,7 @@ def build():
             ['docs/APPENDIX-B-data-and-api.md', '数据模型、建表 SQL、REST 契约、协同协议、Dao 清单'],
             ['docs/APPENDIX-C-ui-screens.md', '18 个页面规格、设计令牌、组件、文案清单'],
             ['docs/APPENDIX-D-acceptance.md', '验收项（含 18 组手算样例与封顶、边界样例）'],
-            ['docs/APPENDIX-E-demo-script.md', '5 分钟演示分镜与 10 分钟路演逐字稿、PPT 大纲'],
+            ['docs/APPENDIX-E-demo-script.md', '5 分钟演示分镜与 7 分钟路演逐字稿、PPT 大纲'],
             ['docs/APPENDIX-F-compliance.md', '官方要求逐条对照与不做清单'],
             ['docs/screenshots/', '18 张界面截图（模拟器真实运行）与索引说明'],
             ['AGENTS.md', '工程规约：四条铁律、冲突裁决、停手规则、提交规范'],
@@ -917,7 +917,7 @@ def build():
         [
             ['1', '设计方案', 'Word（*.docx），宋体小四、1.5 倍行距', '本文档'],
             ['2', '演示视频', 'mp4，≤ 100 MB，≤ 5 分钟', '02-演示视频-碳小布CarbonBoo.mp4'],
-            ['3', '演示文稿', 'PPT 图文并茂，讲解 ≤ 10 分钟', '03-演示文稿-碳小布CarbonBoo.pptx'],
+            ['3', '演示文稿', 'PPT 图文并茂，讲解 ≤ 7 分钟', '03-演示文稿-碳小布CarbonBoo.pptx'],
         ],
         widths=[1.6, 3.4, 6.6, 5.0], font_pt=10)
     doc.p('三项材料均不含院校、团队、指导教师信息；作品打包为 rar，文件名按官方规定格式'

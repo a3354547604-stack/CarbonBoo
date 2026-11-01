@@ -6,9 +6,19 @@
 
 | 文件 | 对应要求 | 实测 |
 |---|---|---|
-| `01-设计方案-碳小布CarbonBoo.docx` | 详细版 Word；含设计思路、功能实现逻辑、技术架构、软硬件选型、测试结果；**正文宋体、小四（12pt）、1.5 倍行距** | 16.2 MB；294 段 / 22 表 / **24 图**；A4；Normal 样式 = 宋体 12pt、行距 1.5；标题用 Heading 1/2/3 + TOC 域 |
+| `01-设计方案-碳小布CarbonBoo.docx` | 详细版 Word；含设计思路、功能实现逻辑、技术架构、软硬件选型、测试结果；**正文宋体、小四（12pt）、1.5 倍行距** | 15.6 MB；252 段 / 24 表 / **24 图**；A4；Normal 样式 = 宋体 12pt、行距 1.5；标题用 Heading 1/2/3 + TOC 域 |
 | `02-演示视频-碳小布CarbonBoo.mp4` | mp4，≤100MB，**≤5 分钟**，清晰展示操作流程与功能效果 | **团队自行录制的真机操作录屏**（详见第四节第 5 条）；提交前需确认 mp4、≤100MB、≤5 分钟 |
-| `03-演示文稿-碳小布CarbonBoo.pptx` | 图文并茂，讲解 **≤10 分钟** | 10.0 MB；**17 页** 16:9；**12 页含界面截图**（一页一屏，图与文字一一对应）；每页均带演讲备注 |
+| `03-演示文稿-碳小布CarbonBoo.pptx` | 图文并茂，讲解 **≤7 分钟**（按主办方最新要求） | 10.0 MB；**17 页** 16:9；**12 页含界面截图**（一页一屏，图与文字一一对应）；每页均带演讲备注 |
+
+## 一之二、源码包怎么打开（04-源代码）
+
+- 内容：`app/`（ArkTS 客户端）、`server/`（FastAPI 服务端）、`tests/`（L0 文档门禁 + L1 离线执行器 + 用例基准）、`scripts/`（构建与打包脚本）、`docs/`（计划书与附录 A–F）、根目录 `README.md` / `AGENTS.md` / `GLOSSARY.md`。
+- **已剔除**：编译产物（`build/`、`.hvigor/`、`.preview/`）、依赖缓存（`oh_modules/`、`node_modules/`、`.venv/`）、密钥与本机配置（`.env`、`local.properties`）、第三方参考资料（`_src/`）、界面截图（`docs/screenshots/`，见 docx 内嵌图）。
+- 打开方式：DevEco Studio → `File > Open` 选 `app/` 目录 → 等依赖同步（Auto Sync，等价于 `ohpm install`）→ 即可编译。
+- **两处需按本机改**（这是 hvigor 的硬限制，公共 npm 源没有这两个包）：
+  1. `app/hvigor/hvigor-config.json5` 的两个 `file:` 依赖指向本机 DevEco 的 `tools/hvigor/`；
+  2. `app/local.properties` 写入 `sdk.dir=<本机 SDK 路径>`。
+  仓库内 `scripts/set-hvigor-local.ps1` 会自动改第 1 项，`docs/toolchain/harmony-cli-build.md §坑 4-W` 有详细说明。
 
 ## 二、打包命名（提交前必做）
 

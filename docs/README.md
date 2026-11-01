@@ -19,7 +19,7 @@
 | 3 | [APPENDIX-B-data-and-api.md](./APPENDIX-B-data-and-api.md) | **客户端 19 张表建表 SQL + TypeScript 模型 + REST 契约（账号 / 取价 / 同步 / 后台）+ 近场协同协议 + 12 个 Dao + `AuthProvider` 契约 + 种子数据** | 实现数据层 / 服务端前必读 |
 | 4 | [APPENDIX-C-ui-screens.md](./APPENDIX-C-ui-screens.md) | **18 个页面 + 7 个半模态**的元素清单、设计令牌、字段绑定、交互流、空态与文案 | 实现任何页面前必读 |
 | 5 | [APPENDIX-D-acceptance.md](./APPENDIX-D-acceptance.md) | **验收清单**（D1-1～D10-8、C1–C10、P1–P10、E1–E12）+ 18 组手算样例 + 封顶/边界样例 + 演示数据规格（唯一来源） | 每完成一个模块后自查 |
-| 6 | [APPENDIX-E-demo-script.md](./APPENDIX-E-demo-script.md) | **4 分 50 秒演示分镜 + 10 分钟路演逐字稿 + PPT 17 页大纲（一页一屏）** + 降级方案 + 话术禁忌 | 定义"最终效果"；排练与录屏用 |
+| 6 | [APPENDIX-E-demo-script.md](./APPENDIX-E-demo-script.md) | **4 分 50 秒演示分镜 + 7 分钟路演逐字稿 + PPT 17 页大纲（一页一屏）** + 降级方案 + 话术禁忌 | 定义"最终效果"；排练与录屏用 |
 | 7 | [APPENDIX-F-compliance.md](./APPENDIX-F-compliance.md) | **赛题官方要求 ↔ 本项目 9 项覆盖的双向对照表**（含官方原文摘录与不做清单） | 需要确认"有没有漏做"时读 |
 
 | 8 | [adr/0001-account-and-sync.md](./adr/0001-account-and-sync.md) | **账号与同步决策**：服务端必做（账号 + 同步 + 取价 + 备份）、仅 Web 后台可选、不接华为账号；注销后云端软删保留 30 天 | 涉及登录 / 同步 / 服务端时 |

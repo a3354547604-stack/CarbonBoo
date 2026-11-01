@@ -55,3 +55,8 @@ docs/screenshots/_*
 ����*/
 提交包-碳小布/
 赛题二+碳足迹·全民绿色生活碳积分与减排指南+XX学校XX队/
+
+# 比赛提交包（可随时由 scripts/package_submission.ps1 重新生成，不入库）
+submit/提交包-*/
+submit/提交包-*.rar
+submit/04-源代码-*.zip
