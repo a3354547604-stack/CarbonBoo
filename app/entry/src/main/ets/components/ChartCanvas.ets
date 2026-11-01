@@ -13,20 +13,39 @@ const AXIS_FONT: string = '10vp sans-serif';
 
 @Component
 export struct ChartCanvas {
-  @Prop kind: string = 'line';
-  @Prop buckets: ChartBucket[] = [];
-  @Prop slices: PieSlice[] = [];
-  @Prop chartHeight: number = 140;
+  /**
+   * ⚠️ 三个数据属性都必须带 `@Watch`。
+   *
+   * `Canvas.onReady()` 只在首次布局时触发一次，之后父组件把新的 buckets
+   * 传进来、`build()` 会重跑，但**不会**再触发 `onReady` —— 结果是数据换了、
+   * 画布还是老图。用户在看板切「日/周/月/年」时看到的就是这个现象：
+   * 标题与区间说明变了，图没变。
+   *
+   * 因此：`onReady` 里把 `ready` 置 true 再画一次，之后每次数据变化由
+   * `onDataChange` 重画（画布未就绪时跳过，避免用 0 宽高画）。
+   */
+  @Prop @Watch('onDataChange') kind: string = 'line';
+  @Prop @Watch('onDataChange') buckets: ChartBucket[] = [];
+  @Prop @Watch('onDataChange') slices: PieSlice[] = [];
+  @Prop @Watch('onDataChange') chartHeight: number = 140;
   private settings: RenderingContextSettings = new RenderingContextSettings(true);
   private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
+  private ready: boolean = false;
 
   build() {
     Canvas(this.ctx)
       .width('100%')
       .height(this.chartHeight)
       .onReady(() => {
+        this.ready = true;
         this.draw();
       })
+  }
+
+  onDataChange(): void {
+    if (this.ready) {
+      this.draw();
+    }
   }
 
   private draw(): void {
