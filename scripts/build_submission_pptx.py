@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-build_submission_pptx.py —— 生成参赛「演示文稿」（16 页，16:9，图文并茂）。
+build_submission_pptx.py —— 生成参赛「演示文稿」（17 页，16:9）。
 
-页面结构按 docs/APPENDIX-E-demo-script.md §4 的 PPT 大纲逐页实现，
-每页带演讲备注（对应 §3 的 10 分钟路演逐字稿要点），整稿讲解时长按 10 分钟设计。
+设计原则（2026-11-01 重排）：
+  ① **一页一屏**：凡「讲某个界面」的页，只放那一屏的截图，图文必须对得上；
+  ② **重要的才放**：概念页（痛点 / 全景 / 架构 / 数据 / 质量 / 结尾）不放图，
+     图只给「答辩时会指着讲」的界面：首页、记一笔、记录列表、记录明细（因子快照）、
+     看板、目标、徽章、碳小铺、更换外观、科普详情、碳普惠、设备协同；
+  ③ 每页带演讲备注，整稿按 10 分钟讲解设计。
 
 运行：
   C:\\Users\\Admin\\.dsh\\dsh-runtimes\\dsh-primary-runtime\\dependencies\\python\\python.exe ^
@@ -15,7 +19,7 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
-from pptx.util import Emu, Inches, Pt
+from pptx.util import Inches, Pt
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS = os.path.join(REPO, 'docs', 'screenshots')
@@ -23,14 +27,16 @@ OUT_DIR = os.path.join(REPO, 'submit')
 OUT = os.path.join(OUT_DIR, '03-演示文稿-碳小布CarbonBoo.pptx')
 
 GREEN = RGBColor(0x2E, 0x7D, 0x5B)
+DEEP = RGBColor(0x25, 0x64, 0x49)
 LIGHT = RGBColor(0x8B, 0xC3, 0x4A)
 DARK = RGBColor(0x1F, 0x2A, 0x24)
 GREY = RGBColor(0x6B, 0x7A, 0x72)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-BG = RGBColor(0xF5, 0xF7, 0xF6)
+SOFT = RGBColor(0xEE, 0xF5, 0xF1)
 FONT = '微软雅黑'
 
 W, H = Inches(13.333), Inches(7.5)
+TOTAL = 17
 
 
 def slide_blank(prs):
@@ -57,13 +63,12 @@ def textbox(slide, x, y, w, h, align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP):
 
 
 def set_font(run, size, bold=False, color=DARK, font=FONT):
+    from pptx.oxml.ns import qn
     run.font.size = Pt(size)
     run.font.bold = bold
     run.font.color.rgb = color
     run.font.name = font
-    r = run._r
-    rpr = r.get_or_add_rPr()
-    from pptx.oxml.ns import qn
+    rpr = run._r.get_or_add_rPr()
     ea = rpr.find(qn('a:ea'))
     if ea is None:
         from lxml import etree
@@ -87,17 +92,17 @@ def add_para(tf, text, size=18, bold=False, color=DARK, space_before=6,
 
 def header(slide, title, kicker=None):
     rect(slide, 0, 0, W, Inches(0.14), GREEN)
-    tf = textbox(slide, Inches(0.7), Inches(0.42), Inches(9.4), Inches(0.8))
-    add_para(tf, title, 30, True, GREEN, first=True)
+    tf = textbox(slide, Inches(0.7), Inches(0.40), Inches(11.9), Inches(0.8))
+    add_para(tf, title, 28, True, GREEN, first=True)
     if kicker:
-        tf2 = textbox(slide, Inches(0.72), Inches(1.12), Inches(9.0), Inches(0.42))
+        tf2 = textbox(slide, Inches(0.72), Inches(1.08), Inches(11.4), Inches(0.42))
         add_para(tf2, kicker, 14, False, GREY, first=True)
 
 
 def footer(slide, page):
-    tf = textbox(slide, Inches(11.4), Inches(6.95), Inches(1.4), Inches(0.35),
+    tf = textbox(slide, Inches(11.4), Inches(6.95), Inches(1.5), Inches(0.35),
                  align=PP_ALIGN.RIGHT)
-    add_para(tf, '%02d / 16' % page, 11, False, GREY, first=True)
+    add_para(tf, '%02d / %d' % (page, TOTAL), 11, False, GREY, first=True)
     tf2 = textbox(slide, Inches(0.7), Inches(6.95), Inches(6.0), Inches(0.35))
     add_para(tf2, '碳小布 CarbonBoo　·　赛题二', 11, False, GREY, first=True)
 
@@ -105,7 +110,7 @@ def footer(slide, page):
 def picture(slide, name, x, y, h):
     path = os.path.join(SHOTS, name)
     if not os.path.exists(path):
-        return None
+        raise SystemExit('缺截图：%s' % path)
     return slide.shapes.add_picture(path, x, y, height=h)
 
 
@@ -113,28 +118,42 @@ def notes(slide, text):
     slide.notes_slide.notes_text_frame.text = text
 
 
-def content_slide(prs, page, title, kicker, bullets, shot=None,
-                  shot_h=Inches(5.6), note='', two_col=None):
+def text_slide(prs, page, title, kicker, bullets, note='', tail=None):
     s = slide_blank(prs)
     rect(s, 0, 0, W, H, WHITE)
     header(s, title, kicker)
-    text_w = Inches(7.4) if shot else Inches(11.6)
-    tf = textbox(s, Inches(0.75), Inches(1.75), text_w, Inches(4.9))
+    tf = textbox(s, Inches(0.75), Inches(1.75), Inches(11.7), Inches(4.6))
     first = True
     for item in bullets:
-        if isinstance(item, tuple):
-            txt, lvl = item
-        else:
-            txt, lvl = item, 0
-        add_para(tf, txt, 19 if lvl == 0 else 16,
-                 lvl == 0, DARK if lvl == 0 else GREY,
-                 first=first, bullet=True, space_before=10 if lvl == 0 else 4)
+        add_para(tf, item, 18, True, DARK, first=first, bullet=True,
+                 space_before=12 if first else 10)
         first = False
-    if two_col:
-        tf2 = textbox(s, Inches(0.75), Inches(5.35), Inches(7.2), Inches(1.3))
-        add_para(tf2, two_col, 15, False, GREEN, first=True)
-    if shot:
-        picture(s, shot, Inches(8.55), Inches(1.6), shot_h)
+    if tail:
+        tf2 = textbox(s, Inches(0.75), Inches(6.05), Inches(11.7), Inches(0.8))
+        add_para(tf2, tail, 15, False, GREEN, first=True)
+    footer(s, page)
+    if note:
+        notes(s, note)
+    return s
+
+
+def ui_slide(prs, page, title, kicker, bullets, shot, shot_h=Inches(5.5),
+             note='', tail=None):
+    s = slide_blank(prs)
+    rect(s, 0, 0, W, H, WHITE)
+    header(s, title, kicker)
+    tf = textbox(s, Inches(0.75), Inches(1.75), Inches(7.0), Inches(4.2))
+    first = True
+    for item in bullets:
+        add_para(tf, item, 18, True, DARK, first=first, bullet=True,
+                 space_before=12 if first else 9)
+        first = False
+    if tail:
+        tf2 = textbox(s, Inches(0.75), Inches(6.05), Inches(7.0), Inches(0.8))
+        add_para(tf2, tail, 14, False, GREEN, first=True)
+    else:
+        rect(s, Inches(0.78), Inches(6.15), Inches(2.2), Inches(0.05), LIGHT)
+    picture(s, shot, Inches(8.35), Inches(1.5), shot_h)
     footer(s, page)
     if note:
         notes(s, note)
@@ -146,56 +165,70 @@ def build():
     prs.slide_width = W
     prs.slide_height = H
 
-    # ---------------------------------------------------------------- P1 封面
+    # ---------------------------------------------------------- P1 封面
     s = slide_blank(prs)
     rect(s, 0, 0, W, H, GREEN)
-    rect(s, 0, Inches(5.9), W, Inches(1.6), RGBColor(0x25, 0x64, 0x49))
-    tf = textbox(s, Inches(1.0), Inches(1.5), Inches(7.6), Inches(1.4))
-    add_para(tf, '碳小布 CarbonBoo', 54, True, WHITE, first=True)
-    tf = textbox(s, Inches(1.0), Inches(2.75), Inches(7.4), Inches(1.6))
-    add_para(tf, '记一笔低碳行为，攒出看得见的改变', 24, False, WHITE, first=True, space_before=0)
-    add_para(tf, '个人碳足迹记录与低碳行为激励应用', 18, False, RGBColor(0xC8, 0xE6, 0xD5), space_before=10)
-    tf = textbox(s, Inches(1.0), Inches(4.35), Inches(7.2), Inches(1.0))
-    add_para(tf, '赛题二　碳足迹·全民绿色生活碳积分与减排指南', 17, True, LIGHT, first=True)
-    add_para(tf, '纯北向应用　·　OpenHarmony API 12　·　无需任何硬件', 14, False, WHITE, space_before=6)
-    picture(s, '01-home.png', Inches(8.7), Inches(1.15), Inches(5.3))
-    tf = textbox(s, Inches(1.0), Inches(6.25), Inches(11.0), Inches(0.6))
-    add_para(tf, '设计方案 · 演示文稿 · 演示视频', 14, False, RGBColor(0xC8, 0xE6, 0xD5), first=True)
+    rect(s, 0, Inches(5.9), W, Inches(1.6), DEEP)
+    tf = textbox(s, Inches(1.0), Inches(1.45), Inches(7.4), Inches(1.2))
+    add_para(tf, '碳小布 CarbonBoo', 50, True, WHITE, first=True)
+    tf = textbox(s, Inches(1.0), Inches(2.6), Inches(7.2), Inches(1.5))
+    add_para(tf, '记一笔低碳行为，攒出看得见的改变', 22, False, WHITE, first=True, space_before=0)
+    add_para(tf, '个人碳足迹记录与低碳行为激励应用', 17, False, RGBColor(0xC8, 0xE6, 0xD5), space_before=10)
+    tf = textbox(s, Inches(1.0), Inches(4.2), Inches(7.2), Inches(1.2))
+    add_para(tf, '赛题二　碳足迹·全民绿色生活碳积分与减排指南', 16, True, LIGHT, first=True)
+    add_para(tf, '纯北向应用　·　OpenHarmony API 12　·　无需任何硬件', 13, False, WHITE, space_before=6)
+    picture(s, '01-home.png', Inches(8.55), Inches(1.0), Inches(5.7))
+    tf = textbox(s, Inches(1.0), Inches(6.3), Inches(7.2), Inches(0.6))
+    add_para(tf, '右图为打开应用的第一屏：一个写着自己碳账的数字', 13, False,
+             RGBColor(0xC8, 0xE6, 0xD5), first=True)
     notes(s, '开场（0:00–0:40）：先抛一个问题——我们每天骑车、少开一天车、光盘、卖废纸，'
              '这些行为到底减了多少碳？没人知道。碳小布要回答的就是这个问题。')
 
-    # ---------------------------------------------------------------- P2 痛点
-    s = content_slide(
-        prs, 2, '痛点与机会', '低碳行为最大的问题是「看不见」',
-        [
-            ('看不见：骑车、光盘、卖废纸，减了多少碳？没有数字就没有反馈', 0),
-            ('坚持不了：没有即时回报，很难长期坚持', 0),
-            ('不知怎么做：知道要低碳，但不知道做什么、做多少才有意义', 0),
-            ('政策背景：2030 碳达峰、2060 碳中和，全民参与需要「可量化的抓手」', 0),
-            ('机会：把行为变成数字 → 把数字变成回报 → 把回报变成习惯', 0),
-        ],
-        shot='02-dashboard.png',
-        note='用一句话概括：这个应用解决的不是「知不知道要低碳」，而是「不知道自己做得怎么样」。')
-
-    # ---------------------------------------------------------------- P3 功能全景
+    # ---------------------------------------------------------- P2 痛点
     s = slide_blank(prs)
     rect(s, 0, 0, W, H, WHITE)
-    header(s, '功能全景', '九项官方要求，一项不缺')
-    rows = [
-        ('主要 1', '低碳行为核算', '30 项因子库（20 项可录入）· 单一计算入口 · 因子快照'),
-        ('主要 2', '数据可视化看板', '折线 / 柱状 / 饼图 × 日周月年 · 分类筛选'),
-        ('主要 3', '碳积分激励', '积分账本（日封顶 200）· 11 目标 · 8 徽章 · 碳小铺'),
-        ('主要 4', '双碳科普专栏', '12 篇离线科普 · 阅读进度 · 收藏'),
-        ('主要 5', '本地数据管理', '快照备份 / 恢复 / 校验 · 3 份 CSV 导出'),
-        ('创新 Ⅰ', '多设备同步 + 家庭合并', '云端 LWW 增量同步 + 鸿蒙近场演示层'),
-        ('创新 Ⅱ', '端侧 AI 识图', '接口层可换引擎 · 只给候选 · 图片不落盘'),
-        ('创新 Ⅲ', '碳普惠模拟', '100 积分 = 1 碳币 · 单向不可逆 · 常驻模拟声明'),
-        ('创新 Ⅳ', '智能服务与分享', '任务推送 · 5 条建议规则 · 两种尺寸分享卡片'),
+    header(s, '痛点：低碳行为最大的问题是「看不见」', '三个「没有」，把低碳生活卡在「知道但做不到」')
+    stats = [
+        ('看不见', '没有数字就没有反馈', '骑车 8 km、光盘一次、卖 2 kg 废纸，\n各减多少碳？用户答不出'),
+        ('坚持不了', '没有即时回报', '今天做了明天忘；没有累计与里程碑，\n习惯养不成'),
+        ('不会算', '口径既专业又混乱', '电网、出行、回收各说各话，\n普通人无从下手'),
     ]
-    y = Inches(1.7)
+    x = Inches(0.9)
+    for big, label, desc in stats:
+        rect(s, x, Inches(2.05), Inches(3.7), Inches(2.6), SOFT)
+        tf = textbox(s, x + Inches(0.32), Inches(2.3), Inches(3.1), Inches(0.9))
+        add_para(tf, big, 34, True, GREEN, first=True)
+        tf = textbox(s, x + Inches(0.32), Inches(3.15), Inches(3.1), Inches(0.45))
+        add_para(tf, label, 16, True, DARK, first=True)
+        tf = textbox(s, x + Inches(0.32), Inches(3.62), Inches(3.1), Inches(0.9))
+        for i, line in enumerate(desc.split('\n')):
+            add_para(tf, line, 12, False, GREY, first=(i == 0), space_before=3)
+        x += Inches(3.95)
+    tf = textbox(s, Inches(0.9), Inches(5.15), Inches(11.5), Inches(1.1))
+    add_para(tf, '所以要做的不是「再做一个科普 App」，而是把行为变成数字、把数字变成回报。',
+             18, True, DEEP, first=True)
+    footer(s, 2)
+    notes(s, '这一页不放截图——这是「用户的困境」，不是「我们的界面」。讲完三条再翻页。')
+
+    # ---------------------------------------------------------- P3 功能全景
+    s = slide_blank(prs)
+    rect(s, 0, 0, W, H, WHITE)
+    header(s, '功能全景', '赛题二要求的 5 项主要功能 + 4 项创新，一项不缺')
+    rows = [
+        ('主要 1', '低碳行为核算', '30 项因子库（20 项可录入）· 单一计算入口 · 因子快照四列'),
+        ('主要 2', '数据可视化看板', '折线 / 柱状 / 饼图 × 日周月年 · 分类筛选 · 点柱下钻到当天'),
+        ('主要 3', '碳积分激励', '积分账本（日封顶 200）· 10 个周期目标 · 8 枚徽章 · 碳小铺'),
+        ('主要 4', '双碳科普专栏', '12 篇离线科普 · 阅读进度 · 收藏 · 本地渲染'),
+        ('主要 5', '本地数据管理', '快照备份 / 恢复 / 校验 · 3 份 CSV 导出 · 清空'),
+        ('创新 Ⅰ', '多设备协同', '云端 LWW 增量同步 + 鸿蒙近场演示层 + 家庭合并只读'),
+        ('创新 Ⅱ', '端侧 AI 识图', '接口层可换引擎 · 只给候选须确认 · 图片不落盘不上传'),
+        ('创新 Ⅲ', '碳普惠模拟', '100 积分 = 1 碳币 · 单向不可逆 · 页面常驻「模拟演示」'),
+        ('创新 Ⅳ', '智能服务与分享', '4 类任务推送 · 5 条建议规则 · 两种尺寸分享卡片'),
+    ]
+    y = Inches(1.65)
     for i, (tag, name, desc) in enumerate(rows):
         rect(s, Inches(0.75), y, Inches(11.85), Inches(0.5),
-             RGBColor(0xEE, 0xF5, 0xF1) if i % 2 == 0 else WHITE)
+             SOFT if i % 2 == 0 else WHITE)
         tf = textbox(s, Inches(0.9), y + Inches(0.05), Inches(1.2), Inches(0.4))
         add_para(tf, tag, 13, True, LIGHT if tag.startswith('创新') else GREEN, first=True)
         tf = textbox(s, Inches(2.1), y + Inches(0.05), Inches(3.4), Inches(0.4))
@@ -204,210 +237,238 @@ def build():
         add_para(tf, desc, 12, False, GREY, first=True)
         y += Inches(0.55)
     footer(s, 3)
-    notes(s, '这一页要讲清楚：不是只做了 5 项主要功能，4 项创新也全部落地，且每一项都能在没有'
-             '网络、没有账号的情况下降级可用。')
+    notes(s, '这一页是「总账」：不是只做 5 项主要功能，4 项创新也全部落地，'
+             '且每项都能在没网、没账号时降级可用。后面每一张截图都对应这里的一行。')
 
-    # ---------------------------------------------------------------- P4 现场演示
-    s = content_slide(
-        prs, 4, '现场演示路径', '从记一笔到得到反馈，全程 40 秒',
+    # ---------------------------------------------------------- P4 记一笔
+    ui_slide(
+        prs, 4, '记一笔：两步完成', '选行为 → 填数量，实时算出减排量与积分',
         [
-            ('① 首页 → ＋ 记一笔 → 选「出行 / 地铁」→ 填 8 km', 0),
-            ('② 实时预览：减排 1.2960 kg、本次应得 130 分、今日剩余额度', 0),
-            ('③ 保存 → 首页累计减排、积分、今日记录三处同步刷新', 0),
-            ('④ 目标与徽章自动结算（达标即弹庆祝）', 0),
-            ('⑤ 看板看趋势 → 科普读一篇 → 我的导出 CSV', 0),
-            ('⑥ 双设备登录同账号 → 协同页增量同步 → 家庭合并视图', 0),
+            '识图录入：选照片自动推断行为（当前为模拟识别，界面标注清楚）',
+            '或从 9 个图标直接选：步行 / 骑行 / 公交 / 地铁 / 拼车 / 节电 / 节水 / 回收 / 光盘',
+            '填一个数量（km / kWh / L / kg / 次），单位跟着行为自动切换',
+            '实时预览：减排量与本次应得积分当场算出，并显示今日剩余额度',
+            '保存后首页、记录、看板三处同源刷新——本机库是唯一真相源',
         ],
         shot='14-record-edit.png',
-        note='演示顺序与 5 分钟分镜一致：记录 → 反馈 → 看板 → 激励 → 留存 → 协同。'
-             '现场若网络不通，直接走单机流程，除「协同 / 登录 / 取价」外全部功能可用。')
+        tail='右图实拍：上方识图入口、中间 9 个行为、下方数量与发生时间。',
+        note='先记一笔，让评委看到「填一个数就出结果」。强调计算全在本机，不联网也能算。')
 
-    # ---------------------------------------------------------------- P5 架构
-    s = content_slide(
-        prs, 5, '技术架构', '五层结构 + 四条铁律',
+    # ---------------------------------------------------------- P5 记录列表
+    ui_slide(
+        prs, 5, '记录列表：按天分组，四类可筛', '每一行都是「行为 + 数量 + 减排量 + 得分」',
         [
-            ('页面层：18 个页面，只做「取数 / 渲染 / 转发」，不写计算、不碰数据库', 0),
-            ('组件层：23 个可复用组件（PageHeader / ChartCanvas / ScienceReader…）', 0),
-            ('服务层：14 个 Service，业务编排与事务边界都在这层', 0),
-            ('数据层：19 张表 + 12 个 Dao + 种子与因子仓库', 0),
-            ('基础设施：定点小数（1e6）、防御式 JSON 解析、格式化、常量', 0),
-            ('铁律 ①本地优先 ②单一计算入口 ③因子快照 ④积分单向可追溯', 0),
+            '按天分组（今天 / 昨天 / 具体日期），扫一眼就知道最近做了什么',
+            '四类筛选：出行 / 水电 / 回收 / 光盘；支持搜索，含中文因子名（搜「水」能找到「自来水」）',
+            '每条右侧是本次净得积分——受日封顶影响时显示的是实入值，不是应得值',
+            '点任一条进明细，看「凭什么算出这个数」',
+            '记录可改可删，改删走冲正流水，余额永远是流水的聚合',
         ],
         shot='03-records.png',
-        note='四条铁律是答辩重点：任何一行代码与它们冲突都要改代码。'
-             '特别是「单一计算入口」——减排量只能由 CarbonService.calculate() 产出。')
+        tail='右图实拍：252 条演示数据按天分组，右侧为每条实入积分。',
+        note='这一页负责「数据密度」：让评委看到这不是玩具，而是真能长期记的账本。')
 
-    # ---------------------------------------------------------------- P6 数据设计
-    s = content_slide(
-        prs, 6, '数据设计', '19 张表，按「是否参与同步」组织',
+    # ---------------------------------------------------------- P6 记录明细
+    ui_slide(
+        prs, 6, '记录明细：每条都能追溯到因子', '一个数字背后要有四行证据',
         [
-            ('业务账本 6 张：记录 / 积分流水 / 目标 / 徽章 / 购买 / 外观（参与同步）', 0),
-            ('业务附属 3 张：阅读进度 / 碳币账户 / 用户档案（参与同步）', 0),
-            ('本机专属 4 张：设备 / 同步日志 / 本地配置 / 分享记录（不参与）', 0),
-            ('静态字典 5 张：目标 / 徽章 / 商品 / 科普 / 因子元数据（首次启动播种）', 0),
-            ('派生缓存 1 张：日汇总（仅展示加速，可随时由流水重建）', 0),
-            ('关键约束：软删除、幂等唯一键、因子快照四列、封顶从流水实时聚合', 0),
+            '上半屏：行为、数量、减排量，一眼看懂这条记录是什么',
+            '积分区：实入 / 应得 / 今日已得（30 / 200），把封顶前后的差额说清楚',
+            '因子快照四列：因子值 0.1920 kg/km、版本 CF-2026.2、来源 SRC-DERIVED、可信度 provisional',
+            '发生时间与记录时间分开：补记历史时两者不同，但封顶仍按「发生日」算',
+            '因子库升级不回写历史——旧记录永远用当时那个因子值',
         ],
-        shot='09-point-log.png',
-        note='重点讲两个建模决定：一是幂等唯一键让「重复点击不重复发分」成为数据库层面的保证；'
-             '二是日封顶不读缓存，避免缓存不同步导致多发或漏发。')
+        shot='15-record-detail.png',
+        tail='右图实拍：这就是答辩时最有说服力的一屏——「凭什么信」的答案在这里。',
+        note='这一页最重要。评委问「你的数可信吗」，直接把这一屏放出来：'
+             '每条记录都钉住了当时用的因子值、版本、来源、可信度。')
 
-    # ---------------------------------------------------------------- P7 同步
-    s = content_slide(
-        prs, 7, '多设备协同', '云通路 + 近场通路，两条路都带降级',
+    # ---------------------------------------------------------- P7 看板
+    ui_slide(
+        prs, 7, '看板：一张图看清趋势与结构', '折线看趋势、饼图看结构、柱状做对比',
         [
-            ('云通路（主）：同账号多端，增量拉取 + 幂等推送 + LWW 冲突合并', 0),
-            ('近场通路（演示层）：鸿蒙分布式 KV，同网络配对、只交换统计快照', 0),
-            ('时钟校正：服务端 offset 必须取反后再比较，否则旧数据会覆盖新数据', 0),
-            ('软删除传播：一端删除，另一端不会复活那条记录', 0),
-            ('家庭合并只读：合并人数 / 记录数 / 减排 / 积分，不动任何一方明细', 0),
-            ('可整体关闭：设备不支持或配对失败 → 界面显示「未组网」，绝不崩溃', 0),
-        ],
-        shot='11-sync.png',
-        note='这一页是创新项的核心。要说清楚「为什么不是纯云」：赛题要求单机版，'
-             '云端是加分项；所以两条通路都设计成可降级，网络或设备不可用时单机功能 100% 可用。')
-
-    # ---------------------------------------------------------------- P8 协同实拍
-    s = content_slide(
-        prs, 8, '协同页实拍与状态机', '账号态、进度、冲突、家庭合并一屏可见',
-        [
-            ('未登录：显示「登录后可同步」提示，所有入口仍可点开查看说明', 0),
-            ('已登录：显示账号、待同步条数、最后同步时间', 0),
-            ('同步中：三段进度 ①发现设备 ②合并数据 ③写回本机', 0),
-            ('冲突：只显示计数（丢弃 N 条 / 覆盖 M 条），不在界面里操作数据', 0),
-            ('状态机：idle → discovering → merging → writingBack → done / failed', 0),
-        ],
-        shot='05-mine.png',
-        note='如果现场没有第二台设备，就展示这一屏的降级状态机——说明「失败也是设计的一部分」。')
-
-    # ---------------------------------------------------------------- P9 因子
-    s = content_slide(
-        prs, 9, '碳因子来源与可信度', '30 项因子（20 项可录入），逐项标来源，估算值不冒充权威值',
-        [
-            ('电力 0.5703 kgCO₂e/kWh：生态环境部《2024 年全国电力碳足迹因子》', 0),
-            ('出行因子：GB/T 51366 转引 + 项目推算（provisional）', 0),
-            ('旧物回收 8 项：团体标准附录（verified）', 0),
-            ('光盘行动 3 项：按餐次估算（provisional，界面显示「参考值」角标）', 0),
-            ('因子快照：每条记录存 factor_value / version / source / confidence', 0),
-            ('升级规则：只有数值变化才升版本号；升级永不回写历史记录', 0),
-        ],
-        shot='04-science.png',
-        note='答辩时要主动说明：哪些是权威值、哪些是估算值。评委最容易问「你的因子哪来的」，'
-             '这一页就是答案。')
-
-    # ---------------------------------------------------------------- P10 识图
-    s = content_slide(
-        prs, 10, '端侧 AI 识图', '把「识别」做成可替换、可降级的输入手段',
-        [
-            ('接口层：AiEngine 抽象，当前 engine=mock（本地启发式），换真模型只换实现', 0),
-            ('只给候选、不替用户决定：识别结果必须经确认才写入记录', 0),
-            ('不展示置信度数字或准确率，界面统一写「模拟识别」', 0),
-            ('图片不落盘、不上传：只在内存里读一次像素', 0),
-            ('3 秒超时 → 降级为「图标网格快速录入」，两步完成录入', 0),
-        ],
-        shot='13-settings.png',
-        note='我们不把 AI 当卖点吹准确率，而是把它做成一个输入手段：能识别就用识别，不能就点图标。'
-             '这样评审问「准确率多少」时，答案是「不承诺准确率，只承诺一定能录进去」。')
-
-    # ---------------------------------------------------------------- P11 碳普惠
-    s = content_slide(
-        prs, 11, '碳普惠模拟', '完整闭环 + 明确边界',
-        [
-            ('规则：100 积分 = 1 碳币，单向不可逆（碳币不能换回积分）', 0),
-            ('权益：5 条虚拟权益（模拟），无实物、不可提现、不可转让', 0),
-            ('页面常驻声明：「模拟演示，不对接任何真实碳普惠平台」', 0),
-            ('为什么这么做：真实碳普惠涉及实名、签约与资金合规，不冒充真实通道', 0),
-            ('技术：兑换走事务 + 唯一约束，重复点击不会重复扣分', 0),
-        ],
-        shot='10-include.png',
-        note='这一页体现的是「诚实」：做一个完整可用的兑换闭环，但把「模拟」两个字写在页面上。')
-
-    # ---------------------------------------------------------------- P12 合规
-    s = slide_blank(prs)
-    rect(s, 0, 0, W, H, WHITE)
-    header(s, '合规对照', '逐条对齐赛题要求')
-    items = [
-        ('开发环境', 'OpenHarmony + DevEco Studio，API 12 及以上', 'compileSdkVersion 12，构建通过'),
-        ('应用类型', '纯北向应用，无需硬件', '不依赖任何外设，单机完成五项功能'),
-        ('数据存储', '本地离线可用；云端与多设备同步为加分项', '本机库为唯一真相源，云端为增强'),
-        ('功能定位', '基础功能为核心，创新为加分', '5 项主要 + 4 项创新全部实现'),
-        ('原创要求', '独立完成，严禁抄袭', '零第三方 npm / HAR 包，图表与渲染自研'),
-        ('费用', '不收取任何费用', '无内购、无广告、无付费入口'),
-        ('匿名', '材料不出现院校 / 团队 / 指导教师', '三份材料均匿名'),
-    ]
-    y = Inches(1.75)
-    tf = textbox(s, Inches(0.8), y - Inches(0.42), Inches(11.8), Inches(0.4))
-    add_para(tf, '官方要求　　　　　　　　　　　　　　　　　　本作品', 13, True, GREEN, first=True)
-    for a, b, c in items:
-        rect(s, Inches(0.75), y, Inches(11.85), Inches(0.62), RGBColor(0xF7, 0xFA, 0xF8))
-        tf = textbox(s, Inches(0.9), y + Inches(0.05), Inches(1.7), Inches(0.5))
-        add_para(tf, a, 13, True, GREEN, first=True)
-        tf = textbox(s, Inches(2.7), y + Inches(0.05), Inches(4.4), Inches(0.5))
-        add_para(tf, b, 12, False, DARK, first=True)
-        tf = textbox(s, Inches(7.3), y + Inches(0.05), Inches(5.2), Inches(0.5))
-        add_para(tf, c, 12, True, RGBColor(0x25, 0x64, 0x49), first=True)
-        y += Inches(0.66)
-    footer(s, 12)
-    notes(s, '合规这一页不讲技术，讲「我们逐条对过要求」。评委关心的是你有没有读懂赛题。')
-
-    # ---------------------------------------------------------------- P13 质量
-    s = content_slide(
-        prs, 13, '质量与验收', '只写跑过的命令与真实输出',
-        [
-            ('L0 文档与数值一致性：28 项检查、89 个文件、0 处不一致（通过）', 0),
-            ('L1 客户端单测：49 条全部通过（离线执行器，无需真机）', 0),
-            ('数值一致性：18 组手算样例 + 5 组封顶 + 6 条边界，323 个断言点零误差', 0),
-            ('L3 服务端接口：243 条用例全部通过', 0),
-            ('编译门禁：真实生效（故意写错一处类型 → 必须 BUILD FAILED）', 0),
-            ('设备侧实测：hypium 在模拟器上跑通 49 条（11 条纯逻辑通过，38 条受 aa test 的 Context 限制）', 0),
-            ('已修缺陷 7 个：压栈崩溃、徽章数不一致、头像框误画成图标、已读按钮无响应、今日已得负数、兑换回读失败、「无」误判为待购买', 0),
+            '日 / 周 / 月 / 年四档切换，坐标轴与说明文字同步变化（日按小时 24 点、年按 12 个月）',
+            '饼图：四分类占比；柱状：各分类减排量对比',
+            '点柱子直接下钻到该分类的记录列表，标出时间区间与合计',
+            '空数据不白屏，给「去记一笔」的下一步动作',
+            '切换档位时必须真的重画（Canvas 只在首次布局画一次是个坑，已修）',
         ],
         shot='02-dashboard.png',
-        note='这一页的关键是「不吹」：写清楚哪些跑过、哪些没跑过。没跑过的在下一页如实说明。')
+        tail='右图实拍：「日」档 24 小时折线 + 分类占比 + 分类柱状，三图同屏。',
+        note='现场可以切一次档位，让评委看到图跟着变——这是我们专门修过的点。')
 
-    # ---------------------------------------------------------------- P14 智能服务
-    s = content_slide(
-        prs, 14, '智能服务与分享', '把「回报」做成可传播的东西',
+    # ---------------------------------------------------------- P8 目标
+    ui_slide(
+        prs, 8, '目标：把「坚持」拆成可结算的周期', '短期日/周、中长期、长期，三档分别结算',
         [
-            ('任务推送：4 类条件（今日未记 / 连续记录将断 / 目标差一点 / 新科普）', 0),
-            ('生活建议：5 条优先级规则，首页最多显示 1 条，避免打扰', 0),
-            ('分享卡片：1080×1440 与 1080×1080 两种尺寸', 0),
-            ('不含姓名、院校、团队、头像；不接第三方社交 SDK', 0),
-            ('生成的是图片，用户自己决定发到哪里', 0),
+            '10 个周期目标：零碳出行、省电小标兵、光盘卫士、回收一袋、记录不间断等',
+            '日目标按自然日、周目标按自然周（周一 00:00 起算），口径写在页面上',
+            '每条显示：当前进度 / 阈值、剩余天数、奖励分值',
+            '达标自动结算并入账，奖励不占「记录类日封顶 200」的额度',
+            '结算幂等：同一周期只会发一次，重复触发不会重复入账',
         ],
-        shot='08-shop.png',
-        note='分享这一块刻意做得「不自传播」：不接 SDK、不含身份信息，等于把传播的主动权交回用户。')
+        shot='06-goal.png',
+        tail='右图实拍：短目标 5 条，「零碳出行 1/1 条」已达成、「回收一袋 5/3 条」超额完成。',
+        note='目标体系是为了解决「坚持不了」：把长期习惯切成一个个能当天结算的小目标。')
 
-    # ---------------------------------------------------------------- P15 展望
-    s = content_slide(
-        prs, 15, '后续计划', '已经准备好的接口与下一步',
+    # ---------------------------------------------------------- P9 徽章
+    ui_slide(
+        prs, 9, '徽章：纯荣誉，不发积分', '为什么故意不给徽章发钱',
         [
-            ('端侧真模型：替换 AiEngine 实现，上层不动', 0),
-            ('真机与双设备实测：产出带数据的完整截图与演示视频', 0),
-            ('真实碳普惠对接：需实名与地方平台签约', 0),
-            ('更多外观主题与家庭账户体系', 0),
-            ('可选服务端公网部署：域名 + 备案 + TLS', 0),
+            '8 枚徽章：初次碳迹、七日不辍、月度坚持、减排十千克、百千克、循环使者、绿色骑士、种树人',
+            '已解锁 / 未解锁分两区，未解锁显示条件与真实进度（如 56/100 kg、10.1/20 kg）',
+            '徽章**不发积分、不可消费**——避免「刷徽章换钱」导致数据失真',
+            '统一由一个判定引擎算出，界面不各算各的（这里修过一个「两处数字不一致」的缺陷）',
+            '「种树人」需要集齐 8 个头像框，把「买」与「荣誉」串成一条线',
         ],
         shot='07-badge.png',
-        note='展望要克制：只讲已经有接口支撑的，不讲画大饼的。')
+        tail='右图实拍：5/8 已解锁，未解锁的显示真实进度条与阈值。',
+        note='这一页讲激励设计的边界：能换钱的东西一定会被刷，所以徽章只给荣誉。')
 
-    # ---------------------------------------------------------------- P16 结尾
+    # ---------------------------------------------------------- P10 碳小铺
+    ui_slide(
+        prs, 10, '碳小铺：积分有出口，但出口只有「好看」', '8 个头像框 + 1 套主题，无实物、无提现',
+        [
+            '价格梯度 1500～15000 分：嫩芽 / 藤蔓 / 风车 / 星河 / 极光 / 墨竹 / 鎏金 / 年轮',
+            '每个框是一圈「环 + 饰物」：颜色、环宽、饰物角度都不同，不靠文字也能区分',
+            '买框走事务：写购买记录 + 写负额流水，重复点击不会重复扣分',
+            '已购显示「使用中」，余额不足显示「还差 N 分」',
+            '不提供实物、不提供提现——积分经济闭环但不产生外部价值',
+        ],
+        shot='08-shop.png',
+        tail='右图实拍：嫩芽「使用中」，星河「还差 259 分」，底部「已拥有 1/8」。',
+        note='讲「积分通胀」怎么防：出口只有装饰性权益，价格梯度把长期用户和短期用户区分开。')
+
+    # ---------------------------------------------------------- P11 更换外观
+    ui_slide(
+        prs, 11, '更换外观：头像与头像框是两层', '框是「戴在外面的一圈」，不是第二个图标',
+        [
+            '上排 8 个头像 emoji（全部免费），下排 8 个头像框（碳小铺购买后可用）',
+            '框的画法：渐变外圆 = 环、同色内圆挖空、环上按角度钉饰物（嫩芽 🌱45° + 🍃210°）',
+            '未解锁只画淡环 + 🔒，已解锁画满色与光晕，一眼能区分',
+            '「无」= 不戴框：不画环、不拦截、不提示购买（这里修过一个把它当商品的缺陷）',
+            '改名、选头像、选框、选主题，最后点保存才落库',
+        ],
+        shot='12-appearance.png',
+        tail='右图实拍：嫩芽已选中（绿色标签），未购买的 7 个显示淡环 + 锁。',
+        note='这一页可以回应「UI 是不是套模板」：环是参数化画的，八个框参数各不相同。')
+
+    # ---------------------------------------------------------- P12 科普
+    ui_slide(
+        prs, 12, '科普：12 篇离线内容', '不联网也能读，读完能被记录',
+        [
+            '12 篇按三类归档：政策 / 低碳技巧 / 知识，全部打包进应用内',
+            '正文 Markdown 本地渲染，不请求任何远程资源',
+            '阅读页显示「未读 / 已读」状态标签；滚动到底自动判定（≥80% 且停留 ≥3 秒）',
+            '底部按钮可显式点击立即标记——刚打开就想标记也生效（修过的缺陷）',
+            '收藏、上一篇 / 下一篇、按分类筛选',
+        ],
+        shot='17-science-detail.png',
+        tail='右图实拍：已标记后标签变「已读 ✓」、按钮置灰。',
+        note='「已读」这块修过一个缺陷：原来只认滚动门槛，用户刚打开点按钮会静默无反应。')
+
+    # ---------------------------------------------------------- P13 碳普惠
+    ui_slide(
+        prs, 13, '碳普惠（模拟演示）', '做完整闭环，但把「模拟」写在页面上',
+        [
+            '汇率固定：100 积分 = 1 碳币，单向不可逆（碳币不能换回积分）',
+            '5 条虚拟权益：模拟认养树苗、模拟绿电、模拟低碳证书、模拟公益、模拟勋章',
+            '页面常驻声明：不对接任何真实碳普惠平台，权益不可提现、不可退',
+            '兑换走事务 + 唯一约束，重复点击不会重复扣分',
+            '为什么不接真实通道：真实碳普惠涉及实名、签约与资金合规，不能冒充',
+        ],
+        shot='10-include.png',
+        tail='右图实拍：顶部黄色告警条就是那句「模拟演示，不对接真实平台」。',
+        note='这一页体现「诚实」：功能做全，边界写清楚。被问「为什么不做真的」，答案就是合规成本。')
+
+    # ---------------------------------------------------------- P14 协同
+    ui_slide(
+        prs, 14, '多设备协同', '云通路 + 近场通路，两条路都带降级',
+        [
+            '云通路（主）：同账号多端，增量拉取 + 幂等推送 + LWW 冲突合并',
+            '近场通路（演示层）：鸿蒙分布式 KV，只交换统计快照，不动明细',
+            '时钟校正：服务端 offset 必须取反后再比较，否则旧数据会覆盖新数据',
+            '软删除会传播：一端删除，另一端不会「复活」那条记录',
+            '家庭合并只读；设备不支持或配对失败时显示「未组网」，绝不崩溃',
+        ],
+        shot='11-sync.png',
+        tail='右图实拍：未登录显示「登录后可同步」，近场卡片显示「未组网」——降级也是设计的一部分。',
+        note='说清「为什么不是纯云」：赛题二是单机版，云端只是加分项，所以两条通路都可降级。')
+
+    # ---------------------------------------------------------- P15 架构与数据
+    text_slide(
+        prs, 15, '技术架构与数据口径', '分层是为了「算错也错在一处」',
+        [
+            '五层：页面（18 页，只取数/渲染/转发）→ 组件（23 个）→ 服务（14 个）→ 数据（19 表 + 12 Dao）→ 基础设施',
+            '四条铁律：本地优先 / 单一计算入口 / 因子快照 / 积分单向可追溯',
+            '计算：减排量 = 活动量 × 因子值（4 位）；应得 C = round(减排量 × 100)',
+            '封顶：实入 A = max(0, min(C, 200 − 今日已得 D))，D 由流水实时聚合，不读缓存',
+            '幂等：记录 / 流水 / 目标 / 购买各有唯一键，重复点击在数据库层就被挡住',
+        ],
+        tail='数值的唯一真相源是 tests/cases/carbon-calc.json：文档与代码都对它。',
+        note='重点讲「单一计算入口」：减排量只能由 CarbonService.calculate() 产出，'
+             '页面禁止自己乘因子——这是防「同一笔数据两个页面算出两个数」的唯一办法。')
+
+    # ---------------------------------------------------------- P16 质量与合规
+    s = slide_blank(prs)
+    rect(s, 0, 0, W, H, WHITE)
+    header(s, '质量与合规', '只写跑过的命令与真实输出；逐条对齐官方要求')
+    left = [
+        ('L0 文档与数值一致性', '28 项检查 · 89 个文件 · 0 处不一致'),
+        ('L1 客户端单测', '49 条全通过（离线执行器）'),
+        ('数值一致性', '18 组手算 + 5 组封顶 + 6 条边界，323 断言零误差'),
+        ('L3 服务端接口', '243 条用例全通过'),
+        ('设备侧实测', 'hypium 49 条：11 条纯逻辑通过，38 条受 aa test 的 Context 限制'),
+    ]
+    y = Inches(1.7)
+    for a, b in left:
+        tf = textbox(s, Inches(0.8), y, Inches(3.6), Inches(0.5))
+        add_para(tf, a, 14, True, GREEN, first=True)
+        tf = textbox(s, Inches(4.45), y, Inches(3.1), Inches(0.5))
+        add_para(tf, b, 12, False, DARK, first=True)
+        y += Inches(0.6)
+    compat = [
+        ('开发环境', 'DevEco + OpenHarmony · API 12', 'compileSdk 12，构建通过'),
+        ('应用类型', '纯北向 · 无需硬件', '不依赖外设，单机完成 5 项功能'),
+        ('数据存储', '本地离线可用', '本机库为唯一真相源'),
+        ('原创要求', '独立完成', '零第三方 npm / HAR'),
+        ('匿名要求', '不出现院校 / 团队 / 教师', '三份材料均已匿名'),
+    ]
+    y = Inches(1.7)
+    for a, b, c in compat:
+        rect(s, Inches(7.75), y - Inches(0.05), Inches(4.85), Inches(0.55), SOFT)
+        tf = textbox(s, Inches(7.88), y, Inches(1.4), Inches(0.45))
+        add_para(tf, a, 12, True, GREEN, first=True)
+        tf = textbox(s, Inches(9.3), y, Inches(3.2), Inches(0.45))
+        add_para(tf, b + '　→　' + c, 10, False, DARK, first=True)
+        y += Inches(0.6)
+    tf = textbox(s, Inches(0.8), Inches(5.2), Inches(11.8), Inches(1.4))
+    add_para(tf, '已修真实缺陷 7 个：压栈崩溃 / 徽章数不一致 / 头像框误画成图标 / 已读按钮无响应 / '
+                 '今日已得负数 / 兑换回读失败 / 「无」误判为待购买',
+             13, True, DEEP, first=True)
+    add_para(tf, '未完成项也写在材料里：真机 API 12 未跑、近场「发现对端」未跑通（受无华为账号限制）',
+             12, False, GREY, space_before=8)
+    footer(s, 16)
+    notes(s, '这一页的关键是「不吹」：哪些跑过、哪些没跑过，写清楚。'
+             '主动交代未完成项，比被评委问出来强。')
+
+    # ---------------------------------------------------------- P17 结尾
     s = slide_blank(prs)
     rect(s, 0, 0, W, H, GREEN)
-    tf = textbox(s, Inches(1.0), Inches(2.3), Inches(11.3), Inches(1.6),
+    tf = textbox(s, Inches(1.0), Inches(2.35), Inches(11.3), Inches(1.6),
                  align=PP_ALIGN.CENTER)
-    add_para(tf, '记录低碳，攒出改变', 52, True, WHITE, first=True, align=PP_ALIGN.CENTER)
-    tf = textbox(s, Inches(1.0), Inches(3.9), Inches(11.3), Inches(1.2),
+    add_para(tf, '记录低碳，攒出改变', 50, True, WHITE, first=True, align=PP_ALIGN.CENTER)
+    tf = textbox(s, Inches(1.0), Inches(3.95), Inches(11.3), Inches(1.0),
                  align=PP_ALIGN.CENTER)
     add_para(tf, '碳小布 CarbonBoo　·　赛题二', 22, False, LIGHT, first=True, align=PP_ALIGN.CENTER)
-    tf = textbox(s, Inches(1.0), Inches(4.7), Inches(11.3), Inches(1.2),
+    tf = textbox(s, Inches(1.0), Inches(4.75), Inches(11.3), Inches(1.0),
                  align=PP_ALIGN.CENTER)
     add_para(tf, '谢谢，欢迎提问', 18, False, RGBColor(0xC8, 0xE6, 0xD5), first=True, align=PP_ALIGN.CENTER)
     notes(s, '结尾（9:30–10:00）：一句 slogan 收住，然后停下等提问，不要再补充介绍。')
 
     os.makedirs(OUT_DIR, exist_ok=True)
     prs.save(OUT)
-    print('SAVED', OUT, os.path.getsize(OUT), 'bytes', len(prs.slides.__iter__.__self__._sldIdLst), 'slides')
+    print('SAVED', OUT, os.path.getsize(OUT), 'bytes', len(prs.slides._sldIdLst), 'slides')
 
 
 if __name__ == '__main__':
