@@ -86,6 +86,12 @@ export struct ShopPage {
       return;
     }
     const outcome: PurchaseOutcome | undefined = result.data;
+    // 买了头像框就顺手戴上：否则用户会以为「买了没生效」（附录 C §15）
+    if (item.section === 'frame') {
+      const appearance = await hub.appearance.current(hub.state.userId());
+      await hub.appearance.save(hub.state.userId(), appearance.avatarId, item.id,
+        appearance.themeId, hub.appearance.nicknameOf(appearance));
+    }
     if (outcome !== undefined && outcome.treeReady) {
       this.getUIContext().getPromptAction().showToast({ message: '集齐全部 8 个头像框，解锁「种树人」' });
     }

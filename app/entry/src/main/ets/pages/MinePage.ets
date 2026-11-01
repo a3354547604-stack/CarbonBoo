@@ -76,6 +76,8 @@ export struct MinePage {
     this.sync = sync;
     this.nickname = hub.appearance.nicknameOf(appearance);
     this.avatarId = appearance.avatarId;
+    // frameId 之前漏了赋值 → 「我的」页头像永远不戴框（用户会说「买了没生效」）
+    this.frameId = appearance.frameId === undefined ? '' : appearance.frameId;
     this.isDemo = await hub.state.demoFlag();
     this.shareData = await hub.share.cardData(userId, now);
     this.ready = true;
@@ -216,8 +218,9 @@ export struct MinePage {
             this.rowItemDynamic('🎯', $r('app.string.mine_goal_badge'),
               (): string => `${this.badgeUnlocked}/${LiteralConstants.BADGE_TOTAL} 已解锁 ›`, '',
               () => this.push(RouteName.GOAL))
-            this.rowItem('🏪', $r('app.string.mine_shop'),
-              `${this.frameCount} 个头像框 ›`, '', () => this.push(RouteName.SHOP))
+            this.rowItemDynamic('🏪', $r('app.string.mine_shop'),
+              (): string => `${this.frameCount} 个头像框 ›`, '',
+              () => this.push(RouteName.SHOP))
             this.rowItem('🧾', $r('app.string.mine_point_log'), '›', '',
               () => this.push(RouteName.POINT_LOG))
             this.rowItem('🌿', $r('app.string.mine_include'),

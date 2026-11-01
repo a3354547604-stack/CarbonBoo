@@ -50,3 +50,4 @@ submit/*.rar
 
 # 本地签名材料（密钥库/证书/Profile，绝不入库）
 sign/
+docs/screenshots/_*

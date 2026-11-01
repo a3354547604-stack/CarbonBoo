@@ -129,17 +129,27 @@ export class PointService {
     return v > 0 ? v : 0;
   }
 
-  /** 今日总实得（记录分 + 目标分，可为负则按 0）——首页「今日记录 3 条 · +286 分」用。 */
+  /**
+   * 今日总实得（记录分 + 目标分）——首页「今日记录 3 条 · +286 分 / 今日已得」用。
+   *
+   * **只统计收入（`points > 0`）**：`point_record` 里还有 `source_type = 'shop_item'` 的
+   * **支出**流水（碳小铺兑换，负数）。支出不占用当日记录额度，也不该把「今日已得」
+   * 拉成负数——v4.18 之前这里 SUM 了全部流水，用户兑换 1,500 分后首页直接显示
+   * 「今日记录 2 条 · +-1,350 分 / 已得 -1,350」，是错的。
+   * 兜底再夹一次 `> 0 ? v : 0`，与 `todayRecordPoint()` 保持同口径。
+   */
   async todayEarned(userId: string, now: number): Promise<number> {
     const from: number = DateUtil.addDays(now, 0);
     const to: number = DateUtil.addDays(from, 1);
     const rows = await this.store.query(
       'SELECT COALESCE(SUM(points), 0) AS v FROM point_record ' +
-      'WHERE user_id = ? AND is_deleted = 0 AND occurred_at >= ? AND occurred_at < ?',
+      'WHERE user_id = ? AND is_deleted = 0 AND points > 0 ' +
+      'AND occurred_at >= ? AND occurred_at < ?',
       [userId, from, to]
     );
     const row = firstOf(rows);
-    return row === undefined ? 0 : numOf(row, 'v');
+    const v: number = row === undefined ? 0 : numOf(row, 'v');
+    return v > 0 ? v : 0;
   }
 
   /**
