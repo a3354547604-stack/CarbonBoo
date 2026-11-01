@@ -40,6 +40,9 @@ export struct HomePage {
   @State sharing: boolean = false;
   private suggestionList: Suggestion[] = [];
 
+  /** 切换到某个 Tab。由 Index 注入；默认空实现，便于单独渲染本页。 */
+  goTab: (index: number) => void = (index: number): void => {};
+
   aboutToAppear(): void {
     this.reload();
   }
@@ -162,7 +165,7 @@ export struct HomePage {
           .padding(AppTheme.CARD_PADDING)
           .backgroundColor(AppTheme.COLOR_SURFACE)
           .borderRadius(AppTheme.CARD_RADIUS)
-          .onClick(() => this.push(RouteName.DASHBOARD))
+          .onClick(() => this.goTab(1))
 
           Row({ space: AppTheme.CARD_GAP }) {
             StatCard({
@@ -174,7 +177,7 @@ export struct HomePage {
               label: $r('app.string.home_today_record'),
               value: `${this.stats.todayCount} 条 · +${Formatter.points(this.stats.todayEarned)} 分`,
               valueSize: 16,
-              sub: this.cappedText(), onTap: () => this.push(RouteName.RECORD)
+              sub: this.cappedText(), onTap: () => this.goTab(2)
             })
           }
           .width('100%')
@@ -188,7 +191,7 @@ export struct HomePage {
             Text($r('app.string.home_go_dashboard'))
               .fontSize(AppTheme.FONT_CAPTION)
               .fontColor(AppTheme.COLOR_PRIMARY)
-              .onClick(() => this.push(RouteName.DASHBOARD))
+              .onClick(() => this.goTab(1))
           }
 
           SectionCard({ title: $r('app.string.home_suggestion'), showTitle: true }) {

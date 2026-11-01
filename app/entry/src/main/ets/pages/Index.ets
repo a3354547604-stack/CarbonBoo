@@ -61,6 +61,19 @@ struct Index {
   private tabsController: TabsController = new TabsController();
   private recordScroller: Scroller = new Scroller();
 
+  /**
+   * 切到指定 Tab（0 首页 / 1 看板 / 2 记录 / 3 科普 / 4 我的）。
+   *
+   * 为什么需要它：看板、记录这些是 Tab 页面，`pageMap` 里没有对应分支。
+   * 之前首页「累计减排」卡片直接 `push(RouteName.DASHBOARD)`，压栈后
+   * `pageMap` 匹配不到任何分支 → `NavDestination` 里是空的 → 整个屏幕白屏。
+   * Tab 页面只能切，不能当二级页压栈。
+   */
+  private switchTab(index: number): void {
+    this.tabKey = index;
+    this.tick = this.tick + 1;
+  }
+
   async aboutToAppear(): Promise<void> {
     await this.boot();
   }
@@ -178,7 +191,7 @@ struct Index {
       } else {
         Tabs({ barPosition: BarPosition.End, index: this.tabKey, controller: this.tabsController }) {
           TabContent() {
-            HomePage({ tick: this.tick })
+            HomePage({ tick: this.tick, goTab: (index: number): void => this.switchTab(index) })
           }.tabBar(this.tabBar(0, $r('app.string.tab_home'), '🏠'))
 
           TabContent() {
@@ -194,7 +207,7 @@ struct Index {
           }.tabBar(this.tabBar(3, $r('app.string.tab_science'), '📚'))
 
           TabContent() {
-            MinePage({ tick: this.tick })
+            MinePage({ tick: this.tick, goTab: (index: number): void => this.switchTab(index) })
           }.tabBar(this.tabBar(4, $r('app.string.tab_mine'), '👤'))
         }
         .barHeight(AppTheme.TAB_HEIGHT)

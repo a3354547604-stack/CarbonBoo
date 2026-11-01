@@ -62,6 +62,9 @@ export struct MinePage {
     this.ready = true;
   }
 
+  /** 切换到某个 Tab。由 Index 注入；默认空实现，便于单独渲染本页。 */
+  goTab: (index: number) => void = (index: number): void => {};
+
   private push(name: string, param?: RouteParam): void {
     NavParams.set(param);
     this.stack.pushPath({ name: name });
@@ -149,7 +152,7 @@ export struct MinePage {
             StatCard({
               label: $r('app.string.mine_total_reduction'),
               value: `${Formatter.reduction(this.stats.totalReduction)} kg`,
-              onTap: () => this.push(RouteName.DASHBOARD)
+              onTap: () => this.goTab(1)
             })
             StatCard({
               label: $r('app.string.mine_point_balance'),
