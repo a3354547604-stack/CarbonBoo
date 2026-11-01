@@ -51,6 +51,8 @@ export class AppTheme {
   static readonly ICON_SM: number = 20;
   static readonly ICON_MD: number = 28;
   static readonly ICON_LG: number = 44;
+  /** 大图标（头像框预览用：要能装下环 + 角标）。 */
+  static readonly ICON_XL: number = 60;
   static readonly AVATAR_SIZE: number = 64;
   static readonly TAB_HEIGHT: number = 56;
   static readonly FAB_SIZE: number = 52;

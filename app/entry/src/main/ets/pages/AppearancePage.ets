@@ -7,6 +7,7 @@
 import { ServiceHub } from '../viewmodel/ServiceHub';
 import { Appearance } from '../model/ShopTypes';
 import { AvatarOption } from '../viewmodel/AppearanceService';
+import { AvatarWithFrame } from '../components/AvatarWithFrame';
 import { ShopItem } from '../model/ShopTypes';
 import { AppTheme, LiteralConstants } from '../util/AppTheme';
 import { AppConstants } from '../util/AppConstants';
@@ -99,9 +100,13 @@ export struct AppearancePage {
   @Builder
   frameCell(id: string, name: ResourceStr) {
     Column({ space: 4 }) {
-      Text(this.owned.indexOf(id) >= 0 ? ShopRules.frameIcon(id) : '🔒')
-        .fontSize(AppTheme.ICON_MD)
-        .opacity(this.owned.indexOf(id) >= 0 ? 1 : 0.35)
+      // 框要戴在当前头像上才看得懂：内层是「你选的头像」，外层是这一格代表的环。
+      AvatarWithFrame({
+        avatarId: this.avatarId,
+        frameId: id,
+        diameter: AppTheme.ICON_XL,
+        locked: id.length > 0 && this.owned.indexOf(id) < 0
+      })
       Text(name)
         .fontSize(AppTheme.FONT_CAPTION)
         .fontColor(this.frameId === id ? AppTheme.COLOR_PRIMARY : AppTheme.COLOR_TEXT_HINT)
@@ -129,13 +134,11 @@ export struct AppearancePage {
           Column({ space: AppTheme.CARD_GAP }) {
             SectionCard({ showTitle: false }) {
               Row({ space: AppTheme.CARD_GAP }) {
-                Text(this.avatarIcon(this.avatarId))
-                  .fontSize(AppTheme.ICON_LG)
-                  .width(AppTheme.AVATAR_SIZE)
-                  .height(AppTheme.AVATAR_SIZE)
-                  .textAlign(TextAlign.Center)
-                  .backgroundColor(AppTheme.COLOR_DISABLED_BG)
-                  .borderRadius(AppTheme.AVATAR_SIZE)
+                AvatarWithFrame({
+                  avatarId: this.avatarId,
+                  frameId: this.frameId,
+                  diameter: AppTheme.AVATAR_SIZE
+                })
                 Column({ space: 6 }) {
                   Text(this.nickname.length > 0 ? this.nickname : AppConstants.DEFAULT_DISPLAY_NAME)
                     .fontSize(AppTheme.FONT_SECTION)

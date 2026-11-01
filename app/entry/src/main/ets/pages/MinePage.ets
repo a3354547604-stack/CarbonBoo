@@ -18,6 +18,7 @@ import { ShareSheet } from '../components/ShareSheet';
 import { ShareCardData } from '../util/CardRenderer';
 import { emptyOverview } from './HomePage';
 import { BadgeProgress } from '../model/BadgeTypes';
+import { AvatarWithFrame } from '../components/AvatarWithFrame';
 
 @Component
 export struct MinePage {
@@ -29,6 +30,8 @@ export struct MinePage {
   @State sync: SyncStatus = SyncService.emptyStatus('');
   @State nickname: string = '';
   @State avatarId: string = 'avatar_leaf';
+  /** 已佩戴的头像框（空串=不戴；由 `appearance.current()` 读回）。 */
+  @State frameId: string = '';
   @State badgeUnlocked: number = 0;
   @State isDemo: boolean = false;
   @State ready: boolean = false;
@@ -173,13 +176,7 @@ export struct MinePage {
           }
 
           Row({ space: AppTheme.CARD_GAP }) {
-            Text(this.avatarIcon())
-              .fontSize(AppTheme.ICON_LG)
-              .width(AppTheme.AVATAR_SIZE)
-              .height(AppTheme.AVATAR_SIZE)
-              .textAlign(TextAlign.Center)
-              .backgroundColor(AppTheme.COLOR_DISABLED_BG)
-              .borderRadius(AppTheme.AVATAR_SIZE)
+            AvatarWithFrame({ avatarId: this.avatarId, frameId: this.frameId, diameter: AppTheme.AVATAR_SIZE })
             Column({ space: 4 }) {
               Text(this.nickname)
                 .fontSize(AppTheme.FONT_SECTION)

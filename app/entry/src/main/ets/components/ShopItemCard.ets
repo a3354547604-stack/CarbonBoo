@@ -6,6 +6,7 @@ import { ShopItem } from '../model/ShopTypes';
 import { AppTheme } from '../util/AppTheme';
 import { Formatter } from '../util/Formatter';
 import { ShopRules } from '../viewmodel/domain/ShopRules';
+import { AvatarWithFrame } from './AvatarWithFrame';
 
 export function emptyShopItem(): ShopItem {
   const item: ShopItem = {
@@ -25,10 +26,20 @@ export struct ShopItemCard {
 
   build() {
     Column({ space: 6 }) {
-      Text(ShopRules.frameIcon(this.item.id))
-        .fontSize(AppTheme.ICON_LG)
+      // 头像框商品要**戴在头像上**展示：直接画一个 emoji 会让「框」和「头像」长得一样，
+      // 用户根本看不出买的是"环"。这里统一用 AvatarWithFrame 预览（内层是示例头像 🌿）。
+      if (this.item.section === 'frame') {
+        Row() {
+          AvatarWithFrame({ avatarEmoji: '🌿', frameId: this.item.id, diameter: AppTheme.ICON_XL })
+        }
         .width('100%')
-        .textAlign(TextAlign.Center)
+        .justifyContent(FlexAlign.Center)
+      } else {
+        Text('🎨')
+          .fontSize(AppTheme.ICON_LG)
+          .width('100%')
+          .textAlign(TextAlign.Center)
+      }
       Text(this.item.name)
         .fontSize(AppTheme.FONT_BODY)
         .fontColor(AppTheme.COLOR_TEXT_PRIMARY)
