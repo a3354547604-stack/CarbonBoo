@@ -41,9 +41,19 @@
         "startWindowBackground": "$color:start_window_background"
       }
     ],
+    /**
+     * 测试执行器必须落在 `ets/testrunner/OpenHarmonyTestRunner.ets`。
+     *
+     * 踩坑（2026-11-01，模拟器实跑 `aa test` 报 `TestFinished-ResultCode: -1 / App died`）：
+     * BMS 的 `module_profile.cpp TransformToTestRunner` **不读** `srcPath` 的目录部分，
+     * 而是固定去取 `ets/testrunner/OpenHarmonyTestRunner.abc`；若执行器放在别的目录
+     * （原先是 `ets/testability/`），测试 HAP 里只有打包后的 `ets/modules.abc`，
+     * 设备侧找不到 `ets/testrunner/...abc`，直接 `Cannot find module ... which is application Entry Point`。
+     * 故执行器目录与 `srcPath` 都必须与官方约定一致。
+     */
     "testRunner": {
       "name": "OpenHarmonyTestRunner",
-      "srcPath": "./ets/testability/OpenHarmonyTestRunner.ets"
+      "srcPath": "./ets/testrunner/OpenHarmonyTestRunner.ets"
     }
   }
 }

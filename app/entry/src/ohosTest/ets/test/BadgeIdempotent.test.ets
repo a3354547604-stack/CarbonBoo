@@ -52,7 +52,11 @@ export default function badgeIdempotentTest(): void {
       while (k < beforeExplicit.length) {
         if (beforeExplicit[k].badgeId === 'B_FIRST') {
           firstName = beforeExplicit[k].name;
-          firstUnlockAt = beforeExplicit[k].unlockedAt === undefined ? -1 : beforeExplicit[k].unlockedAt;
+          // ArkTS 不做「数组下标再取值」的窄化：先把可选值取到局部变量再判空，
+          // 否则 `a[k].unlockedAt === undefined ? -1 : a[k].unlockedAt` 会报
+          // “Type 'number | undefined' is not assignable to type 'number'”。
+          const rowUnlockedAt: number | undefined = beforeExplicit[k].unlockedAt;
+          firstUnlockAt = rowUnlockedAt === undefined ? -1 : rowUnlockedAt;
           expect(beforeExplicit[k].unlocked).assertTrue();     // save 之内就已解锁
         }
         k = k + 1;

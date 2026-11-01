@@ -12,8 +12,8 @@
  * 所以本文件在 `tests/tools/l1_offline` 的 esbuild + node 垫片里可以完整执行。
  */
 import { describe, expect, it } from '@ohos/hypium';
-import { abilityDelegatorRegistry } from '@kit.TestKit';
 import { common } from '@kit.AbilityKit';
+import { testContext } from './TestContext';
 import { FakeHttpClient } from '../../../main/ets/viewmodel/net/HttpPort';
 import { MemoryFiles } from '../../../main/ets/viewmodel/store/FilesPort';
 import { ServiceHub } from '../../../main/ets/viewmodel/ServiceHub';
@@ -184,7 +184,7 @@ export default function nearbyMergeTest(): void {
     });
 
     it('服务：端口不可用时降级为「仅本机」，且不抛错', 0, async () => {
-      const context: common.Context = abilityDelegatorRegistry.getAbilityDelegator().getAppContext();
+      const context: common.Context = await testContext();
       const now: number = Date.now();
       const hub: ServiceHub = await ServiceHub.init(context, now, {
         http: new FakeHttpClient(),
@@ -210,7 +210,7 @@ export default function nearbyMergeTest(): void {
     });
 
     it('服务：有对端时合并本机与对端，冲突数 = 无效行 + 被覆盖的重复行', 0, async () => {
-      const context: common.Context = abilityDelegatorRegistry.getAbilityDelegator().getAppContext();
+      const context: common.Context = await testContext();
       const now: number = Date.now();
       const port: FakeNearbyPort = new FakeNearbyPort(true, [
         { deviceId: 'net-peer-1', deviceName: '客厅平板', deviceModel: 'tablet', online: true, lastSeenAt: now }

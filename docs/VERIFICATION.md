@@ -3947,3 +3947,34 @@ push 响应：accepted=1 ignored=0 rejected=0 conflicts=0 offsetMs=-59974 server
 - **未运行项与 §R12 相同**：真机 L2、`server/deploy/` 部署实测、`/admin` 浏览器交互（后者已有 §R12 结论，本轮无变化）。
 - **文末位置说明**：本节按 t68 任务书「只允许**追加** `docs/VERIFICATION.md`」追加在**文件末尾**；文件第 1 行的 round 索引行**按规未改**（改它等于修改既有正文），故该行仍写「最新 round 12」——**最新一轮实为 §R13（round 13 / t68）**，索引统一留待后续轮次处理。
 - **不 push**：本轮提交由队长推送；「已推送」以队长的 `git ls-remote origin main` 原始输出为准（AGENTS.md §5.1-4）。
+
+## §R19 round 19（2026-11-01 · 设备侧 hypium 首次真正在设备上跑：**49 条里 11 条通过，38 条被 `aa test` 进程环境挡住**）—— 本节只追加，不改上文任何原始记录
+
+### R19.1 判定（先说结论）
+
+**hypium 第一次在 HarmonyOS 设备（模拟器）上执行**，结果：`Tests run: 49, Failure: 0, Error: 38, Pass: 11, Ignore: 0`。
+- **11 条通过的是纯逻辑用例**（`NearbyMerge` 5 条、`Probe` 1 条，以及若干不碰 DB / 资源的用例）。
+- **38 条报错不是代码缺陷**，是 `aa test` 启动的测试进程**既拿不到可用的 `Context` 去开 `relationalStore`，也读不到 `rawfile`**：
+  - 37 条：`Parameter error.Illegal context.`（`SetAction:throw error: code = 401`），栈固定在 `app/entry/src/main/ets/data/dao/RdbHelper.ets:64 doOpen` ← `:49 open` ← `viewmodel/ServiceHub.ets:146 init`；
+  - 1 条（`CalcSamples`）：`GetRawFileContent failed`（`resourceManager.getRawFileContent` 在测试进程里同样不可用）。
+
+### R19.2 定事实实测（原始输出）
+
+最小探针 `app/entry/src/ohosTest/ets/test/Probe.test.ets`（已登记进 `List.test.ets`）在设备上打出：
+```
+I A00001/CarbonBooProbe: getCurrentTopAbility failed=true
+I A00001/CarbonBooProbe: appContext open ok=false msg=Error: Parameter error.Illegal context.
+```
+即：`abilityDelegator.getCurrentTopAbility()` 抛错（`aa test` 不启动 `TestAbility`），退回 `getAppContext()` 得到的 ApplicationContext **仍被 `relationalStore.getRdbStore` 拒绝**。
+
+### R19.3 本轮为跑通设备侧测试做的两处真修复
+
+1. **测试执行器路径错误（会直接导致进程起不来）**：`OpenHarmonyTestRunner` 原放在 `app/entry/src/ohosTest/ets/testability/`，而 `aa test` 按固定路径 `/ets/testrunner/OpenHarmonyTestRunner` 加载 → `Cannot find module 'com.carbonboo.app/entry_test/ets/testrunner/OpenHarmonyTestRunner', which is application Entry Point`（`TestFinished-ResultCode: -1 / App died`）。已 `git mv` 到 `app/entry/src/ohosTest/ets/testrunner/`，并把 `app/entry/src/ohosTest/module.json5` 的 `testRunner.srcPath` 改为 `./ets/testrunner/OpenHarmonyTestRunner.ets`。依据：DevEco 自带 `tools/hvigor/hvigor-ohos-plugin/node_modules/@ohos/coverage/lib/src/commandLine/ohosTest/executeOhosTest.js:170` 与 `fileUtil.js:10`。
+2. **`BadgeIdempotent.test.ets:55` 的 ArkTS 类型错误**：`Type 'number | undefined' is not assignable to type 'number'` —— ArkTS 不对「数组下标再取属性」做可选值窄化。改为先取局部变量再判空（不引入 `as` / `!`）。
+
+### R19.4 边界（写死）
+
+- **本节不改变 `tests/cases/carbon-calc.json` 的任何数值**，也不改变 L1 离线执行器的结论（`49/49` + `CalcBaselineValidator checked=323 passed=true`）。
+- **设备侧通过 11 条 ≠ 覆盖 49 条**：38 条依赖真库/真资源的用例，其覆盖来自**离线执行器**（`node:sqlite` 垫片 + 打桩 resourceManager），两者是**互补**关系，不得互相顶替，也不得宣称「48 条已在设备上跑通」。
+- **`Probe.test.ets` / `TestContext.ets` 保留在仓库**：前者是该环境事实的可重跑证据（换设备/换 SDK 后应重跑复核），后者是测试取 context 的统一入口。
+- 真正的「设备侧全量通过」需要 `aa test` 能拿到 `AbilityContext`（例如让 `TestAbility` 参与启动），本轮**未攻克**，如实登记为未完成项。

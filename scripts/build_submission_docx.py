@@ -774,6 +774,15 @@ def build():
                                      '`getAvailableDeviceListSync()` 返回空，故「发现对端 → KV 同步」一段未跑通；'
                                      '协议与合并算法由 L1 的 7 条用例以假端口覆盖'],
             ['真云部署', '未执行', '服务端已在本机 MySQL 8 上跑通全部接口测试，公网部署需域名与备案'],
+            ['设备侧自动化测试', '部分执行', 'hypium 已在模拟器上真实执行一次：`aa test` 跑出 '
+                                     '`Tests run: 49, Failure: 0, Error: 38, Pass: 11`。'
+                                     '11 条纯逻辑用例通过；38 条依赖真库/真 `rawfile` 的用例报 '
+                                     '`Parameter error.Illegal context.`（401）与 `GetRawFileContent failed`，'
+                                     '根因是 `aa test` 启动的测试进程拿不到 `AbilityContext`'
+                                     '（最小探针 `Probe.test.ets` 实测：`getCurrentTopAbility failed=true`、'
+                                     '`appContext open ok=false`），**不是代码缺陷**。'
+                                     '这 38 条由离线一致性执行器覆盖（`49/49` 通过、复算 323 个断言点一致），'
+                                     '两条通路互补'],
             ['截图完整性', '18 / 18', '18 个页面全部在模拟器上抓取，且均带真实演示数据'
                                  '（252 条记录 / 5,741 分 / 55.99 kgCO₂e）'],
         ],

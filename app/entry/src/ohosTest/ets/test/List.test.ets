@@ -15,6 +15,7 @@ import lwwMerge from './LwwMerge.test';
 import shopPriceFallback from './ShopPriceFallback.test';
 import serverConfigFallback from './ServerConfigFallback.test';
 import nearbyMerge from './NearbyMerge.test';
+import probe from './Probe.test';
 
 export default function testsuite(): void {
   calcSamples();
@@ -28,4 +29,5 @@ export default function testsuite(): void {
   shopPriceFallback();
   serverConfigFallback();
   nearbyMerge();
+  probe();
 }

@@ -49,3 +49,5 @@ $py = 'C:\Users\Admin\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\python\
 3. **视频是"界面实拍 + 讲解字幕"的合成片**，素材是上面 18 张真实截图；不是屏幕录制。为补足这一点，另附 `04-真机录屏片段-碳小布CarbonBoo.mp4`（模拟器上逐帧抓取的连续操作，14.6 秒），可证明跳转与滚动是真实运行的。`screenrecord` 在该模拟器镜像上不可用，故采用「连续 `snapshot_display` 抽帧 + ffmpeg 合成」的方式取得真录屏。
 4. **报名已由学校统一完成**（原官方报名截止 2026-10-30，此前为预报名；现已解决）。**作品提交截止 2026-11-06**，按竞赛 QQ 群规定方式提交。
 5. **视频待替换**：当前 `02` 是脚本合成的分镜片；正式提交前建议用你们自己录的真实操作录屏替换（时长仍须 ≤5 分钟、≤100MB），替换后本表与 docx §8.6 的「合成片」表述需同步改一次。
+6. **设备侧自动化测试只跑通一半**：`hypium` 已在模拟器上真实执行——`aa test` 结果 `Tests run: 49, Failure: 0, Error: 38, Pass: 11`。11 条纯逻辑用例通过；38 条依赖真数据库/真 `rawfile` 的用例报 `Parameter error.Illegal context.`（401）与 `GetRawFileContent failed`，根因是 `aa test` 启动的测试进程拿不到 `AbilityContext`（最小探针 `Probe.test.ets` 实测 `getCurrentTopAbility failed=true`、`appContext open ok=false`），**属框架环境限制而非代码缺陷**；这 38 条的覆盖来自离线一致性执行器（`49/49` 通过、复算 323 个断言点一致）。细节见 `docs/VERIFICATION.md §R19`。
+
