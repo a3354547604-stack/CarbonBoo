@@ -22,9 +22,10 @@
  *
  * 铁律 4：扣分只能写流水，不能直接改余额——余额永远是流水聚合的结果。
  */
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ShopItem } from '../model/ShopTypes';
 import { ShopRules, PurchaseCheck } from './domain/ShopRules';
-import { StorePort, firstOf, numOf, textOf } from './store/StorePort';
+import { StorePort, RowShape, firstOf, numOf, textOf } from './store/StorePort';
 import { RowMapper } from './store/RowMapper';
 import { PointService } from './PointService';
 import { AppState } from './AppState';
@@ -148,49 +149,58 @@ export class ShopService {
     if (!check.allowed) {
       return fail<PurchaseOutcome>(check.code === undefined ? 'DENIED' : check.code, check.message.length === 0 ? '不可购买' : check.message);
     }
+    let outcome: PurchaseOutcome | undefined = undefined;
     try {
-      return await this.store.transaction<AppResult<PurchaseOutcome>>(async () => {
+      await this.store.transaction<void>(async () => {
         const now: number = Date.now();
+        // 事务内**不做任何回读**：relationalStore 的读连接看不到未提交行，
+        // 回读会把「刚写成功」误判成「没写进去」。这里只负责原子写入，校验放到提交之后。
+        //
+        // 先清掉同键旧行：`uq_up(user_id,item_id)` 与
+        // `uq_pr_source(user_id,source_type,source_id,flow_kind)` 都是唯一索引，
+        // 若上一轮留下过同键行（例如被软删的购买），插入会被静默跳过。
+        await this.store.exec('DELETE FROM user_purchase WHERE user_id = ? AND item_id = ?', [userId, itemId]);
         await this.store.exec(
-          'INSERT OR IGNORE INTO user_purchase (id, user_id, item_id, price_paid, purchased_at, created_at, updated_at, is_deleted, device_id, sync_state) ' +
+          "DELETE FROM point_record WHERE user_id = ? AND source_type = 'shop_item' AND source_id = ? AND flow_kind = 'primary'",
+          [userId, itemId]
+        );
+        await this.store.exec(
+          'INSERT INTO user_purchase (id, user_id, item_id, price_paid, purchased_at, created_at, updated_at, is_deleted, device_id, sync_state) ' +
           'VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)',
           [IdUtil.uuid(), userId, itemId, item.price, now, now, now, this.state.deviceId(), this.state.syncState()]
         );
-        const confirm = await this.store.query('SELECT id FROM user_purchase WHERE user_id = ? AND item_id = ? AND is_deleted = 0', [userId, itemId]);
-        if (confirm.length === 0) {
-          throw new Error('购买记录未写入');
-        }
-        const written: string = await this.points.append(userId, {
+        await this.points.append(userId, {
           type: 'purchase',
           points: -item.price,
           sourceType: 'shop_item',
           sourceId: itemId,
           title: `兑换「${item.name}」`,
           occurredAt: now,
-        });
-        if (written.length === 0) {
-          // 流水已存在（重复购买）：整笔回滚，避免「扣了分没拿到」
-          const already = await this.store.query(
-            "SELECT id, points FROM point_record WHERE source_type = 'shop_item' AND source_id = ? AND flow_kind = 'primary'",
-            [itemId]
-          );
-          const row = firstOf(already);
-          if (row === undefined || numOf(row, 'points') >= 0) {
-            throw new Error('购买流水异常');
-          }
-        }
-        const frames: number = await this.ownedFrameCount(userId);
-        const after = await this.points.balance(userId, now);
-        return ok<PurchaseOutcome>({
-          itemId,
-          price: item.price,
-          balanceAfter: after.balance,
-          treeReady: ShopRules.treeUnlocked(frames, 8),
-        });
+        }, false);
       });
+      // 提交之后再读：此时读连接能看到已提交的数据。
+      const now2: number = Date.now();
+      const ownedNow: string[] = await this.ownedIds(userId);
+      const frames: number = await this.ownedFrameCount(userId);
+      const after = await this.points.balance(userId, now2);
+      if (ownedNow.indexOf(itemId) < 0) {
+        return fail<PurchaseOutcome>('PURCHASE_FAILED', '购买失败：购买记录未落库');
+      }
+      outcome = {
+        itemId,
+        price: item.price,
+        balanceAfter: after.balance,
+        treeReady: ShopRules.treeUnlocked(frames, 8),
+      };
     } catch (e) {
+      hilog.error(0x0001, 'CarbonBoo', 'purchase failed: item=%{public}s detail=%{public}s',
+        itemId, ShopService.messageOf(e));
       return fail<PurchaseOutcome>('PURCHASE_FAILED', `购买失败：${ShopService.messageOf(e)}`);
     }
+    if (outcome === undefined) {
+      return fail<PurchaseOutcome>('PURCHASE_FAILED', '购买失败：未知原因');
+    }
+    return ok<PurchaseOutcome>(outcome);
   }
 
   /**

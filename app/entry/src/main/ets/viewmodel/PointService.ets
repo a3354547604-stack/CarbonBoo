@@ -147,7 +147,15 @@ export class PointService {
    * @param userId 用户
    * @param input 流水信息
    */
-  async append(userId: string, input: PointAppendInput): Promise<string> {
+  /**
+   * 写一条积分流水（幂等键 = `uq_pr_source` 的四列）。
+   *
+   * `verify` 默认为 `true`：写完**回读**幂等键，判断这条到底入没入账。
+   * 但 relationalStore 的读连接与写连接不是同一条——**事务里回读看不到未提交的行**，
+   * 于是「刚写成功」会被误判成「重复、未入账」。因此事务内的调用方（`ShopService.purchase`）
+   * 传 `verify: false`，由**事务提交后**再自行校验；事务外调用保持默认。
+   */
+  async append(userId: string, input: PointAppendInput, verify: boolean = true): Promise<string> {
     const id: string = this.newId();
     const now: number = Date.now();
     await this.store.exec(
@@ -167,6 +175,10 @@ export class PointService {
     // （典型：两天/两账号同名目标 'S1:D:2026-11-06'），把"确实写入成功"误判成"重复、未入账"。
     // 对齐索引键之后，"被 IGNORE 的行必是本账号的同一业务事实"才是自洽的。
     const flowKind: string = input.type === 'reverse' ? 'reverse' : 'primary';
+    if (!verify) {
+      await this.rebuildDay(userId, DateUtil.dayKeyOfMs(input.occurredAt));
+      return id;
+    }
     const exists = await this.store.query(
       'SELECT id FROM point_record WHERE user_id = ? AND source_type = ? AND source_id = ? AND flow_kind = ?',
       [userId, input.sourceType, input.sourceId, flowKind]);
