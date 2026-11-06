@@ -88,7 +88,7 @@
 
 | 官方要求 | 原文要点 | 本项目执行方式 |
 |---|---|---|
-| 开发环境 | 「统一使用 DevEco Studio，基于 OpenHarmony，要求 **API 版本 12 及以上**」 | DevEco Studio 创建工程，Stage 模型，目标 API 12 |
+| 开发环境 | 「统一使用 DevEco Studio，基于 OpenHarmony，要求 **API 版本 12 及以上**」 | DevEco Studio 创建工程，Stage 模型；**实测构建目标 HarmonyOS `6.1.1(24)`**（真机 BRE-AL80 只认鸿蒙 SDK 打的包，见 `docs/DECISION-0005-harmonyos-build-target.md`），源级仍只用 API 12 特性集 |
 | 硬件要求 | 纯北向赛题「用鸿蒙手机、平板或模拟器即可，无需额外采购硬件」 | **不采购任何硬件** |
 | 数据存储 | 「云端存储、多设备数据同步等功能**仅作为创新加分项，不做强制要求**」 | 本地存储为**唯一必需数据源**；云端同步/备份是**登录后才有**的可关闭增强层（未登录不上传任何数据） |
 | 技术难度 | 「基础功能为核心，高阶鸿蒙技术作为创新加分项」 | 五大功能做扎实；创新项宁精勿杂 |
@@ -136,7 +136,7 @@
 |---|---|---|
 | 语言 | **ArkTS**（TypeScript 超集） | 禁用 `any`，禁用 `@ts-ignore` |
 | UI | **ArkUI 声明式**，Stage 模型 | `@Entry` / `@Component` / `@State` / `@Prop` / `@Link` / `@Provide` |
-| 目标 API | **API 12**（`compileSdkVersion: 12`、`compatibleSdkVersion: 12`、`runtimeOS: OpenHarmony`） | 官方硬性要求 |
+| 目标 API | **API 12 及以上**（官方硬性要求） | 源级特性集仍是 API 12（不引入 13+ 新 API）；**构建/安装目标为 HarmonyOS `6.1.1(24)`、`runtimeOS: HarmonyOS`**——`docs/DECISION-0005-harmonyos-build-target.md` 记录了改用鸿蒙 SDK 的实测依据（OpenHarmony API 12 的包在鸿蒙真机上报 00401004 syscap 不匹配） |
 | 本地数据库 | **`@ohos.data.relationalStore`**（SQLite） | **19 张表**，见附录 B |
 | 轻量配置 | **`@ohos.data.preferences`** | 主题、头像框、演示模式开关、deviceId |
 | 分布式协同 | **`@ohos.distributedDeviceManager`** + **`@ohos.distributedDataObject`** + **`@ohos.distributedKVStore`** | 创新项 1：设备发现/组网、跨设备数据对象、跨设备 KV 同步 |

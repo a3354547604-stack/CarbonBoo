@@ -18,7 +18,7 @@
     },
     {
       "name": "about_platform_line",
-      "value": "基于 OpenHarmony · API 12 · 纯北向应用（本地优先；未登录即单机）"
+      "value": "基于 HarmonyOS · API 24 · 纯北向应用（本地优先；未登录即单机）"
     },
     {
       "name": "about_sec_data_body",

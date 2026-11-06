@@ -1,6 +1,6 @@
 {
   /**
-   * ohosTest 测试模块清单（Stage 模型 · API 12）。
+   * ohosTest 测试模块清单（Stage 模型 · HarmonyOS SDK / 目标 API 24，与 app/build-profile.json5 同口径）。
    *
    * 为什么必须存在：hvigor 的 `ohosTest` target 会去找
    * `entry/src/ohosTest/module.json5`，缺了就直接失败在本任务契约的 verify 命令上：

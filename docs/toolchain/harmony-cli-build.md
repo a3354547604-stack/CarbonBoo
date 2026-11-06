@@ -362,3 +362,84 @@ W A0c0d0/JSAPP: The RdbStore.querySql interface in the Previewer is a mocked imp
 **要拿到带数据的截图，只有三条路**：① 真机（`signingConfigs` 为空，需先在 DevEco 里生成调试签名）；
 ② 模拟器（需 `bcdedit /set hypervisorlaunchtype auto` + **重启**，本机当前 `HypervisorPresent=False`、无镜像）；
 ③ 写临时代码把页面根内容换成假数据（**会污染源码，不推荐**，且截出来的不是真实运行结果）。
+
+## 8. HarmonyOS SDK 构建（2026-11-06 起 · 真机安装必需）
+
+> 触发原因：用 §1 那套 **OpenHarmony API 12** SDK 打出的 HAP，装到 HUAWEI BRE-AL80
+> （`const.ohos.apiversion=24`、`const.product.software.version=BRE-AL80 6.1.0.135(SP8C00E120R1P7)`、
+> `const.ohos.fullname=OpenHarmony-6.1.1.120`）上报：
+>
+> ```
+> [Fail]Error: failed to install bundle. code:00401004
+> 请尝试匹配设备和应用的 API 版本。设备的 rpcid.json 中不包含以下能力:
+> SystemCapability.HiDumper / SystemCapability.DataTransitManager /
+> SystemCapability.MediaLibrary.Core / SystemCapability.MediaLibrary.DistributedCore /
+> SystemCapability.PowerManager.BatteryManager.Extension / SystemCapability.PowerManager.PowerManager.Extension /
+> SystemCapability.Security.DeviceSecurityLevel / SystemCapability.UserIAM.UserAuth.PinAuth /
+> SystemCapability.Security.DeviceAuth
+> ```
+>
+> 这 9 条是 **OpenHarmony 5.0(API 12) syscap 清单**里的条目，HarmonyOS 侧没有同名能力，
+> 安装器逐条比对全部落空 → 拒装。**换证书、降/升 API 都救不了，根因是 SDK 族不匹配。**
+
+### 8.1 `build-profile.json5` 的 HarmonyOS 写法（三个实测坑）
+
+```json5
+"products": [{
+  "name": "default",
+  "compatibleSdkVersion": "6.1.1(24)",   // ① 字符串，「平台版本(API)」
+  "targetSdkVersion": "6.1.1(24)",
+  "runtimeOS": "HarmonyOS"               // ② 与 OpenHarmony 二选一
+  // ③ compileSdkVersion 省略，由已装 HarmonyOS SDK 决定
+}]
+```
+
+- **坑 A：平台版本号不能猜。** 写 `"6.1.0(24)"` 会报
+  `00303083 Configuration Error … The platform version '6.1.0' and API version '24' of compatibleSdkVersion
+  in build-profile.json5 do not match`。API 24 对应的平台版本是 **`6.1.1`**（判据：
+  `tools/hvigor/hvigor-ohos-plugin/src/sdk/sdk-util.d.ts:46` 注释「`6.1.1(24)` 转为 240000」）。
+- **坑 B：`sdk.dir` 必须指向 DevEco 自带 SDK。** `app/local.properties` 写
+  `sdk.dir=C:/Program Files/Huawei/DevEco Studio/sdk`（其下是 `default/{openharmony,hms}` +
+  `sdk-pkg.json`，`apiVersion: "26"`、`displayName: "HarmonyOS 26.0.0"`、`version: 26.0.0.105`）。
+  继续指向 `AppData/Local/OpenHarmony/Sdk` 会拿不到 `hms` 那半边。
+- **坑 C：`compatibleSdkVersion` 必须 ≤ 设备 `const.ohos.apiversion`。** 高过设备直接按
+  `minAPIVersion` 拒装。设备是 24 就写 24，别随手写 SDK 的 26。
+
+### 8.2 实测通过的命令（Windows 侧 hvigor 6.26.8）
+
+WSL 里的 `hvigorw`（§1，CLT 5.8.9）**构建不了 HarmonyOS 工程**：`app/hvigor/hvigor-config.json5`
+的两条 `file:` 依赖指向 Windows 绝对路径，Linux 侧会拼成
+`.../app/hvigor/C:/Program Files/...` 而报 `ENOENT … node_modules/@ohos/hvigor/bin/hvigor.js`；
+且 5.8.9 不认识 HarmonyOS 26 SDK。**改用 DevEco 自带 node + hvigor**（在 Windows 批处理里跑）：
+
+```bat
+@echo off
+chcp 65001 >nul
+cd /d C:\Users\Administrator\Desktop\CarbonBoo\app
+set "DEVECO_SDK_HOME=C:\Program Files\Huawei\DevEco Studio\sdk"
+set "JAVA_HOME=C:\Program Files\Huawei\DevEco Studio\jbr"
+set "PATH=C:\Program Files\Huawei\DevEco Studio\jbr\bin;%PATH%"
+"C:\Program Files\Huawei\DevEco Studio\tools\node\node.exe" ^
+  "C:\Program Files\Huawei\DevEco Studio\tools\hvigor\bin\hvigorw.js" --no-daemon assembleHap
+```
+
+- **`jbr\bin` 必须进 `PATH`**，否则 `PackageHap` 阶段报
+  `00308018 Unknown Error / spawn java ENOENT`（编译都过了，只在打包时炸）。
+- 产物：`app/entry/build/default/outputs/default/entry-default-unsigned.hap`（2.6 MB）。
+- 产物 `module.json` 实测字段：`compileSdkVersion 26.0.0.105`、`compileSdkType HarmonyOS`、
+  `targetAPIVersion 60101024`、`minAPIVersion 60101024`、`apiReleaseType Release`、
+  `virtualMachine` 不再出现（OpenHarmony 时代是 `ark12.0.2.0`）。
+- `WARN: No signingConfig found for product default` 属预期（`signingConfigs: []` 不入库）。
+
+### 8.3 还剩一道门槛：签名（必须在 DevEco 里做）
+
+未签名包装机实测：
+
+```
+[Info]App install path:...entry-default-unsigned.hap, queuesize:0,
+  msg:error: failed to install bundle. code:9568320 error: no signature file.
+```
+
+即 **00401004 的 API 不匹配已经消失**，只剩「没有签名文件」。做法：DevEco
+`File → Project Structure → Signing Configs` 勾选自动签名（需登录华为账号 + 手机 USB 调试授权），
+再 `hdc -t 4GHBB25109045723 install -r <signed.hap>`。签名材料不入库。

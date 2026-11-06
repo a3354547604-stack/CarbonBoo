@@ -4,7 +4,7 @@
 > 修改方式见 §10；与任何文档冲突时，按 §1.2 的优先级裁决。
 >
 > - 项目：**碳小布 CarbonBoo** ｜ OpenHarmony 个人碳账本 ｜ 赛题二（纯北向）
-> - 当前阶段：**S1–S6 已实现并落库**（`app/` ArkTS + API 12：19 张表 + 18 个页面（`pages/` 19 个 `.ets` = 18 个页面 + `Index.ets` 导航壳，判据见 `docs/DECISION-0004-doc-consistency-errata.md`） 全部落地；`server/` FastAPI + MySQL 8：21 张表 + 账号 / 多设备同步 / 取价 / 云端备份 + L3 pytest），**S7 创新项与 `/admin` 后台收尾中**；规划 **v4.2 定稿（2026-11-06 文档契约勘误）** + **ADR-0001（账号与同步）已决策**
+> - 当前阶段：**S1–S6 已实现并落库**（`app/` ArkTS + HarmonyOS 构建 / target API 24：19 张表 + 18 个页面（`pages/` 19 个 `.ets` = 18 个页面 + `Index.ets` 导航壳，判据见 `docs/DECISION-0004-doc-consistency-errata.md`） 全部落地；`server/` FastAPI + MySQL 8：21 张表 + 账号 / 多设备同步 / 取价 / 云端备份 + L3 pytest），**S7 创新项与 `/admin` 后台收尾中**；规划 **v4.2 定稿（2026-11-06 文档契约勘误）** + **ADR-0001（账号与同步）已决策**
 > - 工作语言：中文（代码注释、提交信息、报告一律中文）
 
 ---
@@ -240,6 +240,7 @@ L0 检查会扫出全部待修项：`python3 tests/tools/check_l0.py`。机器�
 
 | 日期 | 变更 | 依据 |
 |---|---|---|
+| 2026-11-06 | **构建目标切到 HarmonyOS `6.1.1(24)`（v4.25）**：头部状态行的 `ArkTS + API 12` 改为 `ArkTS + HarmonyOS 构建 / target API 24`；`app/build-profile.json5` 由 `runtimeOS: OpenHarmony` + 整数 12 改为 `runtimeOS: HarmonyOS` + `"6.1.1(24)"`（真机组装报 00401004，9 条 OpenHarmony syscap 在鸿蒙设备上不存在）；**源级仍只用 API 12 特性集**，数值/表/页面/验收零改动。决策记录：`docs/DECISION-0005-harmonyos-build-target.md`；构建命令与三个坑见 `docs/toolchain/harmony-cli-build.md §8` | 用户 m00387「改一下，不用保api12」+ 真机实测 00401004/9568320 |
 | 2026-10-19 | **v4.2.2（t74 文档一致性勘误）**：头部状态行的页面数定真值 **18**（`pages/` 19 个 `.ets` = 18 个页面 + `Index.ets` 导航壳；`README.md` 头部的「19 个页面」为 t71 误改，已回正并补判据）；全仓 `it()` 计数统一到实测 **41**（历史轮次的「36」一律**不改写**，只加更正指针）；决策记录见 `docs/DECISION-0004-doc-consistency-errata.md` | t71 报出的三条文档失真 + t74 收口 |
 | 2026-11-07 | **v4.2.1（t21 修复轮）**：§2 铁律 1 / §5 L2 / §6 三处网络例外集统一为**五类**（补「配置下发」`GET /api/v1/config`，与取价同组），B42/B47 条目内显式声明该归属；新增 **§5.1 基准复现与并发热点约定**（完整 40 位 SHA + `git rev-parse HEAD` 复核、引用数值真相源须给 md5、`tests/cases/carbon-calc.json` 的提交前缀与「单列 diff」约定）；`data/dao/` 的两个 S1 表 Dao 经 `pages/Index.ets` 锚点恢复进编译图 | t7 验证发现 F2/F3/F5/F6/F8 + t21 修复轮；配置下发通道决策见 `docs/DECISION-0003-runtime-config-and-sync-anchor.md`（B47），例外集口径派生自 B42/B47 |
 | 2026-11-07 | **§5.1-2 去门禁化（t23）**：删掉「改动数值的同一次提交里必须同步刷新 md5」—— md5 是内容函数，不可能写进自身（不动点），该要求只能是无人检查的约定（round 2 验证 F12）。改为「引用时现场 `md5sum` 并贴原始输出」，明确**不设期望 md5 常量**，数值有没有动一律以 `git diff` 为准 | t22 验证 F12 |

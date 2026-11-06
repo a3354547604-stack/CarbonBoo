@@ -2,8 +2,9 @@
  * entry 模块包描述（ohpm）。
  *
  * 唯一的依赖是**测试框架** `@ohos/hypium`：
- *  - 版本冻结 `1.0.21`——API 12 下的最高可用版本；1.0.24/1.0.27/1.0.29 都会报
- *    `The compatibleSdkVersion 12 cannot be smaller than version 17 declared in library [:hypium]`；
+ *  - 版本冻结 `1.0.21`——当初在 OpenHarmony API 12 下它是最高可用版本（1.0.24/1.0.27/1.0.29
+ *    都会报 `The compatibleSdkVersion 12 cannot be smaller than version 17 declared in library [:hypium]`）；
+ *    2026-11-06 起构建目标改为 HarmonyOS `6.1.1(24)`，该版本实测仍可正常编译，保持冻结以免引入未知回归；
  *  - 放在 `devDependencies`，**不进主 HAP**；
  *  - 它是官方测试框架，不是第三方业务库，不违反 AGENTS.md §7.1「不引入第三方包」。
  */

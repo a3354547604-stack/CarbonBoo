@@ -1,13 +1,27 @@
 /**
- * 工程级构建配置（Stage 模型 · API 12 · OpenHarmony 纯北向）
+ * 工程级构建配置（Stage 模型 · HarmonyOS SDK · 面向华为真机）
+ *
+ * 2026-11-06 变更：`runtimeOS` 由 `OpenHarmony` 改为 `HarmonyOS`，版本号由整数改为
+ * `"平台版本(API)"` 字符串。原因：在 HUAWEI BRE-AL80（HarmonyOS 6.1.0.135 /
+ * `const.ohos.apiversion=24`）上安装被拒，报
+ *   00401004 … 设备的 rpcid.json 中不包含 SystemCapability.HiDumper /
+ *   DataTransitManager / MediaLibrary.Core / MediaLibrary.DistributedCore /
+ *   PowerManager.BatteryManager.Extension / PowerManager.PowerManager.Extension /
+ *   Security.DeviceSecurityLevel / UserIAM.UserAuth.PinAuth / Security.DeviceAuth。
+ * 这 9 项属于 **OpenHarmony 5.0(API 12) 的 syscap 清单**，HarmonyOS 侧没有同名能力，
+ * 逐条比对全部落空 → 安装器拒装。根因是 SDK 族不匹配，不是权限或签名问题。
  *
  * 本切片的硬性约束（实测得来，改动会直接导致 hvigor 报错）：
- *  ① `compatibleSdkVersion` / `compileSdkVersion` / `targetSdkVersion` 必须是 **整数 12**，
- *     不能写 "5.0.0(12)" 这类字符串；
- *  ② 三处都要显式给出，否则报 `Please configure compileSdkVersion in the product`；
- *  ③ `signingConfigs` 保持空数组时，**不要在 product 里写 `signingConfig`**，
+ *  ① `runtimeOS` 为 `HarmonyOS` 时，`compatibleSdkVersion` / `targetSdkVersion` 必须写成
+ *     `"6.1.1(24)"` 这种 `平台版本(API)` 字符串；整数 12 只属于 OpenHarmony 写法。
+ *  ② `compatibleSdkVersion` 必须 ≤ 目标设备的 `const.ohos.apiversion`，否则安装器按
+ *     `minAPIVersion` 直接拒装。当前设备是 API 24，故取 `6.1.1(24)`；
+ *     换到更低版本机型时同步下调，不能高于设备。
+ *  ③ `compileSdkVersion` 在 HarmonyOS 工程里省略即可，由已安装的 HarmonyOS SDK 决定
+ *     （本机 DevEco 26.0.0.851 自带 `HarmonyOS 26.0.0`，apiVersion 26）。
+ *  ④ `signingConfigs` 保持空数组时，**不要在 product 里写 `signingConfig`**，
  *     否则报 `Cannot read properties of undefined (reading 'app')`。
- * 签名材料由打包方（DevEco Studio 或命令行签名）另行注入，不入库。
+ * 签名材料由打包方（DevEco 自动签名 / 命令行签名）另行注入，不入库。
  */
 {
   "app": {
@@ -15,10 +29,9 @@
     "products": [
       {
         "name": "default",
-        "compatibleSdkVersion": 12,
-        "compileSdkVersion": 12,
-        "targetSdkVersion": 12,
-        "runtimeOS": "OpenHarmony"
+        "compatibleSdkVersion": "6.1.1(24)",
+        "targetSdkVersion": "6.1.1(24)",
+        "runtimeOS": "HarmonyOS"
       }
     ],
     "buildModeSet": [
