@@ -1,0 +1,32 @@
+# 构建上下文 = server/；本文件是「deploy/docker/Dockerfile 专用」的忽略清单
+# （BuildKit 按 <dockerfile 路径>.dockerignore 匹配，故文件名必须带 Dockerfile 前缀）
+
+# 密钥：绝不进镜像（运行期由 compose env_file 注入）
+.env
+.env.*
+!.env.example
+deploy/docker/.env
+deploy/docker/.env.prod
+
+# 本地虚拟环境 / 缓存 / 测试产物
+.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+**/.pytest_cache/
+pytest-of-*/
+tmp*/
+.coverage
+htmlcov/
+
+# 与本镜像无关的部署变体（systemd / nginx 由宿主机或独立容器负责）
+deploy/systemd/
+
+# 版本控制与编辑器
+.git/
+.gitignore
+.idea/
+.vscode/
+Thumbs.db
+desktop.ini

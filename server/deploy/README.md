@@ -3,6 +3,11 @@
 > 目标形态（ADR-0001）：**境内轻量云 + 备案域名 + TLS**；MySQL 只监听 `127.0.0.1`；
 > 公网只开 **SSH / 80 / 443**；密钥只进 `server/.env`（权限 600）；`/admin` 强口令 + 登录限流；
 > `/docs` 生产默认关闭（路演前临时开）。
+>
+> **两种部署变体，按目标机二选一**：
+> * 容器版 → [`docker/README.md`](docker/README.md)（`nginx` + `uvicorn` + `mysql:8.0` 三容器；**当前生产机 `123.206.99.28` 采用**）
+> * 宿主机版 → 本文件（systemd + 宿主 nginx + 宿主 MySQL）
+> 二者口径一致，**不要同时启用**。
 
 ## 0. 组件与端口
 
@@ -93,3 +98,4 @@ journalctl -u carbonboo-server -n 200 --no-pager  # 看同步/账号日志
 | `systemd/carbonboo-server.service` | uvicorn `--workers 2` 常驻服务 |
 | `systemd/carbonboo-purge.{service,timer}` | 每天跑一次超期账号物理清除（ADR-0001 决策③） |
 | `nginx/carbonboo.conf` | TLS + 反代 + `/admin` 登录限流 + 请求体上限 |
+| `docker/` | **容器版部署（生产采用）**：`Dockerfile`、`docker-compose.yml`、`nginx/`、`backup.sh`、`.env.example`，操作手册见 `docker/README.md` |
