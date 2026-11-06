@@ -443,3 +443,37 @@ set "PATH=C:\Program Files\Huawei\DevEco Studio\jbr\bin;%PATH%"
 即 **00401004 的 API 不匹配已经消失**，只剩「没有签名文件」。做法：DevEco
 `File → Project Structure → Signing Configs` 勾选自动签名（需登录华为账号 + 手机 USB 调试授权），
 再 `hdc -t 4GHBB25109045723 install -r <signed.hap>`。签名材料不入库。
+
+**2026-11-06 实测走通的完整步骤**（用 computer-use 在 DevEco 26.0.0.851 上按过一遍）：
+
+1. `Ctrl+Alt+Shift+S` 打开「项目结构」→ 切到「签名配置」页签；
+2. 勾「自动生成签名文件」（**必须点文字标签**，点方框本身有时不响应）——团队名会显示当前
+   登录的华为账号（本例「秦一翔」），说明账号态已就绪；
+3. 弹「注意：你正在申请受控 ACL 权限 WRITE_IMAGEVIDEO」→ 点「继续」（这是本 App
+   相册保存所需的受控权限声明，与签名本身无关）；
+4. 点「确定」。DevEco 会把 `signingConfigs` 写进 `app/build-profile.json5`：`name: default`、
+   `type: HarmonyOS`、`material.storeFile/ certpath/ profile` 指向
+   `C:\Users\Administrator\.ohos\config\default_app_<hash>.p12|.cer|.p7b`，
+   `keyAlias: debugKey`，两个密码字段是本地加密串。
+5. **关键补充**：DevEco 只写了 `signingConfigs`，**没有**往 product 里写
+   `signingConfig`。缺这一行时打包仍走 `PackageHap` 不签名（`SignHap` 不执行），装到机器上
+   还是 `9568320`。需手工在 product 里加一行：
+   ```json5
+   { "name": "default", "signingConfig": "default", "compatibleSdkVersion": "6.1.1(24)" … }
+   ```
+   加上后重新 `assembleHap`，日志会出现 `Finished :entry:default@SignHap`，产物目录多出
+   `entry-default-signed.hap`（本例 2,710,489 B，比 unsigned 大 51,653 B = 签名块）。
+6. 装包（`cd` 到产物目录后用**相对路径**，绝对路径会被 hdc 拼坏）：
+   ```bash
+   hdc -t 4GHBB25109045723 install -r entry-default-signed.hap
+   # [Info]App install path:…entry-default-signed.hap, … msg:install bundle successfully.
+   hdc -t 4GHBB25109045723 shell aa start -a EntryAbility -b com.carbonboo.app
+   ```
+   实测启动即进首页（累计减排 0.000 / 今日上限 200 / 五页签齐全），**真机运行闭环成立**。
+
+**签名材料一律不入库**：`app/build-profile.json5` 里由 DevEco 生成的
+`signingConfigs` 与 product 的 `signingConfig` 两处都**保持工作区未提交**——
+它们含本机绝对路径与本地加密口令，且换机后必然失效；别人 clone 下来
+`signingConfigs` 为空时不能保留 `signingConfig`，否则会报
+`Cannot read properties of undefined (reading 'app')`（见 §8.1 约束④）。
+即「提交历史里永远没有这两段，本机要签名就按上面 6 步再点一次」。
